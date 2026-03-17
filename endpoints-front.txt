@@ -1,0 +1,48 @@
+# Endpoints del backend utilizados por la app móvil (front)
+
+## Auth
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+GET  /api/v1/auth/me
+GET  /api/v1/auth/google/mobile-authorize
+  → authorization_url para abrir en navegador/WebView
+GET  /api/v1/auth/google/callback
+  → URL a la que el backend redirige tras OAuth; la app la detecta en WebView para cerrar la pantalla
+
+## Config
+GET  /api/v1/config/
+  → cloud_provider (google_drive | keepi_cloud)
+
+## Cloud storage
+POST /api/v1/cloud-storage/setup-cloud-storage
+  body: { "storage_type": "keepi_cloud" | "google_drive" | "not_configured" }
+
+## Subscriptions
+POST /api/v1/subscriptions/create-checkout-session
+  body: { "plan": "premium" }  → checkout_url para Stripe
+GET  /api/v1/subscriptions/usage-stats
+  → current_period.analysis_used, analysis_limit, analysis_remaining; subscription_status.plan
+
+## Documents — Drive
+GET  /api/v1/documents/drive/structure
+GET  /api/v1/documents/drive/folders/{folder_id}/contents
+GET  /api/v1/documents/drive/files/{file_id}/view-url
+GET  /api/v1/documents/drive/files/{file_id}/content
+DELETE /api/v1/documents/drive/files/{file_id}
+
+## Documents — Dashboard y Keepi Cloud
+GET  /api/v1/documents/mobile/dashboard
+  → folders (Drive o S3 según config), total_keepi, expiring_soon_count, expiring_soon
+GET  /api/v1/documents/keepi-cloud/root
+  → folders, root_files (contenido raíz S3 users/{uid}/ para carpeta «abierta» en Home)
+GET  /api/v1/documents/s3/folders/contents?path=users/{uid}/...
+  → contenido de carpeta Keepi Cloud (folder, folders, files)
+
+## Documents — Análisis y guardado
+POST /api/v1/documents/mobile/analyze
+POST /api/v1/documents/mobile/save-analyzed
+
+## Redirects (navegador / deep link)
+GET  /payment/success
+  → Tras pago Stripe: actualiza cloud_provider y redirige al deep link de la app (ej. keepi://stripe-success).

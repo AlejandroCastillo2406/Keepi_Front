@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "1020537733485",
+    "firebase_url": "https://keepi-eff0f-default-rtdb.firebaseio.com",
+    "project_id": "keepi-eff0f",
+    "storage_bucket": "keepi-eff0f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1020537733485:android:e8ee0720eb45a7c08b9a64",
+        "android_client_info": {
+          "package_name": "com.example.keepi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1020537733485-q60kqql85hb8bn2mlbfmnns2324u483o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAt3LBmBCHhz2MBr2HokgJFDx3i3_R0dbs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1020537733485-q60kqql85hb8bn2mlbfmnns2324u483o.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
