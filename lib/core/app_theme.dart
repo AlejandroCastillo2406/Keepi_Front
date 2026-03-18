@@ -56,20 +56,20 @@ class AppTheme {
         shadow: KeepiColors.slate.withOpacity(0.12),
       ),
       scaffoldBackgroundColor: KeepiColors.surfaceBg,
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0.5,
         centerTitle: false,
         backgroundColor: KeepiColors.surfaceBg,
         foregroundColor: KeepiColors.slate,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.3,
           color: KeepiColors.slate,
         ),
-        iconTheme: const IconThemeData(color: KeepiColors.slate, size: 24),
+        iconTheme: IconThemeData(color: KeepiColors.slate, size: 24),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -142,38 +142,38 @@ class AppTheme {
         color: KeepiColors.cardBorder.withOpacity(0.8),
         thickness: 1,
       ),
-      textTheme: TextTheme(
-        headlineMedium: const TextStyle(
+      textTheme: const TextTheme(
+        headlineMedium: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
           color: KeepiColors.slate,
         ),
-        titleLarge: const TextStyle(
+        titleLarge: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.3,
           color: KeepiColors.slate,
         ),
-        titleMedium: const TextStyle(
+        titleMedium: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.2,
           color: KeepiColors.slate,
         ),
-        titleSmall: const TextStyle(
+        titleSmall: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
           letterSpacing: -0.1,
           color: KeepiColors.slate,
         ),
-        bodyLarge: const TextStyle(
+        bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w400,
           letterSpacing: 0.1,
           color: KeepiColors.slate,
         ),
-        bodyMedium: const TextStyle(
+        bodyMedium: TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w400,
           letterSpacing: 0.1,
@@ -185,7 +185,7 @@ class AppTheme {
           letterSpacing: 0.2,
           color: KeepiColors.slateLight,
         ),
-        labelLarge: const TextStyle(
+        labelLarge: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.1,

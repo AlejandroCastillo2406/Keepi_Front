@@ -154,7 +154,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 28,
                       height: 28,
                       child: CircularProgressIndicator(
@@ -198,7 +198,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
                             FilledButton.icon(
                               onPressed: _reconnecting ? null : _reconnectGoogleDrive,
                               icon: _reconnecting
-                                  ? SizedBox(
+                                  ? const SizedBox(
                                       width: 20,
                                       height: 20,
                                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
@@ -343,7 +343,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     scaffoldMessenger.showSnackBar(
-      SnackBar(
+      const SnackBar(
         content: Row(
           children: [
             SizedBox(
@@ -354,11 +354,11 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
                 color: Colors.white,
               ),
             ),
-            const SizedBox(width: 12),
-            const Text('Abriendo vista previa…'),
+            SizedBox(width: 12),
+            Text('Abriendo vista previa…'),
           ],
         ),
-        duration: const Duration(seconds: 2),
+        duration: Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -401,7 +401,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     scaffoldMessenger.showSnackBar(
-      SnackBar(
+      const SnackBar(
         content: Row(
           children: [
             SizedBox(
@@ -409,11 +409,11 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
               height: 20,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             ),
-            const SizedBox(width: 12),
-            const Text('Descargando…'),
+            SizedBox(width: 12),
+            Text('Descargando…'),
           ],
         ),
-        duration: const Duration(seconds: 3),
+        duration: Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -470,7 +470,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancelar', style: TextStyle(color: KeepiColors.slateLight)),
+            child: const Text('Cancelar', style: TextStyle(color: KeepiColors.slateLight)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -565,7 +565,7 @@ class _FolderTile extends StatelessWidget {
                   color: KeepiColors.orangeSoft,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.folder_rounded,
                   color: KeepiColors.orange,
                   size: 24,
@@ -598,7 +598,7 @@ class _FolderTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
+              const Icon(
                 Icons.chevron_right_rounded,
                 size: 22,
                 color: KeepiColors.slateLight,
@@ -708,7 +708,7 @@ class _FileTile extends StatelessWidget {
                                   ),
                                 if (file.keepiVerified) ...[
                                   if (_formatSize(file.size).isNotEmpty) const SizedBox(width: 8),
-                                  Tooltip(
+                                  const Tooltip(
                                     message: 'Analizado por Keepi',
                                     child: Icon(
                                       Icons.verified_rounded,
@@ -729,7 +729,7 @@ class _FileTile extends StatelessWidget {
             ),
             PopupMenuButton<String>(
               padding: EdgeInsets.zero,
-              icon: Icon(Icons.more_vert, color: KeepiColors.slateLight, size: 22),
+              icon: const Icon(Icons.more_vert, color: KeepiColors.slateLight, size: 22),
               onSelected: (value) {
                 switch (value) {
                   case 'download':
@@ -749,13 +749,13 @@ class _FileTile extends StatelessWidget {
                   enabled: false,
                   child: Row(
                     children: [
-                      Icon(Icons.category_outlined, size: 20, color: KeepiColors.slateLight),
+                      const Icon(Icons.category_outlined, size: 20, color: KeepiColors.slateLight),
                       const SizedBox(width: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Re-clasificar', style: TextStyle(color: KeepiColors.slateLight)),
+                          const Text('Re-clasificar', style: TextStyle(color: KeepiColors.slateLight)),
                           Text('Próximamente', style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slateLight, fontSize: 11)),
                         ],
                       ),
@@ -767,13 +767,13 @@ class _FileTile extends StatelessWidget {
                   enabled: false,
                   child: Row(
                     children: [
-                      Icon(Icons.link_rounded, size: 20, color: KeepiColors.slateLight),
+                      const Icon(Icons.link_rounded, size: 20, color: KeepiColors.slateLight),
                       const SizedBox(width: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Link temporal', style: TextStyle(color: KeepiColors.slateLight)),
+                          const Text('Link temporal', style: TextStyle(color: KeepiColors.slateLight)),
                           Text('Próximamente', style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slateLight, fontSize: 11)),
                         ],
                       ),
@@ -781,22 +781,22 @@ class _FileTile extends StatelessWidget {
                   ),
                 ),
                 const PopupMenuDivider(),
-                PopupMenuItem<String>(
+                const PopupMenuItem<String>(
                   value: 'download',
                   child: Row(
                     children: [
                       Icon(Icons.download_rounded, size: 20, color: KeepiColors.slate),
-                      const SizedBox(width: 12),
-                      const Text('Descargar'),
+                      SizedBox(width: 12),
+                      Text('Descargar'),
                     ],
                   ),
                 ),
-                PopupMenuItem<String>(
+                const PopupMenuItem<String>(
                   value: 'delete',
                   child: Row(
                     children: [
                       Icon(Icons.delete_outline_rounded, size: 20, color: KeepiColors.orange),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Text('Eliminar', style: TextStyle(color: KeepiColors.orange, fontWeight: FontWeight.w500)),
                     ],
                   ),

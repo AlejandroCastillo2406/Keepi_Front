@@ -108,7 +108,7 @@ class _SplashScreen extends StatelessWidget {
                     height: 96,
                     width: 96,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Icon(
+                    errorBuilder: (_, __, ___) => const Icon(
                       Icons.folder_rounded,
                       size: 96,
                       color: KeepiColors.orange,
@@ -133,7 +133,7 @@ class _SplashScreen extends StatelessWidget {
                       ),
                 ),
                 const SizedBox(height: 44),
-                SizedBox(
+                const SizedBox(
                   width: 28,
                   height: 28,
                   child: CircularProgressIndicator(

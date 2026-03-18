@@ -19,7 +19,6 @@ import '../services/document_upload_service.dart';
 import '../services/drive_structure_service.dart';
 import '../services/subscription_service.dart';
 import 'folder_contents_screen.dart';
-import 'google_drive_auth_screen.dart';
 import 'settings_screen.dart';
 
 /// Duración estándar para transiciones suaves estilo iOS.
@@ -216,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 height: 36,
                 width: 36,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
+                errorBuilder: (_, __, ___) => const Icon(
                   Icons.folder_rounded,
                   size: 36,
                   color: KeepiColors.orange,
@@ -365,9 +364,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 28),
                 if (_loading)
-                  Center(
+                  const Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: EdgeInsets.all(24),
                       child: SizedBox(
                         width: 28,
                         height: 28,
@@ -402,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: KeepiColors.orange.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 22),
+                          child: const Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 22),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -512,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 52,
                         width: 52,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(
+                        errorBuilder: (_, __, ___) => const Icon(
                           Icons.folder_rounded,
                           size: 52,
                           color: KeepiColors.orange,
@@ -564,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text(
+                  child: const Text(
                     'Ahora no',
                     style: TextStyle(color: KeepiColors.slateLight),
                   ),
@@ -925,7 +924,7 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
                     color: KeepiColors.skyBlueSoft,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(Icons.analytics_outlined, color: KeepiColors.orange, size: 28),
+                  child: const Icon(Icons.analytics_outlined, color: KeepiColors.orange, size: 28),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -1002,7 +1001,7 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(null),
-                  child: Text('Cancelar', style: TextStyle(color: KeepiColors.slateLight)),
+                  child: const Text('Cancelar', style: TextStyle(color: KeepiColors.slateLight)),
                 ),
                 const SizedBox(width: 12),
                 FilledButton(
@@ -1214,7 +1213,7 @@ class _DriveFoldersSection extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 28,
                       height: 28,
                       child: CircularProgressIndicator(
@@ -1347,7 +1346,7 @@ class _DriveFoldersSection extends StatelessWidget {
                   color: KeepiColors.skyBlue.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.schedule_rounded, size: 22, color: KeepiColors.skyBlue),
+                child: const Icon(Icons.schedule_rounded, size: 22, color: KeepiColors.skyBlue),
               ),
               const SizedBox(width: 12),
               Text(
@@ -1551,7 +1550,7 @@ class _ExpiringDocTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             Icons.description_outlined,
             size: 24,
             color: KeepiColors.skyBlue,
@@ -1656,7 +1655,7 @@ class _DriveFolderTile extends StatelessWidget {
                   color: KeepiColors.orangeSoft,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.folder_rounded,
                   color: KeepiColors.orange,
                   size: 24,
@@ -1689,7 +1688,7 @@ class _DriveFolderTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
+              const Icon(
                 Icons.chevron_right_rounded,
                 size: 22,
                 color: KeepiColors.slateLight,
@@ -1723,7 +1722,7 @@ class _RootFileTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             Icons.description_outlined,
             size: 24,
             color: KeepiColors.skyBlue,
@@ -1755,7 +1754,7 @@ class _RootFileTile extends StatelessWidget {
                       ),
                       if (file.keepiVerified) ...[
                         const SizedBox(width: 8),
-                        Icon(
+                        const Icon(
                           Icons.verified_rounded,
                           size: 16,
                           color: KeepiColors.green,

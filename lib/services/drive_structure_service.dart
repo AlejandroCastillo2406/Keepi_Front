@@ -101,7 +101,7 @@ class ExpiringDocumentItem {
     return ExpiringDocumentItem(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
-      expiryDate: expiry == null ? null : expiry.toString(),
+      expiryDate: expiry?.toString(),
       category: json['category'] as String?,
       fileName: json['file_name'] as String?,
     );
@@ -133,7 +133,7 @@ class DriveFile {
     return DriveFile(
       id: json['id'] as String,
       name: json['name'] as String,
-      size: size == null ? null : size.toString(),
+      size: size?.toString(),
       mimeType: json['mime_type'] as String?,
       createdTime: json['created_time'] as String?,
       modifiedTime: json['modified_time'] as String?,

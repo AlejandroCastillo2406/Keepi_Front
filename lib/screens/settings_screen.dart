@@ -258,7 +258,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 22),
+                          const Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 22),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
@@ -339,7 +339,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     if (!_config!.isNotConfigured)
                       TextButton.icon(
                         onPressed: _switching ? null : _setNotConfigured,
-                        icon: Icon(Icons.restore_rounded, size: 20, color: KeepiColors.slateLight),
+                        icon: const Icon(Icons.restore_rounded, size: 20, color: KeepiColors.slateLight),
                         label: Text(
                           'Restablecer a sin configurar',
                           style: theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slateLight),
@@ -446,7 +446,7 @@ class _StorageTile extends StatelessWidget {
                 ),
               ),
               if (!isCurrent && onTap != null && !isDisabled)
-                Icon(Icons.chevron_right_rounded, color: KeepiColors.slateLight, size: 24),
+                const Icon(Icons.chevron_right_rounded, color: KeepiColors.slateLight, size: 24),
             ],
           ),
         ),

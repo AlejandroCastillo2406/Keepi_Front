@@ -90,7 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 height: 56,
                                 width: 56,
                                 fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => Icon(
+                                errorBuilder: (_, __, ___) => const Icon(
                                   Icons.folder_rounded,
                                   size: 56,
                                   color: KeepiColors.orange,
@@ -137,19 +137,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 28),
-                      Row(
+                      const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           _FeatureChip(
                             icon: Icons.folder_rounded,
                             label: 'Organiza',
                           ),
-                          const SizedBox(width: 10),
+                          SizedBox(width: 10),
                           _FeatureChip(
                             icon: Icons.auto_awesome_rounded,
                             label: 'Clasifica',
                           ),
-                          const SizedBox(width: 10),
+                          SizedBox(width: 10),
                           _FeatureChip(
                             icon: Icons.verified_user_outlined,
                             label: 'Seguro',
@@ -176,7 +176,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(
+                                      const Icon(
                                         Icons.info_outline_rounded,
                                         size: 20,
                                         color: KeepiColors.orange,
@@ -201,7 +201,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 decoration: InputDecoration(
                                   labelText: 'Nombre',
                                   hintText: 'Tu nombre',
-                                  prefixIcon: Icon(
+                                  prefixIcon: const Icon(
                                     Icons.person_outline_rounded,
                                     size: 22,
                                     color: KeepiColors.slateLight,
@@ -238,7 +238,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 decoration: InputDecoration(
                                   labelText: 'Correo',
                                   hintText: 'tu@email.com',
-                                  prefixIcon: Icon(
+                                  prefixIcon: const Icon(
                                     Icons.email_outlined,
                                     size: 22,
                                     color: KeepiColors.slateLight,
@@ -274,7 +274,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 obscureText: _obscurePassword,
                                 decoration: InputDecoration(
                                   labelText: 'Contraseña',
-                                  prefixIcon: Icon(
+                                  prefixIcon: const Icon(
                                     Icons.lock_outline_rounded,
                                     size: 22,
                                     color: KeepiColors.slateLight,
@@ -354,8 +354,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: KeepiColors.slateLight,
                             ),
-                            children: [
-                              const TextSpan(text: '¿Ya tienes cuenta? '),
+                            children: const [
+                              TextSpan(text: '¿Ya tienes cuenta? '),
                               TextSpan(
                                 text: 'Inicia sesión',
                                 style: TextStyle(

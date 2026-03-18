@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
