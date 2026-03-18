@@ -43,8 +43,6 @@ class AuthProvider with ChangeNotifier {
     _email = _prefs.getString(_keyEmail);
     _name = _prefs.getString(_keyName);
 
-    // Si hay refresh token, refrescar durante la carga (splash) para tener access token válido
-    // antes de mostrar el dashboard, sin pedir login de nuevo.
     final refreshTokenStored = _refreshToken ?? _prefs.getString(_keyRefreshToken);
     final hasRefresh = refreshTokenStored != null && refreshTokenStored.isNotEmpty;
     if (hasRefresh) {
@@ -54,7 +52,6 @@ class AuthProvider with ChangeNotifier {
         notifyListeners();
         return;
       }
-      // Refresh falló (sesión expirada): limpiar y ir a login
       await _prefs.remove(_keyAccessToken);
       await _prefs.remove(_keyRefreshToken);
       await _prefs.remove(_keyUserId);

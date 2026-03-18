@@ -26,7 +26,6 @@ class KeepiApp extends StatelessWidget {
       future: SharedPreferences.getInstance(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          // Splash desde el segundo 0, antes incluso de tener SharedPreferences.
           return MaterialApp(
             title: 'Keepi',
             debugShowCheckedModeBanner: false,

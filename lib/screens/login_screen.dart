@@ -32,9 +32,12 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     final auth = context.read<AuthProvider>();
     final ok = await auth.login(_emailController.text.trim(), _passwordController.text);
-    setState(() => _isLoading = false);
     if (!mounted) return;
-    if (ok && context.mounted) {}
+    if (ok) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -56,7 +59,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 36),
-                      // Solo logo + nombre Keepi (más grande), sin slogan en la card
                       LiquidGlassCard(
                         borderRadius: 22,
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -93,7 +95,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // Slogan fuera de la card, antes de Bienvenido
                       Text(
                         'Organiza, clasifica y nunca pierdas un documento',
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -120,7 +121,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 28),
-                      // Tres puntos de valor
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -141,7 +141,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                       const SizedBox(height: 28),
-                      // Formulario en liquid glass
                       LiquidGlassCard(
                         padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
                         child: Form(

@@ -64,7 +64,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 12),
-                      // Botón atrás alineado a la izquierda
                       Align(
                         alignment: Alignment.centerLeft,
                         child: IconButton(
@@ -76,7 +75,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Misma cabecera que login: logo + Keepi
                       LiquidGlassCard(
                         borderRadius: 22,
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),

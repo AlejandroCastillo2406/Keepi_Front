@@ -158,7 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
           folders = rootRes.folders;
           rootFiles = rootRes.rootFiles;
         } catch (_) {
-          // Si falla keepi-cloud/root, se mantienen folders/rootFiles del dashboard
         }
       }
       UsageStatsResponse? usage;
@@ -587,7 +586,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final api = context.read<ApiClient>();
 
       if (storageType == 'google_drive') {
-        // Mismo flujo que en Ajustes: setupStorage + navegador externo
         final cloudService = CloudStorageService(api);
         final res = await cloudService.setupStorage('google_drive');
         if (!mounted) return;
@@ -611,7 +609,6 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         if (mounted) setState(() => _loading = false);
       } else {
-        // keepi_cloud: puede devolver 402 → abrir Stripe Checkout (igual que en Ajustes)
         final cloudService = CloudStorageService(api);
         try {
           await cloudService.setupStorage(storageType);
@@ -1141,7 +1138,6 @@ class _DriveFoldersSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    // En Keepi Cloud no mostrar la carpeta raíz (users/uid); solo subcarpetas y archivos.
     final List<DriveFolder>? displayedFolders = driveFolders == null
         ? null
         : (isKeepiCloud && keepiCloudUserId != null)
@@ -1547,7 +1543,6 @@ class _ExpiringDocTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Preferir el nombre de archivo específico cuando exista
     final displayName = (item.fileName != null && item.fileName!.isNotEmpty)
         ? item.fileName!
         : item.name;
