@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/app_theme.dart';
-import '../core/decorative_background.dart';
-import '../providers/auth_provider.dart';
+import '../../core/app_theme.dart';
+import '../../core/decorative_background.dart';
+import '../../core/roles.dart';
+import '../../providers/auth_provider.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -20,6 +21,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  /// false = usuario estándar (USER), true = médico (DOCTOR).
+  bool _registerAsDoctor = false;
 
   @override
   void dispose() {
@@ -37,6 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailController.text.trim(),
       _nameController.text.trim(),
       _passwordController.text,
+      roleName: _registerAsDoctor ? AppRole.doctor : AppRole.user,
     );
     setState(() => _isLoading = false);
     if (!mounted) return;
@@ -195,6 +199,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 const SizedBox(height: 20),
                               ],
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Tipo de cuenta',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: KeepiColors.slate,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _AccountTypeTile(
+                                      selected: !_registerAsDoctor,
+                                      icon: Icons.person_outline_rounded,
+                                      title: 'Usuario',
+                                      subtitle: 'Uso personal y documentos',
+                                      onTap: () => setState(() => _registerAsDoctor = false),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _AccountTypeTile(
+                                      selected: _registerAsDoctor,
+                                      icon: Icons.medical_services_outlined,
+                                      title: 'Médico',
+                                      subtitle: 'Alta de pacientes',
+                                      onTap: () => setState(() => _registerAsDoctor = true),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 22),
                               TextFormField(
                                 controller: _nameController,
                                 textCapitalization: TextCapitalization.words,
@@ -370,6 +409,72 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 24),
                     ],
                   ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccountTypeTile extends StatelessWidget {
+  const _AccountTypeTile({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            color: selected
+                ? KeepiColors.orangeSoft.withOpacity(0.85)
+                : Colors.white.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? KeepiColors.orange.withOpacity(0.65)
+                  : KeepiColors.cardBorder.withOpacity(0.75),
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 26, color: selected ? KeepiColors.orange : KeepiColors.slateLight),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: KeepiColors.slate,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: KeepiColors.slateLight,
+                  height: 1.25,
                 ),
               ),
             ],

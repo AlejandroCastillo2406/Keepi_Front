@@ -6,12 +6,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../core/app_theme.dart';
-import '../core/decorative_background.dart';
-import '../core/file_type_style.dart';
-import '../services/api_client.dart';
-import '../services/cloud_storage_service.dart';
-import '../services/drive_structure_service.dart';
+import '../../core/app_theme.dart';
+import '../../core/decorative_background.dart';
+import '../../core/file_type_style.dart';
+import '../../services/api_client.dart';
+import '../../services/cloud_storage_service.dart';
+import '../../services/drive_structure_service.dart';
 
 class FolderContentsScreen extends StatefulWidget {
   const FolderContentsScreen({

@@ -14,6 +14,8 @@ class ApiEndpoints {
   static String get authLogin => _path(Config.pathAuthLogin);
   static String get authRefresh => _path(Config.pathAuthRefresh);
   static String get authMe => _path(Config.pathAuthMe);
+  static String get authChangePassword => _path(Config.pathAuthChangePassword);
+  static String get doctorsPatients => _path(Config.pathDoctorsPatients);
   static String get authGoogleMobileAuthorize => _path(Config.pathAuthGoogleMobileAuthorize);
   static String get authGoogleCallback => _path(Config.pathAuthGoogleCallback);
 

@@ -11,6 +11,8 @@ class Config {
   static String get pathAuthLogin => _env('API_PATH_AUTH_LOGIN');
   static String get pathAuthRefresh => _env('API_PATH_AUTH_REFRESH');
   static String get pathAuthMe => _env('API_PATH_AUTH_ME');
+  static String get pathAuthChangePassword => _env('API_PATH_AUTH_CHANGE_PASSWORD');
+  static String get pathDoctorsPatients => _env('API_PATH_DOCTORS_PATIENTS');
   static String get pathAuthGoogleMobileAuthorize => _env('API_PATH_AUTH_GOOGLE_MOBILE_AUTHORIZE');
   static String get pathAuthGoogleCallback => _env('API_PATH_AUTH_GOOGLE_CALLBACK');
   static String get pathConfig => _env('API_PATH_CONFIG');

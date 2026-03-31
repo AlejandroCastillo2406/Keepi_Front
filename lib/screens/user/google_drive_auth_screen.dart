@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../core/api_endpoints.dart';
+import '../../core/api_endpoints.dart';
 
 class GoogleDriveAuthScreen extends StatefulWidget {
   const GoogleDriveAuthScreen({super.key, required this.authorizationUrl});

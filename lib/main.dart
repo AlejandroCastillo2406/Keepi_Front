@@ -8,8 +8,11 @@ import 'core/decorative_background.dart';
 import 'providers/auth_provider.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'core/roles.dart';
+import 'screens/auth/auth.dart';
+import 'screens/doctor/doctor.dart';
+import 'screens/patient/patient.dart';
+import 'screens/user/user.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -82,6 +85,16 @@ class _AuthWrapperState extends State<_AuthWrapper> {
       return const _SplashScreen();
     }
     if (auth.isLoggedIn) {
+      if (auth.mustChangePassword) {
+        return const ForcePasswordChangeScreen();
+      }
+      final role = auth.roleName ?? AppRole.user;
+      if (role == AppRole.doctor) {
+        return const DoctorHomeScreen();
+      }
+      if (role == AppRole.patient) {
+        return const PatientHomeScreen();
+      }
       return const HomeScreen();
     }
     return const LoginScreen();

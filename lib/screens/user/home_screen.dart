@@ -9,15 +9,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../core/app_theme.dart';
-import '../core/decorative_background.dart';
-import '../providers/auth_provider.dart';
-import '../services/api_client.dart';
-import '../services/config_service.dart' as config_dto;
-import '../services/cloud_storage_service.dart';
-import '../services/document_upload_service.dart';
-import '../services/drive_structure_service.dart';
-import '../services/subscription_service.dart';
+import '../../core/app_theme.dart';
+import '../../core/decorative_background.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/api_client.dart';
+import '../../services/config_service.dart' as config_dto;
+import '../../services/cloud_storage_service.dart';
+import '../../services/document_upload_service.dart';
+import '../../services/drive_structure_service.dart';
+import '../../services/subscription_service.dart';
 import 'folder_contents_screen.dart';
 import 'settings_screen.dart';
 
