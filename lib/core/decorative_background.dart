@@ -98,6 +98,7 @@ class _BlobPainter extends CustomPainter {
 }
 
 /// Tarjeta estilo "liquid glass": blur + superficie translúcida.
+/// Con [enableBlur] en false se omite [BackdropFilter] (mucho más fluido al animar el teclado).
 class LiquidGlassCard extends StatelessWidget {
   const LiquidGlassCard({
     super.key,
@@ -106,6 +107,7 @@ class LiquidGlassCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(24),
     this.blurSigma = 12,
     this.borderWidth = 1,
+    this.enableBlur = true,
   });
 
   final Widget child;
@@ -113,38 +115,43 @@ class LiquidGlassCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final double blurSigma;
   final double borderWidth;
+  final bool enableBlur;
 
   @override
   Widget build(BuildContext context) {
+    final surface = Colors.white.withOpacity(enableBlur ? 0.72 : 0.98);
+    final inner = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(
+          color: Colors.white.withOpacity(enableBlur ? 0.85 : 0.92),
+          width: borderWidth,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: KeepiColors.slate.withOpacity(0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: KeepiColors.skyBlue.withOpacity(0.04),
+            blurRadius: 32,
+            offset: const Offset(-2, 6),
+          ),
+        ],
+      ),
+      child: child,
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.72),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.85),
-              width: borderWidth,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: KeepiColors.slate.withOpacity(0.06),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: KeepiColors.skyBlue.withOpacity(0.04),
-                blurRadius: 32,
-                offset: const Offset(-2, 6),
-              ),
-            ],
-          ),
-          child: child,
-        ),
-      ),
+      child: enableBlur
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: inner,
+            )
+          : inner,
     );
   }
 }

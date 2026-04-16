@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
+import 'patient_medical_record_service.dart';
 
 /// Llamadas a `/api/v1/doctors/patients` (crear y listar pacientes).
 class DoctorService {
@@ -12,10 +13,15 @@ class DoctorService {
   Future<CreatePatientResult> createPatient({
     required String email,
     required String name,
+    required Map<String, dynamic> medicalRecord,
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.doctorsPatients,
-      data: {'email': email.trim(), 'name': name.trim()},
+      data: {
+        'email': email.trim(),
+        'name': name.trim(),
+        'medical_record': medicalRecord,
+      },
     );
     final d = res.data!;
     return CreatePatientResult(
@@ -46,6 +52,13 @@ class DoctorService {
       return d.toString();
     }
     return e.message ?? e.toString();
+  }
+
+  Future<MedicalRecordDto> fetchPatientMedicalRecord(String patientId) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.doctorsPatientMedicalRecord(patientId),
+    );
+    return MedicalRecordDto.fromJson(res.data!);
   }
 }
 
