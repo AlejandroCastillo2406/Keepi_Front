@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/roles.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';
 
 class AuthProvider with ChangeNotifier {
   AuthProvider(this._prefs, this._api, this._authService) {
@@ -13,6 +14,7 @@ class AuthProvider with ChangeNotifier {
   final SharedPreferences _prefs;
   final ApiClient _api;
   final AuthService _authService;
+  late final PushNotificationService _pushService = PushNotificationService(_api);
 
   static const _keyAccessToken = 'keepi_access_token';
   static const _keyRefreshToken = 'keepi_refresh_token';
@@ -77,6 +79,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = false;
     } else if (_accessToken != null && _accessToken!.isNotEmpty) {
       _api.setAccessToken(_accessToken);
+      _pushService.registerTokenIfPossible();
       _isLoggedIn = true;
     }
 
@@ -114,6 +117,7 @@ class AuthProvider with ChangeNotifier {
       _mustChangePassword = mustChangePassword;
     }
     _api.setAccessToken(accessToken);
+    _pushService.registerTokenIfPossible();
     _isLoggedIn = true;
     _error = null;
     notifyListeners();
@@ -244,6 +248,7 @@ class AuthProvider with ChangeNotifier {
       }
       _accessToken = res.accessToken;
       _api.setAccessToken(res.accessToken);
+      _pushService.registerTokenIfPossible();
       _isLoggedIn = true;
       notifyListeners();
       return true;

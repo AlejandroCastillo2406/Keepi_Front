@@ -45,4 +45,14 @@ class ApiEndpoints {
 
   static String get documentsMobileAnalyze => _path(Config.pathDocumentsMobileAnalyze);
   static String get documentsMobileSaveAnalyzed => _path(Config.pathDocumentsMobileSaveAnalyzed);
+
+  static String get prescriptionsDraft => _path('/prescriptions/draft');
+  static String prescriptionsConfirm(String prescriptionId) => _path('/prescriptions/$prescriptionId/confirm');
+  static String get prescriptionsMine => _path('/prescriptions/mine');
+  static String prescriptionScanUrl(String prescriptionId) => _path('/prescriptions/$prescriptionId/scan-url');
+  static String prescriptionReminderOptIn(String prescriptionId) =>
+      _path('/prescriptions/$prescriptionId/reminders-opt-in');
+
+  static String get pushRegister => _path('/push/register');
+  static String get notifications => _path('/notifications/');
 }

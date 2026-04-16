@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1020537733485-6rmk4nee7qoekgmcu2sahv0jc0eap2lm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.keepi",
+            "certificate_hash": "44715231758b26b79ea1e2ef100844582655f941"
+          }
+        },
+        {
           "client_id": "1020537733485-q60kqql85hb8bn2mlbfmnns2324u483o.apps.googleusercontent.com",
           "client_type": 3
         }

@@ -14,6 +14,9 @@ import '../../services/doctor_service.dart';
 import 'doctor_calendar_tab.dart'; 
 // 2. IMPORTACIÓN DE DOCUMENTOS
 import 'documentos_screen.dart';
+import 'doctor_assign_prescription_screen.dart';
+import 'doctor_patient_medical_record_screen.dart';
+import '../common/notifications_screen.dart';
 
 class DoctorHomeScreen extends StatefulWidget {
   const DoctorHomeScreen({super.key});
@@ -117,8 +120,21 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       ),
       actions: [
         IconButton(
+          icon: const Icon(Icons.notifications_none_rounded, color: KeepiColors.slate),
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+            );
+          },
+        ),
+        IconButton(
           icon: const Icon(Icons.settings_rounded, color: KeepiColors.slate),
           onPressed: _navigateToSettings,
+        ),
+        TextButton.icon(
+          onPressed: () => context.read<AuthProvider>().logout(),
+          icon: const Icon(Icons.logout_rounded, size: 18, color: KeepiColors.slate),
+          label: const Text('Salir', style: TextStyle(color: KeepiColors.slate)),
         ),
         const SizedBox(width: 8),
       ],
@@ -237,7 +253,43 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _patients.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _PatientTile(patient: _patients[index]),
+      itemBuilder: (context, index) => _PatientTile(
+        patient: _patients[index],
+        onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
+        onAssignPrescription: () => _openAssignPrescription(_patients[index]),
+      ),
+    );
+  }
+
+  Future<void> _openMedicalRecord(PatientListItem patient) async {
+    final svc = DoctorService(context.read<ApiClient>());
+    try {
+      final record = await svc.fetchPatientMedicalRecord(patient.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DoctorPatientMedicalRecordScreen(
+            patientName: patient.name,
+            record: record,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(DoctorService.messageFromDio(e))),
+      );
+    }
+  }
+
+  Future<void> _openAssignPrescription(PatientListItem patient) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DoctorAssignPrescriptionScreen(
+          patientId: patient.id,
+          patientName: patient.name,
+        ),
+      ),
     );
   }
 
@@ -282,7 +334,13 @@ class _LogoIcon extends StatelessWidget {
 
 class _PatientTile extends StatelessWidget {
   final PatientListItem patient;
-  const _PatientTile({required this.patient});
+  final VoidCallback onViewMedicalRecord;
+  final VoidCallback onAssignPrescription;
+  const _PatientTile({
+    required this.patient,
+    required this.onViewMedicalRecord,
+    required this.onAssignPrescription,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +358,26 @@ class _PatientTile extends StatelessWidget {
         ),
         title: Text(patient.name, style: const TextStyle(fontWeight: FontWeight.w700, color: KeepiColors.slate)),
         subtitle: Text(patient.email, style: const TextStyle(color: KeepiColors.slateLight, fontSize: 13)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: KeepiColors.slateLight),
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
+          onSelected: (value) {
+            if (value == 'medical_record') {
+              onViewMedicalRecord();
+            } else if (value == 'assign_prescription') {
+              onAssignPrescription();
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem<String>(
+              value: 'medical_record',
+              child: Text('Ver expediente médico'),
+            ),
+            PopupMenuItem<String>(
+              value: 'assign_prescription',
+              child: Text('Asignar receta'),
+            ),
+          ],
+        ),
       ),
     );
   }

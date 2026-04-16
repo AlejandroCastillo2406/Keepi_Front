@@ -8,15 +8,20 @@ import 'core/decorative_background.dart';
 import 'providers/auth_provider.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
+import 'services/push_notification_service.dart';
 import 'core/roles.dart';
 import 'screens/auth/auth.dart';
 import 'screens/doctor/doctor.dart';
 import 'screens/patient/patient.dart';
 import 'screens/user/user.dart';
 
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+  await PushNotificationService.initializeFirebaseSafely();
+  await PushNotificationService.configureTapHandlers(appNavigatorKey);
   runApp(const KeepiApp());
 }
 
@@ -47,6 +52,7 @@ class KeepiApp extends StatelessWidget {
             ),
           ],
           child: MaterialApp(
+            navigatorKey: appNavigatorKey,
             title: 'Keepi',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.theme,

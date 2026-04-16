@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
+import 'patient_prescriptions_screen.dart';
+import '../common/notifications_screen.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -59,12 +61,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_none_outlined, color: KeepiColors.slate),
-            onPressed: () {},
+            icon: const Icon(Icons.notifications_none_rounded, color: KeepiColors.slate),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              );
+            },
           ),
-          TextButton(
+          TextButton.icon(
             onPressed: () => auth.logout(),
-            child: const Text('Salir', style: TextStyle(color: KeepiColors.slate)),
+            icon: const Icon(Icons.logout_rounded, size: 18, color: KeepiColors.slate),
+            label: const Text('Salir', style: TextStyle(color: KeepiColors.slate)),
           ),
         ],
       ),
@@ -204,7 +211,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Widget _navItem(int index, IconData icon, String label) {
     bool isActive = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () {
+        if (index == 1) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PatientPrescriptionsScreen()),
+          );
+          return;
+        }
+        setState(() => _currentIndex = index);
+      },
       behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
