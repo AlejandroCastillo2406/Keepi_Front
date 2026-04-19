@@ -1,13 +1,10 @@
 import 'package:dio/dio.dart';
-
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
 import 'patient_medical_record_service.dart';
 
-/// Llamadas a `/api/v1/doctors/patients` (crear y listar pacientes).
 class DoctorService {
   DoctorService(this._api);
-
   final ApiClient _api;
 
   Future<CreatePatientResult> createPatient({
@@ -41,15 +38,33 @@ class DoctorService {
         .toList();
   }
 
-  /// Extrae mensaje de error legible de una [DioException].
+  Future<ScheduleAppointmentResult> scheduleAppointment({
+    required String patientId,
+    required DateTime date,
+    required String reason,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      '/api/v1/doctors/appointments-manager', 
+      data: {
+        'patient_id': patientId,
+        'appointment_date': date.toUtc().toIso8601String(),
+        'reason': reason.trim(),
+      },
+    );
+    final d = res.data!;
+    return ScheduleAppointmentResult(
+      id: d['id'] as String,
+      status: d['status'] as String,
+      message: d['message'] as String,
+    );
+  }
+
   static String messageFromDio(Object e) {
     if (e is! DioException) return e.toString();
     final data = e.response?.data;
     if (data is Map && data['detail'] != null) {
       final d = data['detail'];
-      if (d is String) return d;
-      if (d is Map && d['message'] != null) return d['message'].toString();
-      return d.toString();
+      return d is String ? d : d.toString();
     }
     return e.message ?? e.toString();
   }
@@ -63,33 +78,21 @@ class DoctorService {
 }
 
 class CreatePatientResult {
-  CreatePatientResult({
-    required this.id,
-    required this.email,
-    required this.name,
-    this.message,
-  });
-
-  final String id;
-  final String email;
-  final String name;
+  final String id, email, name;
   final String? message;
+  CreatePatientResult({required this.id, required this.email, required this.name, this.message});
+}
+
+class ScheduleAppointmentResult {
+  final String id, status, message;
+  ScheduleAppointmentResult({required this.id, required this.status, required this.message});
 }
 
 class PatientListItem {
-  PatientListItem({
-    required this.id,
-    required this.email,
-    required this.name,
-    required this.mustChangePassword,
-    this.createdAt,
-  });
-
-  final String id;
-  final String email;
-  final String name;
+  final String id, email, name;
   final bool mustChangePassword;
   final String? createdAt;
+  PatientListItem({required this.id, required this.email, required this.name, required this.mustChangePassword, this.createdAt});
 
   factory PatientListItem.fromJson(Map<String, dynamic> json) {
     return PatientListItem(

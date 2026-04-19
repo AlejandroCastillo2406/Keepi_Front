@@ -10,9 +10,7 @@ import 'create_patient_screen.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 
-// 1. IMPORTACIÓN DEL CALENDARIO
 import 'doctor_calendar_tab.dart'; 
-// 2. IMPORTACIÓN DE DOCUMENTOS
 import 'documentos_screen.dart';
 import 'doctor_assign_prescription_screen.dart';
 import 'doctor_patient_medical_record_screen.dart';
@@ -26,8 +24,7 @@ class DoctorHomeScreen extends StatefulWidget {
 }
 
 class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
-  // El índice 2 es el "Inicio" (Dashboard)
-  int _currentTabIndex = 2;
+  int _currentTabIndex = 2; // Dashboard
   List<PatientListItem> _patients = [];
   bool _loadingList = true;
   String? _listError;
@@ -61,17 +58,63 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     }
   }
 
-  void _navigateToSettings() {
-    Navigator.of(context).push(
-      CupertinoPageRoute(builder: (_) => const SettingsScreen()),
+  Future<void> _handleScheduleAppointment(PatientListItem patient) async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: KeepiColors.orange),
+          ),
+          child: child!,
+        );
+      },
     );
+
+    if (pickedDate == null || !mounted) return;
+
+    TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (pickedTime == null || !mounted) return;
+
+    final finalDateTime = DateTime(
+      pickedDate.year, pickedDate.month, pickedDate.day,
+      pickedTime.hour, pickedTime.minute,
+    );
+
+    try {
+      final svc = DoctorService(context.read<ApiClient>());
+      await svc.scheduleAppointment(
+        patientId: patient.id,
+        date: finalDateTime,
+        reason: "Consulta Médica",
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cita agendada correctamente'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${DoctorService.messageFromDio(e)}'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _navigateToSettings() {
+    Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const SettingsScreen()));
   }
 
   Future<void> _openCreatePatientSheet() async {
     final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CreatePatientScreen(api: context.read<ApiClient>()),
-      ),
+      MaterialPageRoute(builder: (_) => CreatePatientScreen(api: context.read<ApiClient>())),
     );
     if (created == true && mounted) await _loadPatients();
   }
@@ -83,7 +126,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       appBar: _buildAppBar(),
-      // El FAB ahora es dinámico dependiendo de la pestaña
       floatingActionButton: _buildDynamicFAB(),
       bottomNavigationBar: _buildBottomNav(),
       body: DecorativeBackground(
@@ -92,19 +134,17 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           child: IndexedStack(
             index: _currentTabIndex,
             children: [
-              _buildPlaceholderTab('Pacientes'),   // Index 0
-              const DocumentosScreen(),            // Index 1: PANTALLA DE DOCUMENTOS
-              _buildDashboard(auth),               // Index 2: INICIO
-              const DoctorCalendarTab(),           // Index 3: CALENDARIO VINCULADO
-              _buildPlaceholderTab('Reportes'),    // Index 4
+              _buildPlaceholderTab('Pacientes'),
+              const DocumentosScreen(),
+              _buildDashboard(auth),
+              const DoctorCalendarTab(),
+              _buildPlaceholderTab('Reportes'),
             ],
           ),
         ),
       ),
     );
   }
-
-  // --- UI Components ---
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -122,15 +162,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         IconButton(
           icon: const Icon(Icons.notifications_none_rounded, color: KeepiColors.slate),
           onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            );
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
           },
         ),
-        IconButton(
-          icon: const Icon(Icons.settings_rounded, color: KeepiColors.slate),
-          onPressed: _navigateToSettings,
-        ),
+        IconButton(icon: const Icon(Icons.settings_rounded, color: KeepiColors.slate), onPressed: _navigateToSettings),
         TextButton.icon(
           onPressed: () => context.read<AuthProvider>().logout(),
           icon: const Icon(Icons.logout_rounded, size: 18, color: KeepiColors.slate),
@@ -141,10 +176,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
-  // Lógica dinámica para el Botón Flotante
   Widget? _buildDynamicFAB() {
     if (_currentTabIndex == 2) {
-      // Pestaña Inicio
       return FloatingActionButton.extended(
         onPressed: _openCreatePatientSheet,
         backgroundColor: KeepiColors.orange,
@@ -152,19 +185,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         icon: const Icon(Icons.person_add_rounded),
         label: const Text('Nuevo paciente', style: TextStyle(fontWeight: FontWeight.w600)),
       );
-    } else if (_currentTabIndex == 1) {
-      // Pestaña Documentos (Sin funcionalidad por ahora)
-      return FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Acción para subir archivo en el futuro
-        },
-        backgroundColor: KeepiColors.orange,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.upload_file_rounded),
-        label: const Text('Subir documento', style: TextStyle(fontWeight: FontWeight.w600)),
-      );
     }
-    // No mostrar botón en Pacientes, Calendario o Reportes
     return null;
   }
 
@@ -219,7 +240,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       children: [
         Text('Panel del Dr. $firstName', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, color: KeepiColors.slate)),
         const SizedBox(height: 6),
-        const Text('Tus pacientes registrados. El acceso provisional llega por correo.', style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w500)),
+        const Text('Gestiona tus pacientes y citas registradas.', style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w500)),
       ],
     );
   }
@@ -245,9 +266,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     if (_loadingList && _patients.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 32), child: CircularProgressIndicator(color: KeepiColors.orange)));
     }
-    if (_patients.isEmpty) {
-      return const _EmptyPatientsView();
-    }
+    if (_patients.isEmpty) return const _EmptyPatientsView();
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -257,6 +277,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         patient: _patients[index],
         onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
         onAssignPrescription: () => _openAssignPrescription(_patients[index]),
+        onScheduleAppointment: (p) => _handleScheduleAppointment(p),
       ),
     );
   }
@@ -266,31 +287,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     try {
       final record = await svc.fetchPatientMedicalRecord(patient.id);
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => DoctorPatientMedicalRecordScreen(
-            patientName: patient.name,
-            record: record,
-          ),
-        ),
-      );
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DoctorPatientMedicalRecordScreen(patientName: patient.name, record: record)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(DoctorService.messageFromDio(e))),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(DoctorService.messageFromDio(e))));
     }
   }
 
   Future<void> _openAssignPrescription(PatientListItem patient) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DoctorAssignPrescriptionScreen(
-          patientId: patient.id,
-          patientName: patient.name,
-        ),
-      ),
-    );
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DoctorAssignPrescriptionScreen(patientId: patient.id, patientName: patient.name)));
   }
 
   Widget _buildPlaceholderTab(String title) {
@@ -316,69 +321,52 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   ];
 }
 
-// --- Supporting Specialized Widgets ---
-
-class _LogoIcon extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Image.asset(
-        'assets/logo.png',
-        height: 32, width: 32, fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const Icon(Icons.folder_rounded, size: 32, color: KeepiColors.orange),
-      ),
-    );
-  }
-}
+// --- SUPPORTING WIDGETS ---
 
 class _PatientTile extends StatelessWidget {
   final PatientListItem patient;
   final VoidCallback onViewMedicalRecord;
   final VoidCallback onAssignPrescription;
-  const _PatientTile({
-    required this.patient,
-    required this.onViewMedicalRecord,
-    required this.onAssignPrescription,
-  });
+  final Function(PatientListItem) onScheduleAppointment;
+
+  const _PatientTile({required this.patient, required this.onViewMedicalRecord, required this.onAssignPrescription, required this.onScheduleAppointment});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: _cardDecoration,
       child: ListTile(
-        onTap: () {},
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: KeepiColors.skyBlueSoft,
-          child: Text(
-            patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?',
-            style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.w800),
-          ),
+          child: Text(patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?', style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.w800)),
         ),
         title: Text(patient.name, style: const TextStyle(fontWeight: FontWeight.w700, color: KeepiColors.slate)),
         subtitle: Text(patient.email, style: const TextStyle(color: KeepiColors.slateLight, fontSize: 13)),
         trailing: PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
           onSelected: (value) {
-            if (value == 'medical_record') {
-              onViewMedicalRecord();
-            } else if (value == 'assign_prescription') {
-              onAssignPrescription();
-            }
+            if (value == 'medical_record') onViewMedicalRecord();
+            if (value == 'assign_prescription') onAssignPrescription();
+            if (value == 'schedule') onScheduleAppointment(patient);
           },
-          itemBuilder: (context) => const [
-            PopupMenuItem<String>(
-              value: 'medical_record',
-              child: Text('Ver expediente médico'),
-            ),
-            PopupMenuItem<String>(
-              value: 'assign_prescription',
-              child: Text('Asignar receta'),
-            ),
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'schedule', child: Text('Agendar cita')),
+            const PopupMenuItem(value: 'medical_record', child: Text('Ver expediente médico')),
+            const PopupMenuItem(value: 'assign_prescription', child: Text('Asignar receta')),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LogoIcon extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.asset('assets/logo.png', height: 32, width: 32, errorBuilder: (_, __, ___) => const Icon(Icons.local_hospital, color: KeepiColors.orange, size: 32)),
     );
   }
 }
@@ -404,24 +392,13 @@ class _EmptyPatientsView extends StatelessWidget {
 class _ErrorCard extends StatelessWidget {
   final String message;
   const _ErrorCard({required this.message});
-
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.shade100),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red.shade800),
-          const SizedBox(width: 12),
-          Expanded(child: Text(message, style: TextStyle(color: Colors.red.shade900))),
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.red.shade100)),
+      child: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.red), const SizedBox(width: 12), Expanded(child: Text(message))]),
     );
   }
 }
@@ -436,7 +413,6 @@ final _cardDecoration = BoxDecoration(
 class _StatCard extends StatelessWidget {
   const _StatCard({required this.icon, required this.iconColor, required this.bgColor, required this.title, required this.value});
   final IconData icon; final Color iconColor; final Color bgColor; final String title; final String value;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -445,15 +421,11 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
+          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: iconColor, size: 24)),
           const SizedBox(height: 16),
-          Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: KeepiColors.slateLight)),
+          Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: KeepiColors.slateLight)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: KeepiColors.slate, height: 1.1)),
+          Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: KeepiColors.slate)),
         ],
       ),
     );
