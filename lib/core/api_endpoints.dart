@@ -39,6 +39,10 @@ class ApiEndpoints {
   static String documentsDriveFileDelete(String fileId) =>
       _path(Config.pathDocumentsDriveFileDelete.replaceFirst('{fileId}', fileId));
 
+  static const String analysisRequests = '/analysis-requests/';
+  static String patientAnalysisRequests(String id) => '/analysis-requests/patient/$id';
+  static String completeAnalysisRequest(String id) => '/analysis-requests/$id/complete';
+
   static String get documentsMobileDashboard => _path(Config.pathDocumentsMobileDashboard);
   static String get documentsKeepiCloudRoot => _path(Config.pathDocumentsKeepiCloudRoot);
   static String get documentsS3FoldersContents => _path(Config.pathDocumentsS3FoldersContents);

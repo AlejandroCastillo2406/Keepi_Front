@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data'; // <-- Agregado para manejar Uint8List (Web)
 
 import 'package:dio/dio.dart';
 
@@ -11,12 +12,35 @@ class PrescriptionService {
 
   Future<PrescriptionDraftDto> createDraft({
     required String patientId,
-    required File file,
+    File? file,           // <-- Ahora es opcional
+    Uint8List? fileBytes, // <-- Nuevo para soportar Web
+    String? fileName,     // <-- Nuevo para soportar Web
   }) async {
-    final form = FormData.fromMap({
+    
+    if (file == null && fileBytes == null) {
+      throw Exception('Se requiere un archivo físico o los bytes del archivo.');
+    }
+
+    final formDataMap = <String, dynamic>{
       'patient_id': patientId,
-      'file': await MultipartFile.fromFile(file.path, filename: file.path.split('/').last),
-    });
+    };
+
+    if (fileBytes != null) {
+      // ✅ VERSIÓN WEB: Adjuntamos el archivo desde la memoria (bytes)
+      formDataMap['file'] = MultipartFile.fromBytes(
+        fileBytes,
+        filename: fileName ?? 'documento_escaneado.png',
+      );
+    } else if (file != null) {
+      // ✅ VERSIÓN MÓVIL: Adjuntamos el archivo desde su ruta física
+      formDataMap['file'] = await MultipartFile.fromFile(
+        file.path,
+        filename: file.path.split('/').last,
+      );
+    }
+
+    final form = FormData.fromMap(formDataMap);
+
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.prescriptionsDraft,
       data: form,
@@ -145,4 +169,3 @@ class PrescriptionDto {
             .toList(),
       );
 }
-

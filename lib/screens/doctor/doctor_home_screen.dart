@@ -10,13 +10,15 @@ import 'create_patient_screen.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 
-// 1. IMPORTACIÓN DEL CALENDARIO
+// Importaciones existentes
 import 'doctor_calendar_tab.dart'; 
-// 2. IMPORTACIÓN DE DOCUMENTOS
 import 'documentos_screen.dart';
 import 'doctor_assign_prescription_screen.dart';
 import 'doctor_patient_medical_record_screen.dart';
 import '../common/notifications_screen.dart';
+
+// ¡IMPORTACIÓN CLAVE PARA USAR LA PANTALLA REAL QUE SÍ TIENE LA API!
+import 'doctor_request_analysis_screen.dart'; 
 
 class DoctorHomeScreen extends StatefulWidget {
   const DoctorHomeScreen({super.key});
@@ -26,7 +28,6 @@ class DoctorHomeScreen extends StatefulWidget {
 }
 
 class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
-  // El índice 2 es el "Inicio" (Dashboard)
   int _currentTabIndex = 2;
   List<PatientListItem> _patients = [];
   bool _loadingList = true;
@@ -76,6 +77,55 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     if (created == true && mounted) await _loadPatients();
   }
 
+  // --- NAVEGACIÓN A TUS 3 BOTONES DEL MENÚ ---
+  
+  // 1. SOLICITAR ANÁLISIS (ESTE AHORA ABRE EL ARCHIVO REAL)
+  Future<void> _openRequestAnalysis(PatientListItem patient) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DoctorRequestAnalysisScreen(
+          patientId: patient.id,
+          patientName: patient.name,
+        ),
+      ),
+    );
+  }
+
+  // 2. VER EXPEDIENTE MÉDICO
+  Future<void> _openMedicalRecord(PatientListItem patient) async {
+    final svc = DoctorService(context.read<ApiClient>());
+    try {
+      final record = await svc.fetchPatientMedicalRecord(patient.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DoctorPatientMedicalRecordScreen( 
+            patientName: patient.name,
+            patientId: patient.id,
+            record: record,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(DoctorService.messageFromDio(e))),
+      );
+    }
+  }
+
+  // 3. ASIGNAR RECETA
+  Future<void> _openAssignPrescription(PatientListItem patient) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DoctorAssignPrescriptionScreen(
+          patientId: patient.id,
+          patientName: patient.name,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -83,7 +133,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       appBar: _buildAppBar(),
-      // El FAB ahora es dinámico dependiendo de la pestaña
       floatingActionButton: _buildDynamicFAB(),
       bottomNavigationBar: _buildBottomNav(),
       body: DecorativeBackground(
@@ -92,19 +141,17 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           child: IndexedStack(
             index: _currentTabIndex,
             children: [
-              _buildPlaceholderTab('Pacientes'),   // Index 0
-              const DocumentosScreen(),            // Index 1: PANTALLA DE DOCUMENTOS
-              _buildDashboard(auth),               // Index 2: INICIO
-              const DoctorCalendarTab(),           // Index 3: CALENDARIO VINCULADO
-              _buildPlaceholderTab('Reportes'),    // Index 4
+              _buildPlaceholderTab('Pacientes'),
+              const DocumentosScreen(),
+              _buildDashboard(auth),
+              const DoctorCalendarTab(),
+              _buildPlaceholderTab('Reportes'),
             ],
           ),
         ),
       ),
     );
   }
-
-  // --- UI Components ---
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -141,10 +188,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
-  // Lógica dinámica para el Botón Flotante
   Widget? _buildDynamicFAB() {
     if (_currentTabIndex == 2) {
-      // Pestaña Inicio
       return FloatingActionButton.extended(
         onPressed: _openCreatePatientSheet,
         backgroundColor: KeepiColors.orange,
@@ -153,18 +198,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         label: const Text('Nuevo paciente', style: TextStyle(fontWeight: FontWeight.w600)),
       );
     } else if (_currentTabIndex == 1) {
-      // Pestaña Documentos (Sin funcionalidad por ahora)
       return FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Acción para subir archivo en el futuro
-        },
+        onPressed: () {},
         backgroundColor: KeepiColors.orange,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.upload_file_rounded),
         label: const Text('Subir documento', style: TextStyle(fontWeight: FontWeight.w600)),
       );
     }
-    // No mostrar botón en Pacientes, Calendario o Reportes
     return null;
   }
 
@@ -257,38 +298,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         patient: _patients[index],
         onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
         onAssignPrescription: () => _openAssignPrescription(_patients[index]),
-      ),
-    );
-  }
-
-  Future<void> _openMedicalRecord(PatientListItem patient) async {
-    final svc = DoctorService(context.read<ApiClient>());
-    try {
-      final record = await svc.fetchPatientMedicalRecord(patient.id);
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => DoctorPatientMedicalRecordScreen(
-            patientName: patient.name,
-            record: record,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(DoctorService.messageFromDio(e))),
-      );
-    }
-  }
-
-  Future<void> _openAssignPrescription(PatientListItem patient) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DoctorAssignPrescriptionScreen(
-          patientId: patient.id,
-          patientName: patient.name,
-        ),
+        onRequestAnalysis: () => _openRequestAnalysis(_patients[index]),
       ),
     );
   }
@@ -316,7 +326,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   ];
 }
 
-// --- Supporting Specialized Widgets ---
+// --- Componentes de Soporte ---
 
 class _LogoIcon extends StatelessWidget {
   @override
@@ -336,10 +346,13 @@ class _PatientTile extends StatelessWidget {
   final PatientListItem patient;
   final VoidCallback onViewMedicalRecord;
   final VoidCallback onAssignPrescription;
+  final VoidCallback onRequestAnalysis;
+
   const _PatientTile({
     required this.patient,
     required this.onViewMedicalRecord,
     required this.onAssignPrescription,
+    required this.onRequestAnalysis,
   });
 
   @override
@@ -347,7 +360,6 @@ class _PatientTile extends StatelessWidget {
     return Container(
       decoration: _cardDecoration,
       child: ListTile(
-        onTap: () {},
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: KeepiColors.skyBlueSoft,
@@ -361,21 +373,14 @@ class _PatientTile extends StatelessWidget {
         trailing: PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
           onSelected: (value) {
-            if (value == 'medical_record') {
-              onViewMedicalRecord();
-            } else if (value == 'assign_prescription') {
-              onAssignPrescription();
-            }
+            if (value == 'medical_record') onViewMedicalRecord();
+            if (value == 'assign_prescription') onAssignPrescription();
+            if (value == 'request_analysis') onRequestAnalysis();
           },
           itemBuilder: (context) => const [
-            PopupMenuItem<String>(
-              value: 'medical_record',
-              child: Text('Ver expediente médico'),
-            ),
-            PopupMenuItem<String>(
-              value: 'assign_prescription',
-              child: Text('Asignar receta'),
-            ),
+            PopupMenuItem(value: 'medical_record', child: Text('Ver expediente médico')),
+            PopupMenuItem(value: 'assign_prescription', child: Text('Asignar receta')),
+            PopupMenuItem(value: 'request_analysis', child: Text('Solicitar análisis')),
           ],
         ),
       ),

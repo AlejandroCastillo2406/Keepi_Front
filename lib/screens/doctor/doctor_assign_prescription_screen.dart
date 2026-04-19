@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart'; // Necesario para kIsWeb
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -40,12 +41,36 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
 
   Future<void> _pickAndAnalyze() async {
     final api = context.read<ApiClient>();
-    final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg']);
-    if (picked == null || picked.files.single.path == null) return;
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom, 
+      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+      withData: true, // Obligatorio para leer en la Web
+    );
+    
+    if (picked == null) return;
+
+    final platformFile = picked.files.single;
+
+    // Validación segura para ambas plataformas
+    if (kIsWeb && platformFile.bytes == null) return;
+    if (!kIsWeb && platformFile.path == null) return;
+
     setState(() => _loading = true);
     final svc = PrescriptionService(api);
+    
     try {
-      final draft = await svc.createDraft(patientId: widget.patientId, file: File(picked.files.single.path!));
+      // Asignación directa y segura dependiendo de la plataforma
+      final draft = kIsWeb
+          ? await svc.createDraft(
+              patientId: widget.patientId,
+              fileBytes: platformFile.bytes,
+              fileName: platformFile.name,
+            )
+          : await svc.createDraft(
+              patientId: widget.patientId,
+              file: File(platformFile.path!),
+            );
+
       if (!mounted) return;
       _textCtrl.text = draft.extractedText;
       for (final e in _items) {
@@ -189,4 +214,3 @@ class _ItemEditor {
     routeCtrl.dispose();
   }
 }
-
