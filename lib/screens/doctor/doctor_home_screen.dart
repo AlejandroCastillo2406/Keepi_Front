@@ -62,17 +62,63 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     }
   }
 
-  void _navigateToSettings() {
-    Navigator.of(context).push(
-      CupertinoPageRoute(builder: (_) => const SettingsScreen()),
+  Future<void> _handleScheduleAppointment(PatientListItem patient) async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: KeepiColors.orange),
+          ),
+          child: child!,
+        );
+      },
     );
+
+    if (pickedDate == null || !mounted) return;
+
+    TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (pickedTime == null || !mounted) return;
+
+    final finalDateTime = DateTime(
+      pickedDate.year, pickedDate.month, pickedDate.day,
+      pickedTime.hour, pickedTime.minute,
+    );
+
+    try {
+      final svc = DoctorService(context.read<ApiClient>());
+      await svc.scheduleAppointment(
+        patientId: patient.id,
+        date: finalDateTime,
+        reason: "Consulta Médica",
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cita agendada correctamente'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${DoctorService.messageFromDio(e)}'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _navigateToSettings() {
+    Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const SettingsScreen()));
   }
 
   Future<void> _openCreatePatientSheet() async {
     final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CreatePatientScreen(api: context.read<ApiClient>()),
-      ),
+      MaterialPageRoute(builder: (_) => CreatePatientScreen(api: context.read<ApiClient>())),
     );
     if (created == true && mounted) await _loadPatients();
   }
@@ -146,6 +192,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
               _buildDashboard(auth),
               const DoctorCalendarTab(),
               _buildPlaceholderTab('Reportes'),
+              _buildPlaceholderTab('Pacientes'),
+              const DocumentosScreen(),
+              _buildDashboard(auth),
+              const DoctorCalendarTab(),
+              _buildPlaceholderTab('Reportes'),
             ],
           ),
         ),
@@ -169,15 +220,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         IconButton(
           icon: const Icon(Icons.notifications_none_rounded, color: KeepiColors.slate),
           onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            );
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
           },
         ),
-        IconButton(
-          icon: const Icon(Icons.settings_rounded, color: KeepiColors.slate),
-          onPressed: _navigateToSettings,
-        ),
+        IconButton(icon: const Icon(Icons.settings_rounded, color: KeepiColors.slate), onPressed: _navigateToSettings),
         TextButton.icon(
           onPressed: () => context.read<AuthProvider>().logout(),
           icon: const Icon(Icons.logout_rounded, size: 18, color: KeepiColors.slate),
@@ -260,7 +306,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       children: [
         Text('Panel del Dr. $firstName', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, color: KeepiColors.slate)),
         const SizedBox(height: 6),
-        const Text('Tus pacientes registrados. El acceso provisional llega por correo.', style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w500)),
+        const Text('Gestiona tus pacientes y citas registradas.', style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w500)),
       ],
     );
   }
@@ -286,9 +332,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     if (_loadingList && _patients.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 32), child: CircularProgressIndicator(color: KeepiColors.orange)));
     }
-    if (_patients.isEmpty) {
-      return const _EmptyPatientsView();
-    }
+    if (_patients.isEmpty) return const _EmptyPatientsView();
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -326,7 +371,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   ];
 }
 
-// --- Componentes de Soporte ---
+// --- Supporting Specialized Widgets ---
 
 class _LogoIcon extends StatelessWidget {
   @override
@@ -363,10 +408,7 @@ class _PatientTile extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: KeepiColors.skyBlueSoft,
-          child: Text(
-            patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?',
-            style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.w800),
-          ),
+          child: Text(patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?', style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.w800)),
         ),
         title: Text(patient.name, style: const TextStyle(fontWeight: FontWeight.w700, color: KeepiColors.slate)),
         subtitle: Text(patient.email, style: const TextStyle(color: KeepiColors.slateLight, fontSize: 13)),
@@ -387,6 +429,7 @@ class _PatientTile extends StatelessWidget {
     );
   }
 }
+
 
 class _EmptyPatientsView extends StatelessWidget {
   const _EmptyPatientsView();
@@ -409,24 +452,13 @@ class _EmptyPatientsView extends StatelessWidget {
 class _ErrorCard extends StatelessWidget {
   final String message;
   const _ErrorCard({required this.message});
-
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.shade100),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red.shade800),
-          const SizedBox(width: 12),
-          Expanded(child: Text(message, style: TextStyle(color: Colors.red.shade900))),
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.red.shade100)),
+      child: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.red), const SizedBox(width: 12), Expanded(child: Text(message))]),
     );
   }
 }
@@ -441,7 +473,6 @@ final _cardDecoration = BoxDecoration(
 class _StatCard extends StatelessWidget {
   const _StatCard({required this.icon, required this.iconColor, required this.bgColor, required this.title, required this.value});
   final IconData icon; final Color iconColor; final Color bgColor; final String title; final String value;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -450,15 +481,11 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
+          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: iconColor, size: 24)),
           const SizedBox(height: 16),
-          Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: KeepiColors.slateLight)),
+          Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: KeepiColors.slateLight)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: KeepiColors.slate, height: 1.1)),
+          Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: KeepiColors.slate)),
         ],
       ),
     );

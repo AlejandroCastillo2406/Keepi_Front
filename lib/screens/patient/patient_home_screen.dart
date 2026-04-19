@@ -23,111 +23,15 @@ class PatientHomeScreen extends StatefulWidget {
 }
 
 class _PatientHomeScreenState extends State<PatientHomeScreen> {
-  int _currentIndex = 0;
-
-  // Estado de solicitudes y carga
-  List<AnalysisRequestDto> _analysisRequests = [];
-  bool _isLoadingRequests = true;
-
-  // Estado de archivos (para subida general, no vinculada a solicitud)
+  int _currentIndex = 0; 
+  
+  // Variables de estado para la subida
   String? _selectedFileName;
   PlatformFile? _selectedFile;
   bool _isUploading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAllData());
-  }
-
-  /// Carga inicial de datos desde el servidor
-  Future<void> _loadAllData() async {
-    if (!mounted) return;
-    setState(() => _isLoadingRequests = true);
-    
-    try {
-      final svc = DoctorService(context.read<ApiClient>());
-      // Obtenemos solo las solicitudes "pending"
-      final requests = await svc.fetchMyPendingRequests();
-      
-      if (mounted) {
-        setState(() {
-          _analysisRequests = requests;
-          _isLoadingRequests = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingRequests = false);
-        debugPrint("Error al cargar datos: $e");
-      }
-    }
-  }
-
-  /// Sube un archivo y lo vincula a una solicitud específica
-  Future<void> _handleRequestUpload(String requestId) async {
-    try {
-      // 1. Abrir selector de archivos
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-      );
-
-      if (result == null || result.files.isEmpty) return; // El usuario canceló
-
-      final file = result.files.first;
-      
-      // Mostrar indicador de carga global o local (aquí usamos un diálogo simple para bloquear la pantalla)
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
-      );
-
-      final api = context.read<ApiClient>();
-      final svc = DoctorService(api);
-
-      // 2. Preparar el archivo para enviar
-      final formData = FormData.fromMap({
-        'file': kIsWeb 
-            ? MultipartFile.fromBytes(file.bytes!, filename: file.name)
-            : await MultipartFile.fromFile(file.path!, filename: file.name),
-      });
-
-      // 3. Subir el documento al servidor
-      final uploadRes = await api.dio.post('api/v1/documents/mobile/analyze', data: formData);
-      final String documentId = uploadRes.data['id'];
-
-      // 4. Vincular el documento a la solicitud (PATCH)
-      await svc.completeAnalysisRequest(
-        requestId: requestId,
-        documentId: documentId,
-      );
-
-      // Cerrar el diálogo de carga
-      if (mounted) Navigator.pop(context);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('¡Estudio enviado correctamente al doctor!'), backgroundColor: Colors.green),
-        );
-        // Recargar la lista (la solicitud completada debería desaparecer)
-        _loadAllData();
-      }
-
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // Asegurarse de cerrar el diálogo de carga en caso de error
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar: ${DoctorService.messageFromDio(e)}'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  // --- Lógica para Subida General (Sin Solicitud) ---
-  Future<void> _pickGeneralDocument() async {
+  // Función para seleccionar el archivo
+  Future<void> _pickDocument() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -141,60 +45,58 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         });
       }
     } catch (e) {
+      debugPrint("Error al seleccionar archivo: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al seleccionar el archivo')),
+        const SnackBar(content: Text('Error al abrir el selector de archivos')),
       );
     }
   }
 
-  Future<void> _uploadGeneralDocument() async {
+  // Función simulada para subir a AWS S3 / Backend
+  Future<void> _uploadDocument() async {
     if (_selectedFile == null) return;
     setState(() => _isUploading = true);
 
     try {
-      final api = context.read<ApiClient>();
-      
-      final formData = FormData.fromMap({
-        'file': kIsWeb 
-            ? MultipartFile.fromBytes(_selectedFile!.bytes!, filename: _selectedFileName)
-            : await MultipartFile.fromFile(_selectedFile!.path!, filename: _selectedFileName),
-      });
+      // TODO: Aquí va tu lógica de subida a tu backend
+      await Future.delayed(const Duration(seconds: 2));
 
-      // Subida simple, sin vincular a solicitud
-      await api.dio.post('/api/v1/documents/mobile/analyze', data: formData);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('¡Documento subido a tu expediente!'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('Estudio subido exitosamente'), backgroundColor: Colors.green),
       );
 
       setState(() {
         _selectedFile = null;
         _selectedFileName = null;
       });
-
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${DoctorService.messageFromDio(e)}'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al subir: $e'), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
   }
 
-  /// Visor de PDF integrado
+  // Abre el PDF en un modal de pantalla completa
   void _showPdfViewer(BuildContext context) {
     if (_selectedFile == null) return;
+
     showDialog(
       context: context,
       builder: (context) => Dialog.fullscreen(
         child: Scaffold(
           appBar: AppBar(
             backgroundColor: Colors.white,
-            title: Text(_selectedFileName ?? "Vista Previa", style: const TextStyle(color: KeepiColors.slate, fontSize: 14)),
+            elevation: 1,
+            title: Text(
+              _selectedFileName ?? "Documento",
+              style: const TextStyle(color: KeepiColors.slate, fontSize: 16),
+            ),
             leading: IconButton(
-              icon: const Icon(Icons.close, color: KeepiColors.slate),
+              icon: const Icon(Icons.close_rounded, color: KeepiColors.slate),
               onPressed: () => Navigator.pop(context),
             ),
           ),
@@ -212,15 +114,54 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildAppBar(auth),
+      appBar: AppBar(
+        leadingWidth: 0, 
+        leading: const SizedBox.shrink(),
+        title: Row(
+          children: [
+            Image.network(
+              'https://raw.githubusercontent.com/AlejandroCastillo2406/Keepi_Front/master/assets/images/logo.png',
+              height: 28, 
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2));
+              },
+              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Keepi',
+              style: TextStyle(color: Color(0xFFD17842), fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_none_rounded, color: KeepiColors.slate),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+            },
+          ),
+          TextButton.icon(
+            onPressed: () => auth.logout(),
+            icon: const Icon(Icons.logout_rounded, size: 18, color: KeepiColors.slate),
+            label: const Text('Salir', style: TextStyle(color: KeepiColors.slate)),
+          ),
+        ],
+      ),
       body: DecorativeBackground(
         blobOpacity: 0.12,
         child: SafeArea(
           child: IndexedStack(
-            index: _currentIndex == 0 ? 0 : 1,
+            index: _currentIndex, 
             children: [
-              _buildHomeContent(context, auth),
-              const Center(child: Text("Módulo de Historial en desarrollo")),
+              _buildHomeContent(context, auth), 
+              const SizedBox.shrink(),          
+              _buildConsultasContent(),         
+              const Center(child: Text("Perfil en construcción")), 
             ],
           ),
         ),
@@ -247,192 +188,318 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
+  // --- SECCIÓN HISTORY (INICIO) ACTUALIZADA (VACÍA) ---
   Widget _buildHomeContent(BuildContext context, AuthProvider auth) {
-    return RefreshIndicator(
-      onRefresh: _loadAllData,
-      color: KeepiColors.orange,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Hola, ${auth.name?.split(' ').first ?? "Bienvenido"}', 
-                 style: const TextStyle(fontWeight: FontWeight.w800, color: KeepiColors.slate, fontSize: 26)),
-            const SizedBox(height: 4),
-            const Text("Gestiona tu salud y documentos médicos.", style: TextStyle(color: KeepiColors.slateLight)),
-            
-            const SizedBox(height: 32),
-            
-            // --- UI DINÁMICA DE SOLICITUDES ---
-            if (_isLoadingRequests || _analysisRequests.isNotEmpty) ...[
-              const Text("Pendientes de tu Médico", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
-              const SizedBox(height: 12),
-              
-              if (_isLoadingRequests)
-                const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: KeepiColors.orange)))
-              else
-                ..._analysisRequests.map((req) => _buildRequestCard(req)),
-                
-              const SizedBox(height: 32),
-            ],
+    // TODO: CONECTAR CON TU BACKEND
+    // La lista está vacía simulando que no hay estudios aún
+    final List<Map<String, String>> historialEstudios = [];
 
-            const Text("Subir Documento a tu Historial", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
-            const SizedBox(height: 12),
-            _buildUploadDocumentCard(),
-            const SizedBox(height: 80),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- TARJETA DE SOLICITUD DEL DOCTOR ---
-  Widget _buildRequestCard(AnalysisRequestDto req) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: KeepiColors.orange.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: KeepiColors.orange.withOpacity(0.3)),
-      ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.assignment_late_rounded, color: KeepiColors.orange, size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                "NUEVA SOLICITUD MÉDICA", 
-                style: TextStyle(color: KeepiColors.orange, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5)
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Text(
-            req.description, 
-            style: const TextStyle(fontWeight: FontWeight.w600, color: KeepiColors.slate, fontSize: 15)
+            'Hola, ${auth.name ?? "Thistan"}', 
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: KeepiColors.slate,
+                ),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-  width: double.infinity,
-  height: 50,
-  child: ElevatedButton.icon(
-    // 👇 ESTO ES LO QUE CAMBIA
-    onPressed: () async {
-      // Navegamos a la nueva pantalla y esperamos el resultado
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PatientUploadAnalysisScreen(
-            requestId: req.id,
-            description: req.description, // Pasamos la descripción al nuevo archivo
-          ),
-        ),
-      );
-      
-      // Si el paciente subió el archivo con éxito (result == true), recargamos el Home
-      if (result == true) {
-        _loadAllData();
-      }
-    },
-    // 👆 HASTA AQUÍ
-    icon: const Icon(Icons.upload_file_rounded, size: 20),
-    label: const Text("Subir documento solicitado", style: TextStyle(fontWeight: FontWeight.bold)),
-    style: ElevatedButton.styleFrom(
-      backgroundColor: KeepiColors.orange,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      )
+          const SizedBox(height: 8),
+          const Text("Tu salud es nuestra prioridad hoy.", style: TextStyle(color: KeepiColors.slateLight, fontSize: 16)),
+          
+          const SizedBox(height: 32),
+          const Text("Historial de Estudios", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
+          const SizedBox(height: 12),
+          
+          // Generar la lista de estudios o el estado vacío
+          if (historialEstudios.isNotEmpty)
+            ...historialEstudios.map((estudio) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildStudyHistoryItem(
+                nombre: estudio["nombre"]!, 
+                fecha: estudio["fecha"]!, 
+                estado: estudio["estado"]!
+              ),
+            ))
+          else
+            // MENSAJE ACTUALIZADO
+            _buildEmptyStateCard("No has subido ningún estudio y tu médico no ha solicitado ninguno.", Icons.history_rounded),
+          
+          const SizedBox(height: 80), 
         ],
       ),
     );
   }
 
-  // --- TARJETA DE SUBIDA GENERAL ---
+  Widget _buildStudyHistoryItem({required String nombre, required String fecha, required String estado}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12.withOpacity(0.05)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(color: Color(0xFFF8FAFC), shape: BoxShape.circle),
+            child: const Icon(Icons.description_rounded, color: KeepiColors.slateLight, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(nombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: KeepiColors.slate)),
+                const SizedBox(height: 4),
+                Text(fecha, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                const SizedBox(height: 4),
+                Text(estado, style: const TextStyle(color: Color(0xFFD35400), fontSize: 12, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+        ],
+      ),
+    );
+  }
+
+  // --- SECCIÓN DE CONSULTAS ---
+  Widget _buildConsultasContent() {
+    // CONDICIÓN: Al ser FALSE, muestra que el médico no ha solicitado nada
+    bool estudioRequerido = false; 
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Consultas', 
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: KeepiColors.slate),
+          ),
+          const SizedBox(height: 8),
+          const Text("Gestiona tus citas médicas y estudios solicitados.", style: TextStyle(color: KeepiColors.slateLight, fontSize: 16)),
+          
+          const SizedBox(height: 32),
+          const Text("Documentos Pendientes", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
+          const SizedBox(height: 12),
+
+          if (estudioRequerido)
+            _buildUploadDocumentCard()
+          else
+            _buildEmptyStateCard("Tu médico no ha solicitado ningún estudio.", Icons.check_circle_outline_rounded),
+            
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUploadDocumentCard() {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: KeepiColors.cardBorder.withOpacity(0.5)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        border: Border.all(color: Colors.black12.withOpacity(0.08)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
           _buildPreviewArea(),
+          
           const SizedBox(height: 16),
-          Text(_selectedFileName ?? "Guarda un estudio por tu cuenta", style: const TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate)),
-          const SizedBox(height: 20),
-          if (_selectedFile == null)
-            OutlinedButton(
-              onPressed: _pickGeneralDocument, 
-              style: OutlinedButton.styleFrom(
-                foregroundColor: KeepiColors.slate,
-                side: BorderSide(color: KeepiColors.cardBorder),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-              ),
-              child: const Text("Seleccionar Archivo")
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isUploading ? null : _uploadGeneralDocument,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: KeepiColors.slate, 
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                ),
-                child: _isUploading 
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                    : const Text("Confirmar Subida", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+          Text(
+            _selectedFileName != null ? "Archivo listo" : "Estudio Solicitado",
+            style: const TextStyle(color: KeepiColors.slate, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _selectedFileName ?? "Tu médico ha solicitado que subas un PDF, imagen o fotografía de tus resultados médicos recientes.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _selectedFileName != null ? const Color(0xFFD35400) : Colors.grey.shade600,
+              fontSize: 14, height: 1.5,
+              fontWeight: _selectedFileName != null ? FontWeight.w500 : FontWeight.normal,
             ),
+          ),
+          const SizedBox(height: 24),
+          
+          SizedBox(
+            width: double.infinity, 
+            child: _selectedFileName == null 
+              ? ElevatedButton.icon(
+                  onPressed: _pickDocument,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF1F5F9), 
+                    foregroundColor: KeepiColors.slate,
+                    elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.attach_file, size: 20),
+                  label: const Text("Seleccionar Documento", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                )
+              : ElevatedButton.icon(
+                  onPressed: _isUploading ? null : _uploadDocument,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD35400),
+                    foregroundColor: Colors.white,
+                    elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: _isUploading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.cloud_upload_rounded, size: 20),
+                  label: Text(
+                    _isUploading ? "Subiendo..." : "Confirmar y Subir",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+          ),
+          
+          if (_selectedFileName != null && !_isUploading) ...[
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedFile = null;
+                  _selectedFileName = null;
+                });
+              },
+              child: const Text("Elegir otro archivo", style: TextStyle(color: Colors.grey)),
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildPreviewArea() {
-    if (_selectedFile == null) return const Icon(Icons.cloud_upload_outlined, size: 40, color: KeepiColors.slateLight);
-    
-    final ext = _selectedFile!.extension?.toLowerCase();
-    if (ext == 'pdf') {
-      return Column(
-        children: [
-          const Icon(Icons.picture_as_pdf_rounded, size: 40, color: Colors.redAccent),
-          TextButton(onPressed: () => _showPdfViewer(context), child: const Text("Ver PDF", style: TextStyle(color: KeepiColors.orange)))
-        ],
+    final isImage = _selectedFile != null && ['jpg', 'jpeg', 'png'].contains(_selectedFile!.extension?.toLowerCase());
+    final isPdf = _selectedFile != null && _selectedFile!.extension?.toLowerCase() == 'pdf';
+
+    if (_selectedFile == null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
+        child: const Icon(Icons.cloud_upload_outlined, color: Color(0xFFD35400), size: 40),
       );
     }
     
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: kIsWeb ? Image.memory(_selectedFile!.bytes!, height: 80) : Image.file(File(_selectedFile!.path!), height: 80),
+    if (isImage) {
+      return ClipRRect( 
+        borderRadius: BorderRadius.circular(16),
+        child: kIsWeb 
+            ? Image.memory(_selectedFile!.bytes!, height: 120, width: 120, fit: BoxFit.cover)
+            : Image.file(File(_selectedFile!.path!), height: 120, width: 120, fit: BoxFit.cover),
+      );
+    }
+    
+    if (isPdf) {
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
+            child: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFD35400), size: 40),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _showPdfViewer(context),
+            icon: const Icon(Icons.fullscreen_rounded, size: 18),
+            label: const Text("Ver Documento"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFD35400),
+              side: const BorderSide(color: Color(0xFFD35400)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          )
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
+      child: const Icon(Icons.insert_drive_file, color: Color(0xFFD35400), size: 40),
+    );
+  }
+
+  Widget _buildEmptyStateCard(String message, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black12.withOpacity(0.08)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(color: Color(0xFFF8FAFC), shape: BoxShape.circle),
+            child: Icon(icon, color: Colors.grey.shade400, size: 40),
+          ),
+          const SizedBox(height: 16),
+          Text(message, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 15, height: 1.5, fontWeight: FontWeight.w500)),
+        ],
+      ),
     );
   }
 
   Widget _buildBottomNav() {
-    return BottomNavigationBar(
-      currentIndex: _currentIndex,
-      onTap: (i) => setState(() => _currentIndex = i),
-      selectedItemColor: KeepiColors.orange,
-      unselectedItemColor: KeepiColors.slateLight,
-      type: BottomNavigationBarType.fixed,
-      backgroundColor: Colors.white,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Inicio"),
-        BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: "Historial"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Perfil"),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _navItem(0, Icons.history, "History"),
+          _navItem(1, Icons.medical_services_outlined, "Recetas"),
+          _navItem(2, Icons.videocam, "Consultas"),
+          _navItem(3, Icons.person_outline, "Perfil"),
+        ],
+      ),
+    );
+  }
+
+  Widget _navItem(int index, IconData icon, String label) {
+    bool isActive = _currentIndex == index;
+    return GestureDetector(
+      onTap: () {
+        if (index == 1) {
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientPrescriptionsScreen()));
+          return;
+        }
+        setState(() => _currentIndex = index);
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: isActive ? const Color(0xFFFFF4ED) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: isActive ? const Color(0xFFD35400) : Colors.grey),
+          ),
+          Text(label, style: TextStyle(color: isActive ? const Color(0xFFD35400) : Colors.grey, fontSize: 12)),
+        ],
+      ),
     );
   }
 }
