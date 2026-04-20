@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +11,9 @@ import '../../providers/auth_provider.dart';
 import '../user/settings_screen.dart';
 import 'create_patient_screen.dart';
 import '../../services/api_client.dart';
+import '../../services/config_service.dart' as config_dto;
 import '../../services/doctor_service.dart';
+import '../common/storage_choice_flow.dart';
 
 // Importaciones existentes
 import 'doctor_calendar_tab.dart'; 
@@ -33,10 +38,55 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   bool _loadingList = true;
   String? _listError;
 
+  final FirstRunStorageGate _storageGate = FirstRunStorageGate();
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri?>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPatients());
+    _listenForStorageDeepLinks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserConfigForStorage();
+      _loadPatients();
+    });
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenForStorageDeepLinks() {
+    _appLinks.getInitialLink().then(_onStorageDeepLink);
+    _linkSubscription = _appLinks.uriLinkStream.listen(_onStorageDeepLink);
+  }
+
+  void _onStorageDeepLink(Uri? uri) {
+    if (uri == null) return;
+    final s = uri.toString();
+    if (s.contains('oauth2redirect') && uri.queryParameters['success'] == '1' && mounted) {
+      _loadUserConfigForStorage();
+      return;
+    }
+    if (s.contains('stripe-success') && mounted) {
+      _loadUserConfigForStorage();
+    }
+  }
+
+  Future<void> _loadUserConfigForStorage() async {
+    try {
+      final api = context.read<ApiClient>();
+      final config = await config_dto.ConfigService(api).getUserConfig();
+      if (!mounted) return;
+      await maybeShowFirstRunStorageDialog(
+        context,
+        config: config,
+        gate: _storageGate,
+        onReloadAfterChoice: _loadUserConfigForStorage,
+      );
+    } catch (_) {}
   }
 
   Future<void> _loadPatients() async {

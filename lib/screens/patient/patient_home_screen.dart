@@ -1,19 +1,19 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'patient_upload_analysis_screen.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:dio/dio.dart';
 
-// Importaciones de tu estructura core
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/config_service.dart' as config_dto;
 import '../../services/doctor_service.dart';
 import '../common/notifications_screen.dart';
+import '../common/storage_choice_flow.dart';
+import 'patient_prescriptions_screen.dart';
+import 'patient_upload_analysis_screen.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -23,89 +23,95 @@ class PatientHomeScreen extends StatefulWidget {
 }
 
 class _PatientHomeScreenState extends State<PatientHomeScreen> {
-  int _currentIndex = 0; 
-  
-  // Variables de estado para la subida
-  String? _selectedFileName;
-  PlatformFile? _selectedFile;
-  bool _isUploading = false;
+  int _currentIndex = 0;
 
-  // Función para seleccionar el archivo
-  Future<void> _pickDocument() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-      );
+  final FirstRunStorageGate _storageGate = FirstRunStorageGate();
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri?>? _linkSubscription;
 
-      if (result != null) {
-        setState(() {
-          _selectedFile = result.files.first;
-          _selectedFileName = _selectedFile!.name;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error al seleccionar archivo: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al abrir el selector de archivos')),
-      );
-    }
+  List<AnalysisRequestDto> _pendingAnalysisRequests = [];
+  bool _loadingConsultas = false;
+  String? _consultasError;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForStorageDeepLinks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserConfigForStorage();
+      _loadPendingAnalysisRequests();
+    });
   }
 
-  // Función simulada para subir a AWS S3 / Backend
-  Future<void> _uploadDocument() async {
-    if (_selectedFile == null) return;
-    setState(() => _isUploading = true);
-
+  Future<void> _loadPendingAnalysisRequests() async {
+    setState(() {
+      _loadingConsultas = true;
+      _consultasError = null;
+    });
     try {
-      // TODO: Aquí va tu lógica de subida a tu backend
-      await Future.delayed(const Duration(seconds: 2));
-
+      final api = context.read<ApiClient>();
+      final list = await DoctorService(api).fetchMyPendingRequests();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Estudio subido exitosamente'), backgroundColor: Colors.green),
-      );
-
       setState(() {
-        _selectedFile = null;
-        _selectedFileName = null;
+        _pendingAnalysisRequests = list;
+        _loadingConsultas = false;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al subir: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
+      setState(() {
+        _consultasError = DoctorService.messageFromDio(e);
+        _loadingConsultas = false;
+      });
     }
   }
 
-  // Abre el PDF en un modal de pantalla completa
-  void _showPdfViewer(BuildContext context) {
-    if (_selectedFile == null) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog.fullscreen(
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 1,
-            title: Text(
-              _selectedFileName ?? "Documento",
-              style: const TextStyle(color: KeepiColors.slate, fontSize: 16),
-            ),
-            leading: IconButton(
-              icon: const Icon(Icons.close_rounded, color: KeepiColors.slate),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-          body: kIsWeb
-              ? SfPdfViewer.memory(_selectedFile!.bytes!)
-              : SfPdfViewer.file(File(_selectedFile!.path!)),
+  Future<void> _openUploadForRequest(AnalysisRequestDto req) async {
+    final done = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PatientUploadAnalysisScreen(
+          requestId: req.id,
+          description: req.description,
         ),
       ),
     );
+    if (done == true && mounted) await _loadPendingAnalysisRequests();
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenForStorageDeepLinks() {
+    _appLinks.getInitialLink().then(_onStorageDeepLink);
+    _linkSubscription = _appLinks.uriLinkStream.listen(_onStorageDeepLink);
+  }
+
+  void _onStorageDeepLink(Uri? uri) {
+    if (uri == null) return;
+    final s = uri.toString();
+    if (s.contains('oauth2redirect') && uri.queryParameters['success'] == '1' && mounted) {
+      _loadUserConfigForStorage();
+      return;
+    }
+    if (s.contains('stripe-success') && mounted) {
+      _loadUserConfigForStorage();
+    }
+  }
+
+  Future<void> _loadUserConfigForStorage() async {
+    try {
+      final api = context.read<ApiClient>();
+      final config = await config_dto.ConfigService(api).getUserConfig();
+      if (!mounted) return;
+      await maybeShowFirstRunStorageDialog(
+        context,
+        config: config,
+        gate: _storageGate,
+        onReloadAfterChoice: _loadUserConfigForStorage,
+      );
+    } catch (_) {}
   }
 
   @override
@@ -167,24 +173,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         ),
       ),
       bottomNavigationBar: _buildBottomNav(),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(AuthProvider auth) {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      title: const Text('Keepi', style: TextStyle(color: KeepiColors.orange, fontWeight: FontWeight.bold)),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_none_rounded, color: KeepiColors.slate),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout_rounded, color: KeepiColors.slate),
-          onPressed: () => auth.logout(),
-        ),
-      ],
     );
   }
 
@@ -269,167 +257,149 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  // --- SECCIÓN DE CONSULTAS ---
+  // --- SECCIÓN DE CONSULTAS (solicitudes de análisis del doctor) ---
   Widget _buildConsultasContent() {
-    // CONDICIÓN: Al ser FALSE, muestra que el médico no ha solicitado nada
-    bool estudioRequerido = false; 
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Consultas', 
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: KeepiColors.slate),
-          ),
-          const SizedBox(height: 8),
-          const Text("Gestiona tus citas médicas y estudios solicitados.", style: TextStyle(color: KeepiColors.slateLight, fontSize: 16)),
-          
-          const SizedBox(height: 32),
-          const Text("Documentos Pendientes", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
-          const SizedBox(height: 12),
-
-          if (estudioRequerido)
-            _buildUploadDocumentCard()
-          else
-            _buildEmptyStateCard("Tu médico no ha solicitado ningún estudio.", Icons.check_circle_outline_rounded),
-            
-          const SizedBox(height: 80),
-        ],
+    return RefreshIndicator(
+      color: const Color(0xFFD35400),
+      onRefresh: _loadPendingAnalysisRequests,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Consultas',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: KeepiColors.slate),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Gestiona tus citas médicas y estudios solicitados.',
+              style: TextStyle(color: KeepiColors.slateLight, fontSize: 16),
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'Documentos pendientes',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate),
+            ),
+            const SizedBox(height: 12),
+            if (_loadingConsultas)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator(color: Color(0xFFD35400))),
+              )
+            else if (_consultasError != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.red.shade100),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(_consultasError!, style: TextStyle(color: Colors.red.shade900, fontSize: 14)),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: _loadPendingAnalysisRequests,
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                      label: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
+              )
+            else if (_pendingAnalysisRequests.isEmpty)
+              _buildEmptyStateCard(
+                'Tu médico no ha solicitado ningún estudio pendiente.',
+                Icons.check_circle_outline_rounded,
+              )
+            else
+              ..._pendingAnalysisRequests.map(_buildPendingRequestCard),
+            const SizedBox(height: 80),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildUploadDocumentCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black12.withOpacity(0.08)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        children: [
-          _buildPreviewArea(),
-          
-          const SizedBox(height: 16),
-          Text(
-            _selectedFileName != null ? "Archivo listo" : "Estudio Solicitado",
-            style: const TextStyle(color: KeepiColors.slate, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _selectedFileName ?? "Tu médico ha solicitado que subas un PDF, imagen o fotografía de tus resultados médicos recientes.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _selectedFileName != null ? const Color(0xFFD35400) : Colors.grey.shade600,
-              fontSize: 14, height: 1.5,
-              fontWeight: _selectedFileName != null ? FontWeight.w500 : FontWeight.normal,
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          SizedBox(
-            width: double.infinity, 
-            child: _selectedFileName == null 
-              ? ElevatedButton.icon(
-                  onPressed: _pickDocument,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9), 
-                    foregroundColor: KeepiColors.slate,
-                    elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.attach_file, size: 20),
-                  label: const Text("Seleccionar Documento", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                )
-              : ElevatedButton.icon(
-                  onPressed: _isUploading ? null : _uploadDocument,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD35400),
-                    foregroundColor: Colors.white,
-                    elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: _isUploading 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.cloud_upload_rounded, size: 20),
-                  label: Text(
-                    _isUploading ? "Subiendo..." : "Confirmar y Subir",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+  Widget _buildPendingRequestCard(AnalysisRequestDto req) {
+    final fecha = _formatRequestDate(req.createdAt);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.black12.withOpacity(0.08)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
+                  child: const Icon(Icons.science_outlined, color: Color(0xFFD35400), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Solicitud de tu médico',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: KeepiColors.slate),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(fecha, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                    ],
                   ),
                 ),
-          ),
-          
-          if (_selectedFileName != null && !_isUploading) ...[
+              ],
+            ),
             const SizedBox(height: 12),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _selectedFile = null;
-                  _selectedFileName = null;
-                });
-              },
-              child: const Text("Elegir otro archivo", style: TextStyle(color: Colors.grey)),
+            Text(
+              req.description,
+              style: const TextStyle(color: KeepiColors.slate, fontSize: 15, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _openUploadForRequest(req),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFD35400),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.cloud_upload_rounded, size: 20),
+                label: const Text('Subir estudio', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildPreviewArea() {
-    final isImage = _selectedFile != null && ['jpg', 'jpeg', 'png'].contains(_selectedFile!.extension?.toLowerCase());
-    final isPdf = _selectedFile != null && _selectedFile!.extension?.toLowerCase() == 'pdf';
-
-    if (_selectedFile == null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
-        child: const Icon(Icons.cloud_upload_outlined, color: Color(0xFFD35400), size: 40),
-      );
+  String _formatRequestDate(String iso) {
+    if (iso.isEmpty) return '—';
+    try {
+      final d = DateTime.tryParse(iso);
+      if (d == null) return iso;
+      return '${d.day}/${d.month}/${d.year}';
+    } catch (_) {
+      return iso;
     }
-    
-    if (isImage) {
-      return ClipRRect( 
-        borderRadius: BorderRadius.circular(16),
-        child: kIsWeb 
-            ? Image.memory(_selectedFile!.bytes!, height: 120, width: 120, fit: BoxFit.cover)
-            : Image.file(File(_selectedFile!.path!), height: 120, width: 120, fit: BoxFit.cover),
-      );
-    }
-    
-    if (isPdf) {
-      return Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
-            child: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFD35400), size: 40),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _showPdfViewer(context),
-            icon: const Icon(Icons.fullscreen_rounded, size: 18),
-            label: const Text("Ver Documento"),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFD35400),
-              side: const BorderSide(color: Color(0xFFD35400)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-          )
-        ],
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(color: Color(0xFFFFF4ED), shape: BoxShape.circle),
-      child: const Icon(Icons.insert_drive_file, color: Color(0xFFD35400), size: 40),
-    );
   }
 
   Widget _buildEmptyStateCard(String message, IconData icon) {
@@ -484,6 +454,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           return;
         }
         setState(() => _currentIndex = index);
+        if (index == 2) {
+          _loadPendingAnalysisRequests();
+        }
       },
       behavior: HitTestBehavior.opaque,
       child: Column(
