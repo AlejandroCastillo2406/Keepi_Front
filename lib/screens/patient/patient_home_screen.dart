@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/config_service.dart' as config_dto;
 import '../../services/doctor_service.dart';
+import '../../services/appointment_service.dart';
 import '../common/notifications_screen.dart';
 import '../common/storage_choice_flow.dart';
 import 'patient_prescriptions_screen.dart';
@@ -30,6 +31,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   StreamSubscription<Uri?>? _linkSubscription;
 
   List<AnalysisRequestDto> _pendingAnalysisRequests = [];
+  List<AppointmentDto> _myAppointments = [];
   bool _loadingConsultas = false;
   String? _consultasError;
 
@@ -51,9 +53,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     try {
       final api = context.read<ApiClient>();
       final list = await DoctorService(api).fetchMyPendingRequests();
+      final appointments = await AppointmentService(api).fetchMine();
       if (!mounted) return;
       setState(() {
         _pendingAnalysisRequests = list;
+        _myAppointments = appointments;
         _loadingConsultas = false;
       });
     } catch (e) {
@@ -279,6 +283,24 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             ),
             const SizedBox(height: 32),
             const Text(
+              'Citas agendadas',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate),
+            ),
+            const SizedBox(height: 12),
+            if (!_loadingConsultas && _consultasError == null)
+              ...(_myAppointments.isEmpty
+                  ? [
+                      _buildEmptyStateCard(
+                        'Aún no tienes citas agendadas.',
+                        Icons.event_busy_outlined,
+                      ),
+                      const SizedBox(height: 24),
+                    ]
+                  : [
+                      ..._myAppointments.map(_buildAppointmentCard),
+                      const SizedBox(height: 24),
+                    ]),
+            const Text(
               'Documentos pendientes',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate),
             ),
@@ -385,6 +407,61 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 label: const Text('Subir estudio', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppointmentCard(AppointmentDto appointment) {
+    final start = appointment.currentStartAt.toLocal();
+    final end = appointment.currentEndAt.toLocal();
+    final dateLabel =
+        '${start.day.toString().padLeft(2, '0')}/${start.month.toString().padLeft(2, '0')}/${start.year}';
+    final timeLabel =
+        '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')} - ${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.black12.withOpacity(0.08)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle),
+                  child: const Icon(Icons.calendar_month_rounded, color: KeepiColors.skyBlue, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Cita médica',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: KeepiColors.slate),
+                      ),
+                      const SizedBox(height: 2),
+                      Text('$dateLabel • $timeLabel', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(appointment.reason, style: const TextStyle(color: KeepiColors.slate, fontSize: 15)),
           ],
         ),
       ),

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
+import 'appointment_service.dart';
 import 'prescription_service.dart';
 
 class PushNotificationService {
@@ -45,7 +46,7 @@ class PushNotificationService {
     _tapHandlersConfigured = true;
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) async {
-      await _handleReminderFromPush(
+      await _handlePushAction(
         navigatorKey: navigatorKey,
         data: message.data,
         fallbackTitle: message.notification?.title,
@@ -56,7 +57,7 @@ class PushNotificationService {
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await _handleReminderFromPush(
+        await _handlePushAction(
           navigatorKey: navigatorKey,
           data: initial.data,
           fallbackTitle: initial.notification?.title,
@@ -66,12 +67,23 @@ class PushNotificationService {
     }
   }
 
-  static Future<void> _handleReminderFromPush({
+  static Future<void> _handlePushAction({
     required GlobalKey<NavigatorState> navigatorKey,
     required Map<String, dynamic> data,
     String? fallbackTitle,
     String? fallbackQuestion,
   }) async {
+    final appointmentId = data['appointment_id']?.toString();
+    if (appointmentId != null && appointmentId.isNotEmpty) {
+      await _handleAppointmentFromPush(
+        navigatorKey: navigatorKey,
+        appointmentId: appointmentId,
+        action: data['action']?.toString(),
+        fallbackTitle: fallbackTitle,
+        fallbackQuestion: fallbackQuestion,
+      );
+      return;
+    }
     final context = navigatorKey.currentContext;
     if (context == null) return;
     final prescriptionId = data['prescription_id']?.toString();
@@ -102,6 +114,75 @@ class PushNotificationService {
     if (answer == null) return;
     final svc = PrescriptionService(api);
     await svc.setReminderOptIn(prescriptionId, answer);
+  }
+
+  static Future<void> _handleAppointmentFromPush({
+    required GlobalKey<NavigatorState> navigatorKey,
+    required String appointmentId,
+    String? action,
+    String? fallbackTitle,
+    String? fallbackQuestion,
+  }) async {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    final api = Provider.of<ApiClient>(context, listen: false);
+    final svc = AppointmentService(api);
+
+    final isDoctorReview = action == 'doctor_review';
+    final title = fallbackTitle ?? (isDoctorReview ? 'Solicitud de cambio de cita' : 'Nueva cita');
+    final question = fallbackQuestion ??
+        (isDoctorReview
+            ? 'Tu paciente pide cambio de cita. ¿Aceptas esta propuesta?'
+            : 'El doctor agendó una cita. ¿Deseas confirmar?');
+
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(question),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(isDoctorReview ? 'Contrapropuesta' : 'Cambiar hora'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+    if (answer == null) return;
+    if (answer) {
+      if (isDoctorReview) {
+        await svc.doctorAccept(appointmentId);
+      } else {
+        await svc.patientConfirm(appointmentId);
+      }
+      return;
+    }
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null) return;
+    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    if (time == null) return;
+    final proposed = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (isDoctorReview) {
+      await svc.doctorCounterPropose(
+        appointmentId: appointmentId,
+        proposedStartAt: proposed,
+      );
+    } else {
+      await svc.patientRequestChange(
+        appointmentId: appointmentId,
+        proposedStartAt: proposed,
+      );
+    }
   }
 }
 

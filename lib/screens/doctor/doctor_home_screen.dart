@@ -392,6 +392,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       itemBuilder: (context, index) => _PatientTile(
         patient: _patients[index],
         onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
+        onAssignAppointment: () => _handleScheduleAppointment(_patients[index]),
         onAssignPrescription: () => _openAssignPrescription(_patients[index]),
         onRequestAnalysis: () => _openRequestAnalysis(_patients[index]),
       ),
@@ -440,12 +441,14 @@ class _LogoIcon extends StatelessWidget {
 class _PatientTile extends StatelessWidget {
   final PatientListItem patient;
   final VoidCallback onViewMedicalRecord;
+  final VoidCallback onAssignAppointment;
   final VoidCallback onAssignPrescription;
   final VoidCallback onRequestAnalysis;
 
   const _PatientTile({
     required this.patient,
     required this.onViewMedicalRecord,
+    required this.onAssignAppointment,
     required this.onAssignPrescription,
     required this.onRequestAnalysis,
   });
@@ -466,11 +469,13 @@ class _PatientTile extends StatelessWidget {
           icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
           onSelected: (value) {
             if (value == 'medical_record') onViewMedicalRecord();
+            if (value == 'assign_appointment') onAssignAppointment();
             if (value == 'assign_prescription') onAssignPrescription();
             if (value == 'request_analysis') onRequestAnalysis();
           },
           itemBuilder: (context) => const [
             PopupMenuItem(value: 'medical_record', child: Text('Ver expediente médico')),
+            PopupMenuItem(value: 'assign_appointment', child: Text('Asignar cita')),
             PopupMenuItem(value: 'assign_prescription', child: Text('Asignar receta')),
             PopupMenuItem(value: 'request_analysis', child: Text('Solicitar análisis')),
           ],

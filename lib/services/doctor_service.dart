@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
 import 'patient_medical_record_service.dart';
+import 'appointment_service.dart';
 
 /// Llamadas a `/api/v1/doctors/patients` y `/api/v1/analysis-requests`.
 class DoctorService {
@@ -112,19 +113,15 @@ class DoctorService {
     required DateTime date,
     required String reason,
   }) async {
-    final res = await _api.dio.post<Map<String, dynamic>>(
-      '/api/v1/doctors/appointments-manager', 
-      data: {
-        'patient_id': patientId,
-        'appointment_date': date.toUtc().toIso8601String(),
-        'reason': reason.trim(),
-      },
+    final d = await AppointmentService(_api).createDoctorAppointment(
+      patientId: patientId,
+      startAt: date,
+      reason: reason,
     );
-    final d = res.data!;
     return ScheduleAppointmentResult(
-      id: d['id'] as String,
-      status: d['status'] as String,
-      message: d['message'] as String,
+      id: d.id,
+      status: d.status,
+      message: 'Cita registrada',
     );
   }
 

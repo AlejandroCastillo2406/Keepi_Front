@@ -46,6 +46,13 @@ class AppNotificationDto {
   String? get prescriptionId => payload['prescription_id']?.toString();
   String get reminderQuestion =>
       payload['question']?.toString() ?? message;
+  String? get appointmentId => payload['appointment_id']?.toString();
+  String? get appointmentAction => payload['action']?.toString();
+  DateTime? get proposedStartAt {
+    final raw = payload['proposed_start_at']?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.toLocal();
+  }
 
   factory AppNotificationDto.fromJson(Map<String, dynamic> j) {
     return AppNotificationDto(

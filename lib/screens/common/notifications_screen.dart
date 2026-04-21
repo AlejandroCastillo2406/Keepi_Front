@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
+import '../../services/appointment_service.dart';
 import '../../services/notifications_service.dart';
 import '../../services/prescription_service.dart';
 
@@ -91,6 +92,100 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _openAppointmentPrompt(AppNotificationDto notification) async {
+    final appointmentId = notification.appointmentId;
+    if (appointmentId == null || appointmentId.isEmpty) return;
+    final api = context.read<ApiClient>();
+    final appointmentSvc = AppointmentService(api);
+    final wantsDoctorReview = notification.appointmentAction == 'doctor_review';
+
+    if (wantsDoctorReview) {
+      final answer = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(notification.title),
+          content: Text(notification.message),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Contrapropuesta')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Aceptar')),
+          ],
+        ),
+      );
+      if (answer == null) return;
+      try {
+        if (answer) {
+          await appointmentSvc.doctorAccept(appointmentId);
+        } else {
+          final dt = await _pickDateTime();
+          if (dt == null) return;
+          await appointmentSvc.doctorCounterPropose(
+            appointmentId: appointmentId,
+            proposedStartAt: dt,
+          );
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Respuesta enviada para la cita')),
+        );
+        await _load();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppointmentService.messageFromDio(e))),
+        );
+      }
+      return;
+    }
+
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(notification.title),
+        content: Text(notification.message),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cambiar hora')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar')),
+        ],
+      ),
+    );
+    if (answer == null) return;
+    try {
+      if (answer) {
+        await appointmentSvc.patientConfirm(appointmentId);
+      } else {
+        final dt = await _pickDateTime();
+        if (dt == null) return;
+        await appointmentSvc.patientRequestChange(
+          appointmentId: appointmentId,
+          proposedStartAt: dt,
+        );
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Respuesta enviada para la cita')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppointmentService.messageFromDio(e))),
+      );
+    }
+  }
+
+  Future<DateTime?> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    if (time == null) return null;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -126,7 +221,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   fontWeight: n.read ? FontWeight.w500 : FontWeight.w700,
                                 ),
                               ),
-                              onTap: () => _openReminderPrompt(n),
+                              onTap: () {
+                                if (n.appointmentId != null) {
+                                  _openAppointmentPrompt(n);
+                                  return;
+                                }
+                                _openReminderPrompt(n);
+                              },
                             ),
                           );
                         },
