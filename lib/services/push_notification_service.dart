@@ -162,17 +162,17 @@ class PushNotificationService {
       return;
     }
 
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (date == null) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-    if (time == null) return;
-    final proposed = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     if (isDoctorReview) {
+      final date = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now().add(const Duration(days: 1)),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 365)),
+      );
+      if (date == null) return;
+      final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+      if (time == null) return;
+      final proposed = DateTime(date.year, date.month, date.day, time.hour, time.minute);
       await svc.doctorCounterPropose(
         appointmentId: appointmentId,
         proposedStartAt: proposed,
@@ -180,7 +180,6 @@ class PushNotificationService {
     } else {
       await svc.patientRequestChange(
         appointmentId: appointmentId,
-        proposedStartAt: proposed,
       );
     }
   }

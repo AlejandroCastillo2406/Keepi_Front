@@ -54,17 +54,20 @@ class AppointmentService {
 
   Future<AppointmentDto> patientRequestChange({
     required String appointmentId,
-    required DateTime proposedStartAt,
+    DateTime? proposedStartAt,
     int durationMinutes = 30,
     String? notes,
   }) async {
+    final payload = <String, dynamic>{
+      'duration_minutes': durationMinutes,
+      'notes': notes,
+    };
+    if (proposedStartAt != null) {
+      payload['proposed_start_at'] = proposedStartAt.toUtc().toIso8601String();
+    }
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.appointmentPatientRequestChange(appointmentId),
-      data: {
-        'proposed_start_at': proposedStartAt.toUtc().toIso8601String(),
-        'duration_minutes': durationMinutes,
-        'notes': notes,
-      },
+      data: payload,
     );
     return AppointmentDto.fromJson(res.data ?? const {});
   }
