@@ -21,6 +21,7 @@ import 'documentos_screen.dart';
 import 'doctor_assign_prescription_screen.dart';
 import 'doctor_patient_medical_record_screen.dart';
 import '../common/notifications_screen.dart';
+import 'doctor_patient_timeline_screen.dart';
 
 // ¡IMPORTACIÓN CLAVE PARA USAR LA PANTALLA REAL QUE SÍ TIENE LA API!
 import 'doctor_request_analysis_screen.dart'; 
@@ -222,6 +223,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
+  // 4. VER HISTORIAL DEL PACIENTE
+      Future _openTimeline(PatientListItem patient) async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DoctorPatientTimelineScreen(
+              patientId: patient.id,
+              patientName: patient.name,
+            ),
+          ),
+        );
+      }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -379,25 +392,27 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Widget _buildPatientList() {
-    if (_loadingList && _patients.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 32), child: CircularProgressIndicator(color: KeepiColors.orange)));
-    }
-    if (_patients.isEmpty) return const _EmptyPatientsView();
+        if (_loadingList && _patients.isEmpty) {
+          return const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 32), child: CircularProgressIndicator(color: KeepiColors.orange)));
+        }
+        if (_patients.isEmpty) return const _EmptyPatientsView();
 
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _patients.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _PatientTile(
-        patient: _patients[index],
-        onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
-        onAssignAppointment: () => _handleScheduleAppointment(_patients[index]),
-        onAssignPrescription: () => _openAssignPrescription(_patients[index]),
-        onRequestAnalysis: () => _openRequestAnalysis(_patients[index]),
-      ),
-    );
-  }
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _patients.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) => _PatientTile(
+            patient: _patients[index],
+            onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
+            onAssignAppointment: () => _handleScheduleAppointment(_patients[index]),
+            onAssignPrescription: () => _openAssignPrescription(_patients[index]),
+            onRequestAnalysis: () => _openRequestAnalysis(_patients[index]),
+            // Pasamos la función que crearemos en el siguiente paso:
+            onViewTimeline: () => _openTimeline(_patients[index]), 
+          ),
+        );
+      }
 
   Widget _buildPlaceholderTab(String title) {
     return Center(
@@ -444,6 +459,7 @@ class _PatientTile extends StatelessWidget {
   final VoidCallback onAssignAppointment;
   final VoidCallback onAssignPrescription;
   final VoidCallback onRequestAnalysis;
+  final VoidCallback onViewTimeline;
 
   const _PatientTile({
     required this.patient,
@@ -451,39 +467,42 @@ class _PatientTile extends StatelessWidget {
     required this.onAssignAppointment,
     required this.onAssignPrescription,
     required this.onRequestAnalysis,
+    required this.onViewTimeline,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: _cardDecoration,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: KeepiColors.skyBlueSoft,
-          child: Text(patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?', style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.w800)),
-        ),
-        title: Text(patient.name, style: const TextStyle(fontWeight: FontWeight.w700, color: KeepiColors.slate)),
-        subtitle: Text(patient.email, style: const TextStyle(color: KeepiColors.slateLight, fontSize: 13)),
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
-          onSelected: (value) {
-            if (value == 'medical_record') onViewMedicalRecord();
-            if (value == 'assign_appointment') onAssignAppointment();
-            if (value == 'assign_prescription') onAssignPrescription();
-            if (value == 'request_analysis') onRequestAnalysis();
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'medical_record', child: Text('Ver expediente médico')),
-            PopupMenuItem(value: 'assign_appointment', child: Text('Asignar cita')),
-            PopupMenuItem(value: 'assign_prescription', child: Text('Asignar receta')),
-            PopupMenuItem(value: 'request_analysis', child: Text('Solicitar análisis')),
-          ],
-        ),
-      ),
-    );
-  }
-}
+      Widget build(BuildContext context) {
+        return Container(
+          decoration: _cardDecoration,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            leading: CircleAvatar(
+              backgroundColor: KeepiColors.skyBlueSoft,
+              child: Text(patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?', style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.w800)),
+            ),
+            title: Text(patient.name, style: const TextStyle(fontWeight: FontWeight.w700, color: KeepiColors.slate)),
+            subtitle: Text(patient.email, style: const TextStyle(color: KeepiColors.slateLight, fontSize: 13)),
+            trailing: PopupMenuButton(
+              icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
+              onSelected: (value) {
+                if (value == 'medical_record') onViewMedicalRecord();
+                if (value == 'assign_appointment') onAssignAppointment();
+                if (value == 'assign_prescription') onAssignPrescription();
+                if (value == 'request_analysis') onRequestAnalysis();
+                if (value == 'view_timeline') onViewTimeline(); // 3. Ejecutamos la función
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'medical_record', child: Text('Ver expediente médico')),
+                PopupMenuItem(value: 'assign_appointment', child: Text('Asignar cita')),
+                PopupMenuItem(value: 'assign_prescription', child: Text('Asignar receta')),
+                PopupMenuItem(value: 'request_analysis', child: Text('Solicitar análisis')),
+                PopupMenuItem(value: 'view_timeline', child: Text('Ver Historial')), // 4. Agregamos la opción visual
+              ],
+            ),
+          ),
+        );
+      }
+    }
 
 
 class _EmptyPatientsView extends StatelessWidget {

@@ -3,6 +3,7 @@ import '../core/api_endpoints.dart';
 import 'api_client.dart';
 import 'patient_medical_record_service.dart';
 import 'appointment_service.dart';
+import '../screens/doctor/doctor_patient_timeline_screen.dart';
 
 /// Llamadas a `/api/v1/doctors/patients` y `/api/v1/analysis-requests`.
 class DoctorService {
@@ -41,6 +42,7 @@ class DoctorService {
         .map((e) => PatientListItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
+  
 
 
   // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
@@ -91,6 +93,15 @@ class DoctorService {
     return data
         .map((e) => AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
+  }
+
+  Future<List<TimelineEvent>> fetchPatientTimeline(String patientId) async {
+    // Cambiamos apiClient por _api que es la variable que tú usas en este archivo
+    final response = await _api.dio.get('/api/v1/doctors/patients/$patientId/timeline');
+    
+    // Mapeamos la lista JSON a una lista de objetos Dart
+    final List<dynamic> data = response.data;
+    return data.map((json) => TimelineEvent.fromJson(json)).toList();
   }
 
   /// [PACIENTE] Marca una solicitud como completada vinculando el ID del documento subido.
