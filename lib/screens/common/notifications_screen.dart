@@ -8,6 +8,7 @@ import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/notifications_service.dart';
 import '../../services/prescription_service.dart';
+import '../../providers/auth_provider.dart';
 
 const _monthsEsUpper = <String>[
   'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
@@ -67,8 +68,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: Text(n.title),
         content: Text(n.reminderQuestion),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Sí')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No', style: TextStyle(color: KeepiColors.slateLight))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF7C3AED)),
+            onPressed: () => Navigator.of(context).pop(true), 
+            child: const Text('Sí', style: TextStyle(fontWeight: FontWeight.bold))
+          ),
         ],
       ),
     );
@@ -79,7 +84,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            answer ? 'Recordatorios activados para esta receta' : 'Recordatorios desactivados para esta receta',
+            answer ? 'Recordatorios activados' : 'Recordatorios desactivados',
           ),
         ),
       );
@@ -92,82 +97,128 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ── Acciones de citas ─────────────────────────────────────────
+  // ── Acciones de citas (FLUJO NUEVO) ───────────────────────────
   Future<void> _openAppointmentPrompt(AppNotificationDto n) async {
-    final appointmentId = n.appointmentId;
+    final appointmentId = n.appointmentId; 
     if (appointmentId == null || appointmentId.isEmpty) return;
-    final api = context.read<ApiClient>();
-    final appointmentSvc = AppointmentService(api);
-    final wantsDoctorReview = n.appointmentAction == 'doctor_review';
 
-    if (wantsDoctorReview) {
-      final answer = await showDialog<bool>(
+    final authProv = Provider.of<AuthProvider>(context, listen: false);
+    final isDoctor = authProv.roleName == 'DOCTOR';
+    final appointmentSvc = Provider.of<AppointmentService>(context, listen: false);
+
+    if (isDoctor) {
+      // --- FLUJO DEL DOCTOR (Asignar Fecha desde la Notificación) ---
+      final bool? confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text(n.title),
-          content: Text(n.message),
+          title: const Row(
+            children: [
+              Icon(Icons.edit_calendar_outlined, color: KeepiColors.orange),
+              SizedBox(width: 8),
+              Text('Solicitud de Cita', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Text('${n.message}\n\n¿Deseas asignar una fecha ahora?'),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Contrapropuesta')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Aceptar')),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Después', style: TextStyle(color: KeepiColors.slateLight))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
+              onPressed: () => Navigator.of(ctx).pop(true), 
+              child: const Text('Asignar Fecha', style: TextStyle(fontWeight: FontWeight.bold))
+            ),
           ],
         ),
       );
-      if (answer == null) return;
-      try {
-        if (answer) {
-          await appointmentSvc.doctorAccept(appointmentId);
-        } else {
+
+      if (confirm == true) {
+        try {
           final dt = await _pickDateTime();
           if (dt == null) return;
-          await appointmentSvc.doctorCounterPropose(
+          
+          if (!mounted) return;
+          showDialog(
+            context: context, 
+            barrierDismissible: false, 
+            builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
+          );
+
+          await appointmentSvc.doctorProposeTime(
             appointmentId: appointmentId,
             proposedStartAt: dt,
+            durationMinutes: 30, 
+          );
+          
+          if (!mounted) return;
+          Navigator.pop(context); // Cierra el loading
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Fecha propuesta enviada al paciente.')),
+          );
+          await _load();
+        } catch (e) {
+          if (!mounted) return;
+          Navigator.pop(context); // Cierra el loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppointmentService.messageFromDio(e))),
           );
         }
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Respuesta enviada para la cita')),
-        );
-        await _load();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppointmentService.messageFromDio(e))),
-        );
       }
-      return;
-    }
+    } else {
+      // --- FLUJO DEL PACIENTE (Aceptar / Rechazar desde la Notificación) ---
+      final String? action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.event_available_outlined, color: KeepiColors.skyBlue),
+              SizedBox(width: 8),
+              Text('Propuesta de Cita', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Text(n.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop('reject'), 
+              child: const Text('Rechazar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: KeepiColors.skyBlue),
+              onPressed: () => Navigator.of(ctx).pop('accept'), 
+              child: const Text('Aceptar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
 
-    final answer = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(n.title),
-        content: Text(n.message),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('No puedo')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar')),
-        ],
-      ),
-    );
-    if (answer == null) return;
-    try {
-      if (answer) {
-        await appointmentSvc.patientConfirm(appointmentId);
-      } else {
-        await appointmentSvc.patientRequestChange(
-          appointmentId: appointmentId,
-        );
+      if (action != null) {
+        try {
+          if (!mounted) return;
+          showDialog(
+            context: context, 
+            barrierDismissible: false, 
+            builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.skyBlue))
+          );
+
+          await appointmentSvc.patientRespondProposal(
+            appointmentId: appointmentId,
+            action: action,
+          );
+          
+          if (!mounted) return;
+          Navigator.pop(context); // Cierra el loading
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(action == 'accept' ? 'Cita confirmada exitosamente' : 'Cita rechazada')),
+          );
+          await _load();
+        } catch (e) {
+          if (!mounted) return;
+          Navigator.pop(context); // Cierra el loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppointmentService.messageFromDio(e))),
+          );
+        }
       }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Respuesta enviada para la cita')),
-      );
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppointmentService.messageFromDio(e))),
-      );
     }
   }
 
@@ -177,10 +228,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       initialDate: DateTime.now().add(const Duration(days: 1)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) => Theme(
+        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
+        child: child!,
+      ),
     );
     if (date == null || !mounted) return null;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    
+    final time = await showTimePicker(
+      context: context, 
+      initialTime: const TimeOfDay(hour: 9, minute: 0),
+      builder: (context, child) => Theme(
+        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
+        child: child!,
+      ),
+    );
     if (time == null) return null;
+    
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
@@ -219,7 +283,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return const _NotifEmptyCard(
         tag: 'NOTIFICACIONES',
         title: 'Todo al día',
-        message: 'No tienes avisos pendientes. Si tu médico envía una receta o ajusta una cita, aparecerá aquí.',
+        message: 'No tienes avisos pendientes.',
         icon: Icons.mark_email_read_outlined,
       );
     }
@@ -739,8 +803,8 @@ class _NotifErrorBox extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 18),
               SizedBox(width: 8),
               Text(

@@ -193,17 +193,21 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   // ── Helpers de cita ──────────────────────────────────────────
   AppointmentDto? get _nextUpcomingAppointment {
     final now = DateTime.now();
-    final future = _myAppointments
-        .where((a) => a.currentStartAt.toLocal().isAfter(now))
-        .toList()
-      ..sort((a, b) => a.currentStartAt.compareTo(b.currentStartAt));
+    final future = _myAppointments.where((a) {
+      if (a.appointmentDate == null) return false;
+      return a.appointmentDate!.toLocal().isAfter(now);
+    }).toList()
+      ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
     return future.isEmpty ? null : future.first;
   }
 
   Future<void> _confirmAppointment(AppointmentDto a) async {
     final api = context.read<ApiClient>();
     try {
-      await AppointmentService(api).patientConfirm(a.id);
+      await AppointmentService(api).patientRespondProposal(
+        appointmentId: a.id,
+        action: 'accept',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cita confirmada')),
@@ -221,12 +225,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Future<void> _requestAppointmentChange(AppointmentDto a) async {
     final api = context.read<ApiClient>();
     try {
-      await AppointmentService(api).patientRequestChange(
+      await AppointmentService(api).patientRespondProposal(
         appointmentId: a.id,
+        action: 'reject',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Avisamos al doctor que no puedes en ese horario')),
+        const SnackBar(content: Text('Cita rechazada')),
       );
       await _loadPendingAnalysisRequests();
       await _loadCareTimeline();
@@ -251,6 +256,170 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       await _loadPendingAnalysisRequests();
       await _loadCareTimeline();
   }
+  }
+
+  // ── Pedir Nueva Cita (Nuevo Método) ──────────────────────────────────
+  Future<void> _openRequestDialog() async {
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.edit_calendar_outlined, color: KeepiColors.skyBlue),
+            SizedBox(width: 10),
+            Text('Solicitar Cita', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Describe brevemente el motivo de tu consulta para que tu doctor pueda asignarte un horario.',
+                style: TextStyle(fontSize: 13.5, color: KeepiColors.slate),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: reasonController,
+                decoration: InputDecoration(
+                  labelText: 'Motivo de la cita',
+                  hintText: 'Ej. Dolor de estómago, revisión...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: KeepiColors.skyBlue, width: 2),
+                  ),
+                ),
+                maxLines: 3,
+                validator: (v) => v == null || v.trim().isEmpty ? 'Por favor ingresa un motivo' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(color: KeepiColors.slateLight)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: KeepiColors.skyBlue),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.of(ctx).pop(true);
+              }
+            },
+            child: const Text('Enviar Solicitud', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    // Si el paciente le dio a enviar y el diálogo se cerró
+    if (result == true && mounted) {
+      try {
+        // Mostramos un circulito de carga mientras esperamos al servidor
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.skyBlue)),
+        );
+
+        final api = context.read<ApiClient>();
+        
+        // Obtenemos el ID del doctor vinculado a través del historial de citas
+        String doctorId = '';
+        if (_myAppointments.isNotEmpty) {
+          doctorId = _myAppointments.first.doctorId; 
+        } else {
+          throw Exception("No se encontró un doctor en tu historial para solicitar la cita.");
+        }
+
+        await AppointmentService(api).patientRequestAppointment(
+          doctorId: doctorId,
+          reason: reasonController.text,
+        );
+
+        if (mounted) Navigator.of(context).pop();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Solicitud enviada. Tu doctor te asignará una fecha pronto.')),
+          );
+          _loadPendingAnalysisRequests(); 
+        }
+      } catch (e) {
+        if (mounted) Navigator.of(context).pop();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppointmentService.messageFromDio(e))),
+          );
+        }
+      }
+    }
+  }
+
+  // ── Responder Propuesta (NUEVO MÉTODO) ─────────────────────────────
+  Future<void> _openResponseDialog(AppointmentDto a) async {
+    final String? action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.event_available_outlined, color: KeepiColors.skyBlue),
+            SizedBox(width: 8),
+            Text('Propuesta de Cita', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: const Text('Tu doctor ha propuesto este horario. ¿Deseas confirmar la cita?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('reject'), 
+            child: const Text('Rechazar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: KeepiColors.skyBlue),
+            onPressed: () => Navigator.of(ctx).pop('accept'), 
+            child: const Text('Aceptar', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (action != null) {
+      try {
+        if (!mounted) return;
+        showDialog(
+          context: context, 
+          barrierDismissible: false, 
+          builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.skyBlue))
+        );
+
+        final api = context.read<ApiClient>();
+        await AppointmentService(api).patientRespondProposal(
+          appointmentId: a.id,
+          action: action,
+        );
+        
+        if (!mounted) return;
+        Navigator.pop(context); // Cierra el loading
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(action == 'accept' ? 'Cita confirmada exitosamente' : 'Cita rechazada')),
+        );
+        _refreshAll();
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context); // Cierra el loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppointmentService.messageFromDio(e))),
+        );
+      }
+    }
   }
 
   // ── Deep links (storage onboarding) ──────────────────────────
@@ -304,6 +473,21 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           ],
         ),
       ),
+      floatingActionButton: _currentIndex == 2
+          ? FloatingActionButton.extended(
+              onPressed: _openRequestDialog,
+              backgroundColor: KeepiColors.skyBlue,
+              icon: const Icon(Icons.add_rounded, color: Colors.white),
+              label: const Text(
+                'PEDIR CITA',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            )
+          : null,
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
         onTap: (i) {
@@ -578,23 +762,37 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   // ── Cards ────────────────────────────────────────────────────
   Widget _buildAppointmentCard(AppointmentDto a) {
-    final start = a.currentStartAt.toLocal();
-    final end = a.currentEndAt.toLocal();
-    final timeLabel =
-        '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}';
+    final start = a.appointmentDate?.toLocal() ?? DateTime.now();
+    final end = a.endDate?.toLocal() ?? start.add(const Duration(minutes: 30));
+    final timeLabel = a.appointmentDate != null 
+        ? '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}'
+        : 'Pendiente de fecha';
+
+    // Traducciones bonitas de los estados
+    String statusDisplay = a.status.toUpperCase();
+    if (a.status == 'pending_doctor_proposal') statusDisplay = 'ESPERANDO FECHA';
+    if (a.status == 'pending_patient_approval') statusDisplay = 'POR CONFIRMAR';
+    if (a.status == 'scheduled') statusDisplay = 'CONFIRMADA';
+    if (a.status == 'canceled') statusDisplay = 'CANCELADA';
+
+    // Verificamos si esta cita necesita que el paciente responda
+    final bool needsResponse = (a.status == 'pending_patient_approval');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: _DossierCard(
-        day: start.day,
-        monthAbbr: _monthsEsUpper[start.month - 1],
+        day: a.appointmentDate != null ? start.day : 0,
+        monthAbbr: a.appointmentDate != null ? _monthsEsUpper[start.month - 1] : '—',
         tagLabel: 'CITA',
-        statusLabel: a.status.toUpperCase(),
-        tagColor: KeepiColors.skyBlue,
+        statusLabel: statusDisplay,
+        tagColor: needsResponse ? KeepiColors.orange : KeepiColors.skyBlue, 
         metaLine: timeLabel,
         title: 'Consulta médica',
         detail: a.reason.isEmpty ? 'Consulta' : a.reason,
         icon: Icons.event_available_outlined,
+        // Agregamos el botón si necesita respuesta
+        actionLabel: needsResponse ? 'Responder Propuesta' : null,
+        onAction: needsResponse ? () => _openResponseDialog(a) : null,
       ),
     );
   }
@@ -1613,17 +1811,17 @@ class _NextAppointmentCard extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback onRequestChange;
 
-  bool get _needsConfirm => appointment.status == 'pending_patient_confirmation';
+  bool get _needsConfirm => appointment.status == 'pending_patient_approval';
 
   String _statusLabel() {
     switch (appointment.status) {
-      case 'pending_patient_confirmation':
+      case 'pending_patient_approval':
         return 'POR CONFIRMAR';
-      case 'confirmed':
+      case 'scheduled':
         return 'CONFIRMADA';
-      case 'reschedule_requested':
-        return 'CAMBIO SOLICITADO';
-      case 'cancelled':
+      case 'pending_doctor_proposal':
+        return 'ESPERANDO FECHA';
+      case 'canceled':
         return 'CANCELADA';
       default:
         return appointment.status.toUpperCase();
@@ -1642,10 +1840,11 @@ class _NextAppointmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final start = appointment.currentStartAt.toLocal();
-    final end = appointment.currentEndAt.toLocal();
-    final timeLabel =
-        '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}';
+    final start = appointment.appointmentDate?.toLocal() ?? DateTime.now();
+    final end = appointment.endDate?.toLocal() ?? start.add(const Duration(minutes: 30));
+    final timeLabel = appointment.appointmentDate != null 
+        ? '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}'
+        : 'Pendiente de fecha';
 
     return Container(
         decoration: BoxDecoration(
@@ -1671,7 +1870,7 @@ class _NextAppointmentCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _two(start.day),
+                        appointment.appointmentDate != null ? _two(start.day) : '—',
                         style: const TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.w800,
@@ -1683,7 +1882,7 @@ class _NextAppointmentCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _monthsEsUpper[start.month - 1],
+                        appointment.appointmentDate != null ? _monthsEsUpper[start.month - 1] : '',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -1693,7 +1892,7 @@ class _NextAppointmentCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _weekdaysEsUpper[start.weekday - 1],
+                        appointment.appointmentDate != null ? _weekdaysEsUpper[start.weekday - 1] : '',
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
@@ -1766,7 +1965,7 @@ class _NextAppointmentCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        _relativeLabel(start),
+                        appointment.appointmentDate != null ? _relativeLabel(start) : 'Sin fecha',
                         style: const TextStyle(
                           fontSize: 17.5,
                           fontWeight: FontWeight.w800,
@@ -1848,10 +2047,10 @@ class _NextAppointmentCard extends StatelessWidget {
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.edit_calendar_outlined, color: KeepiColors.slate, size: 16),
+                            Icon(Icons.close_rounded, color: KeepiColors.slate, size: 16),
                             SizedBox(width: 8),
                             Text(
-                              'NO PUEDO',
+                              'RECHAZAR',
                               style: TextStyle(
                                 color: KeepiColors.slate,
                                 fontSize: 12,
