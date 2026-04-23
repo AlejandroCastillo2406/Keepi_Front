@@ -60,16 +60,17 @@ class ApiEndpoints {
   static String get pushRegister => _path('/push/register');
   static String get notifications => _path('/notifications/');
 
+  // --- NUEVAS RUTAS DE CITAS (Sincronizadas con el nuevo Backend) ---
+  
   static String get appointmentsDoctorCreate => _path('/appointments/doctor');
   static String get appointmentsDoctorCalendar => _path('/appointments/doctor/calendar');
   static String get appointmentsMine => _path('/appointments/mine');
+  
   static String appointmentById(String appointmentId) => _path('/appointments/$appointmentId');
-  static String appointmentPatientConfirm(String appointmentId) =>
-      _path('/appointments/$appointmentId/patient/confirm');
-  static String appointmentPatientRequestChange(String appointmentId) =>
-      _path('/appointments/$appointmentId/patient/request-change');
-  static String appointmentDoctorAccept(String appointmentId) =>
-      _path('/appointments/$appointmentId/doctor/accept');
-  static String appointmentDoctorCounterPropose(String appointmentId) =>
-      _path('/appointments/$appointmentId/doctor/counter-propose');
+  static String appointmentDoctorPropose(String id) => _path('/appointments/$id/doctor/propose');
+  
+  // Flujo del paciente
+  static String get appointmentsPatientRequest => _path('/patient/appointments/request');
+  static String appointmentPatientRespond(String appointmentId) => 
+      _path('/patient/appointments/$appointmentId/respond');
 }
