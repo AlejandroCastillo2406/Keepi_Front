@@ -5,10 +5,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
+import '../../core/roles.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/config_service.dart' as config_dto;
 import '../../services/subscription_service.dart';
+import '../doctor/questionnaire/questionnaire_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -270,6 +273,32 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       ),
                     ),
                     const SizedBox(height: 16),
+                  ],
+                  if (context.watch<AuthProvider>().roleName == AppRole.doctor) ...[
+                    Text(
+                      'Consultas',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: KeepiColors.slate,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _StorageTile(
+                      icon: Icons.fact_check_outlined,
+                      title: 'Cuestionarios de salud',
+                      subtitle:
+                          'Preguntas base, personalizadas y plantillas por especialidad.',
+                      isCurrent: false,
+                      isDisabled: false,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const QuestionnaireSettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
                   ],
                   Text(
                     'Almacenamiento',

@@ -250,7 +250,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     if (done == true && mounted) {
       await _loadPendingAnalysisRequests();
       await _loadCareTimeline();
-    }
+  }
   }
 
   // ── Deep links (storage onboarding) ──────────────────────────
@@ -466,8 +466,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       );
     }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         _SectionDivider(tag: 'LISTADO', count: _recetas.length),
         const SizedBox(height: 14),
         for (final p in _recetas)
@@ -706,9 +706,9 @@ class _HomeHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           Row(
             children: [
               Container(width: 22, height: 2, color: KeepiColors.slate),
@@ -780,14 +780,14 @@ class _ConsultasHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Row(
             children: [
               Container(width: 22, height: 2, color: KeepiColors.slate),
               const SizedBox(width: 8),
-              const Text(
+            const Text(
                 'AGENDA Y ESTUDIOS',
                 style: TextStyle(
                   fontSize: 10.5,
@@ -808,9 +808,9 @@ class _ConsultasHero extends StatelessWidget {
               height: 1.1,
               letterSpacing: -0.7,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
+            ),
+            const SizedBox(height: 8),
+            const Text(
             'Citas médicas y los estudios que tu doctor te ha solicitado.',
             style: TextStyle(fontSize: 13.5, color: KeepiColors.slateLight, height: 1.4),
           ),
@@ -843,7 +843,7 @@ class _RecetasHero extends StatelessWidget {
             children: [
               Container(width: 22, height: 2, color: KeepiColors.slate),
               const SizedBox(width: 8),
-              const Text(
+            const Text(
                 'FARMACOLOGÍA',
                 style: TextStyle(
                   fontSize: 10.5,
@@ -855,7 +855,7 @@ class _RecetasHero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          const Text(
+            const Text(
             'Tus recetas.',
             style: TextStyle(
               fontSize: 26,
@@ -921,16 +921,16 @@ class _PrescriptionCard extends StatelessWidget {
     final file = (data.sourceFileName ?? '').trim();
 
     return Container(
-      decoration: BoxDecoration(
+                decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(16),
         border: Border.all(color: KeepiColors.cardBorder),
-      ),
+                ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        child: Column(
+                child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+                  children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1135,7 +1135,7 @@ class _PrescriptionCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 6, right: 10),
-            child: Container(
+      child: Container(
               width: 5,
               height: 5,
               decoration: const BoxDecoration(
@@ -1272,7 +1272,7 @@ class _StatCell extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+              children: [
           Text(
             _two(item.value),
             style: TextStyle(
@@ -1329,7 +1329,7 @@ class _SectionDivider extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Container(
+                Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
           decoration: BoxDecoration(
             color: KeepiColors.slateSoft,
@@ -1347,7 +1347,7 @@ class _SectionDivider extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Expanded(
+                Expanded(
           child: Container(height: 1, color: KeepiColors.slate.withValues(alpha: 0.12)),
         ),
       ],
@@ -1396,9 +1396,9 @@ class _DossierCard extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1475,10 +1475,10 @@ class _DossierCard extends StatelessWidget {
                                 letterSpacing: 1.2,
                                 color: KeepiColors.slateLight,
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
+                  ),
+                ),
+              ],
+            ),
                       const SizedBox(height: 6),
                       Container(
                         height: 2,
@@ -1489,7 +1489,7 @@ class _DossierCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+            Text(
                         title,
                         style: const TextStyle(
                           fontSize: 15.5,
@@ -1572,7 +1572,7 @@ class _DossierAction extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        width: double.infinity,
+              width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
         decoration: BoxDecoration(
           color: KeepiColors.slate,
@@ -1648,8 +1648,8 @@ class _NextAppointmentCard extends StatelessWidget {
         '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}';
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+        decoration: BoxDecoration(
+          color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _needsConfirm
@@ -1706,12 +1706,12 @@ class _NextAppointmentCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
                             width: 5,
                             height: 5,
                             decoration: const BoxDecoration(
@@ -1909,13 +1909,13 @@ class _PendingCompactCard extends StatelessWidget {
                 border: Border.all(color: KeepiColors.orange, width: 1.6),
               ),
               child: const Icon(Icons.biotech_outlined, size: 17, color: KeepiColors.orange),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
                     'ANÁLISIS · POR SUBIR',
                     style: TextStyle(
                       fontSize: 10,
@@ -1937,9 +1937,9 @@ class _PendingCompactCard extends StatelessWidget {
                       letterSpacing: -0.15,
                     ),
                   ),
-                ],
-              ),
-            ),
+                    ],
+                  ),
+                ),
             const SizedBox(width: 10),
             const Icon(Icons.arrow_forward_rounded, color: KeepiColors.slate, size: 18),
           ],
@@ -2369,9 +2369,9 @@ class _NavItem extends StatelessWidget {
       radius: 48,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
             Icon(data.icon, size: 22, color: color),
             const SizedBox(height: 4),
             Text(
@@ -2384,15 +2384,15 @@ class _NavItem extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 5),
-            Container(
+          Container(
               width: active ? 18 : 0,
               height: 2,
-              decoration: BoxDecoration(
+            decoration: BoxDecoration(
                 color: KeepiColors.orange,
                 borderRadius: BorderRadius.circular(2),
-              ),
             ),
-          ],
+          ),
+        ],
         ),
       ),
     );

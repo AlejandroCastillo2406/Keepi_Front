@@ -72,4 +72,23 @@ class ApiEndpoints {
       _path('/appointments/$appointmentId/doctor/accept');
   static String appointmentDoctorCounterPropose(String appointmentId) =>
       _path('/appointments/$appointmentId/doctor/counter-propose');
+
+  // ──────── Cuestionarios de salud (solo doctor) ────────
+  static String get questionnaireSpecialties => _path('/questionnaire/specialties');
+  static String questionnaireSpecialtyQuestions(String specialtyId, {String status = 'all'}) =>
+      '${_path('/questionnaire/specialties/$specialtyId/questions')}?status=$status';
+  static String questionnaireGlobals({String status = 'all'}) =>
+      '${_path('/questionnaire/questions/globals')}?status=$status';
+  static String get questionnaireQuestions => _path('/questionnaire/questions');
+  static String questionnaireQuestionById(String questionId) =>
+      _path('/questionnaire/questions/$questionId');
+  static String questionnaireQuestionToggle(String questionId) =>
+      _path('/questionnaire/questions/$questionId/toggle');
+  static String questionnaireQuestionOverrides(String questionId) =>
+      _path('/questionnaire/questions/$questionId/overrides');
+  static String get questionnaireTemplates => _path('/questionnaire/templates');
+  static String questionnaireTemplateById(String templateId) =>
+      _path('/questionnaire/templates/$templateId');
+  static String questionnaireTemplateQuestions(String templateId) =>
+      _path('/questionnaire/templates/$templateId/questions');
 }
