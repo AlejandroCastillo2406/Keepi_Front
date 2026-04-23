@@ -337,7 +337,7 @@ class _QuestionEditorScreenState extends State<QuestionEditorScreen> {
             const SizedBox(height: 8),
             _SwitchCard(
               title: 'Mostrar en historial',
-              subtitle: 'La respuesta aparecerá en el expediente del paciente.',
+              subtitle: 'La respuesta aparecerá en el historial del paciente.',
               value: _showInHistory,
               onChanged: (v) => setState(() => _showInHistory = v),
             ),

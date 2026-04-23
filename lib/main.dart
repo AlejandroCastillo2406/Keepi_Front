@@ -12,7 +12,6 @@ import 'services/push_notification_service.dart';
 import 'core/roles.dart';
 import 'screens/auth/auth.dart';
 import 'screens/doctor/doctor.dart';
-import 'screens/patient/patient.dart';
 import 'screens/user/user.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -98,12 +97,69 @@ class _AuthWrapperState extends State<_AuthWrapper> {
       if (role == AppRole.doctor) {
         return const DoctorHomeScreen();
       }
+      // Vista de paciente temporalmente deshabilitada por negocio.
+      // Para reactivarla, restaurar PatientHomeScreen aquí.
       if (role == AppRole.patient) {
-        return const PatientHomeScreen();
+        return const _PatientViewDisabledScreen();
       }
       return const HomeScreen();
     }
     return const LoginScreen();
+  }
+}
+
+class _PatientViewDisabledScreen extends StatelessWidget {
+  const _PatientViewDisabledScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: DecorativeBackground(
+        blobOpacity: 0.2,
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: KeepiColors.orangeSoft,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.visibility_off_rounded,
+                      size: 38,
+                      color: KeepiColors.orange,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Vista de paciente deshabilitada',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: KeepiColors.slate,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Temporalmente esta sección no está disponible.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: KeepiColors.slateLight,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

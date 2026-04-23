@@ -301,3 +301,59 @@ enum QuestionStatusFilter {
     }
   }
 }
+
+class InvitationSummary {
+  InvitationSummary({
+    required this.id,
+    required this.patientId,
+    required this.patientName,
+    required this.patientEmail,
+    required this.status,
+    required this.expiresAt,
+    required this.totalQuestions,
+    this.completedAt,
+  });
+
+  final String id;
+  final String patientId;
+  final String patientName;
+  final String patientEmail;
+  final String status;
+  final DateTime expiresAt;
+  final DateTime? completedAt;
+  final int totalQuestions;
+
+  factory InvitationSummary.fromJson(Map<String, dynamic> j) => InvitationSummary(
+        id: j['id'] as String? ?? '',
+        patientId: j['patient_id'] as String? ?? '',
+        patientName: j['patient_name'] as String? ?? '',
+        patientEmail: j['patient_email'] as String? ?? '',
+        status: j['status'] as String? ?? 'pending',
+        expiresAt: DateTime.tryParse(j['expires_at']?.toString() ?? '') ?? DateTime.now(),
+        completedAt: DateTime.tryParse(j['completed_at']?.toString() ?? ''),
+        totalQuestions: (j['total_questions'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class InvitationSendResult {
+  InvitationSendResult({
+    required this.invitation,
+    required this.publicLink,
+    this.emailSent = false,
+    this.emailError,
+  });
+
+  final InvitationSummary invitation;
+  final String publicLink;
+  final bool emailSent;
+  final String? emailError;
+
+  factory InvitationSendResult.fromJson(Map<String, dynamic> j) => InvitationSendResult(
+        invitation: InvitationSummary.fromJson(
+          Map<String, dynamic>.from((j['invitation'] as Map?) ?? const {}),
+        ),
+        publicLink: j['public_link'] as String? ?? '',
+        emailSent: j['email_sent'] as bool? ?? false,
+        emailError: j['email_error'] as String?,
+      );
+}

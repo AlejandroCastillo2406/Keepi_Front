@@ -651,7 +651,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     }
     return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+            children: [
         _SectionDivider(tag: 'LISTADO', count: _recetas.length),
         const SizedBox(height: 14),
         for (final p in _recetas)
@@ -904,14 +904,14 @@ class _HomeHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
             children: [
               Container(width: 22, height: 2, color: KeepiColors.slate),
               const SizedBox(width: 8),
-              Text(
+          Text(
                 _todayStamp(),
                 style: const TextStyle(
                   fontSize: 10.5,
@@ -943,11 +943,11 @@ class _HomeHero extends StatelessWidget {
                   style: TextStyle(color: KeepiColors.slate),
                 ),
               ],
-            ),
+                ),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Un resumen intencionalmente breve de tu expediente.',
+            'Un resumen intencionalmente breve de tu perfil.',
             style: TextStyle(
               fontSize: 13.5,
               color: KeepiColors.slateLight,
@@ -1119,7 +1119,7 @@ class _PrescriptionCard extends StatelessWidget {
     final file = (data.sourceFileName ?? '').trim();
 
     return Container(
-                decoration: BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
         border: Border.all(color: KeepiColors.cardBorder),
@@ -1131,8 +1131,8 @@ class _PrescriptionCard extends StatelessWidget {
                   children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
+        children: [
+          Container(
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
@@ -1143,10 +1143,10 @@ class _PrescriptionCard extends StatelessWidget {
                   child: const Icon(Icons.medication_outlined, size: 19, color: Color(0xFF7C3AED)),
                 ),
                 const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                       Row(
                         children: [
                           Container(
@@ -1343,9 +1343,9 @@ class _PrescriptionCard extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
                 Text(
                   i.medication.isEmpty ? 'Medicamento sin nombre' : i.medication,
                   style: const TextStyle(
@@ -1527,9 +1527,9 @@ class _SectionDivider extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-                Container(
+              Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-          decoration: BoxDecoration(
+                decoration: BoxDecoration(
             color: KeepiColors.slateSoft,
             borderRadius: BorderRadius.circular(999),
           ),
@@ -1589,14 +1589,14 @@ class _DossierCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(16),
         border: Border.all(color: KeepiColors.cardBorder),
-      ),
+                ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                  child: Column(
+                child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                  children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1626,9 +1626,9 @@ class _DossierCard extends StatelessWidget {
                           color: KeepiColors.slateLight,
                           letterSpacing: 1.8,
                         ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
                 ),
                 const SizedBox(width: 14),
                 // Body
@@ -1770,7 +1770,7 @@ class _DossierAction extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-              width: double.infinity,
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
         decoration: BoxDecoration(
           color: KeepiColors.slate,
@@ -1782,7 +1782,7 @@ class _DossierAction extends StatelessWidget {
             Text(
               label.toUpperCase(),
               style: const TextStyle(
-                color: Colors.white,
+          color: Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.4,
@@ -1905,9 +1905,9 @@ class _NextAppointmentCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
             Row(
               children: [
                 Container(
@@ -1919,7 +1919,7 @@ class _NextAppointmentCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 7),
-                          const Text(
+                      const Text(
                             'CITA',
                             style: TextStyle(
                               fontSize: 10.5,
@@ -2018,7 +2018,7 @@ class _NextAppointmentCard extends StatelessWidget {
                           children: [
                             Icon(Icons.check_rounded, color: Colors.white, size: 17),
                             SizedBox(width: 8),
-                            Text(
+            Text(
                               'CONFIRMAR',
                               style: TextStyle(
                                 color: Colors.white,
@@ -2098,8 +2098,8 @@ class _PendingCompactCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
+              children: [
+                Container(
               width: 34,
               height: 34,
               decoration: BoxDecoration(

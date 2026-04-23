@@ -47,6 +47,10 @@ class AppNotificationDto {
   String get reminderQuestion =>
       payload['question']?.toString() ?? message;
   String? get appointmentId => payload['appointment_id']?.toString();
+  String? get questionnaireInvitationId => payload['invitation_id']?.toString();
+  bool get isQuestionnaireCompleted =>
+      payload['type']?.toString() == 'questionnaire_completed' ||
+      type == 'questionnaire_completed';
   String? get appointmentAction => payload['action']?.toString();
   DateTime? get proposedStartAt {
     final raw = payload['proposed_start_at']?.toString();

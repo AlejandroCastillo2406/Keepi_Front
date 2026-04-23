@@ -1,5 +1,4 @@
-import 'dart:ui' show FontFeature;
-
+﻿
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -57,7 +56,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ── Acciones de recordatorio de receta ────────────────────────
+  // â”€â”€ Acciones de recordatorio de receta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _openReminderPrompt(AppNotificationDto n) async {
     final prescriptionId = n.prescriptionId;
     if (prescriptionId == null || prescriptionId.isEmpty) return;
@@ -72,7 +71,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF7C3AED)),
             onPressed: () => Navigator.of(context).pop(true), 
-            child: const Text('Sí', style: TextStyle(fontWeight: FontWeight.bold))
+            child: const Text('SÃ­', style: TextStyle(fontWeight: FontWeight.bold))
           ),
         ],
       ),
@@ -97,7 +96,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ── Acciones de citas (FLUJO NUEVO) ───────────────────────────
+  // â”€â”€ Acciones de citas (FLUJO NUEVO) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _openAppointmentPrompt(AppNotificationDto n) async {
     final appointmentId = n.appointmentId; 
     if (appointmentId == null || appointmentId.isEmpty) return;
@@ -107,7 +106,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final appointmentSvc = Provider.of<AppointmentService>(context, listen: false);
 
     if (isDoctor) {
-      // --- FLUJO DEL DOCTOR (Asignar Fecha desde la Notificación) ---
+      // --- FLUJO DEL DOCTOR (Asignar Fecha desde la NotificaciÃ³n) ---
       final bool? confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -118,9 +117,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               Text('Solicitud de Cita', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
-          content: Text('${n.message}\n\n¿Deseas asignar una fecha ahora?'),
+          content: Text('${n.message}\n\nÂ¿Deseas asignar una fecha ahora?'),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Después', style: TextStyle(color: KeepiColors.slateLight))),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('DespuÃ©s', style: TextStyle(color: KeepiColors.slateLight))),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
               onPressed: () => Navigator.of(ctx).pop(true), 
@@ -164,7 +163,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
       }
     } else {
-      // --- FLUJO DEL PACIENTE (Aceptar / Rechazar desde la Notificación) ---
+      // --- FLUJO DEL PACIENTE (Aceptar / Rechazar desde la NotificaciÃ³n) ---
       final String? action = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -248,7 +247,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  // ── Build ─────────────────────────────────────────────────────
+  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Widget build(BuildContext context) {
     final unread = _items.where((n) => !n.read).length;
@@ -282,7 +281,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (_items.isEmpty) {
       return const _NotifEmptyCard(
         tag: 'NOTIFICACIONES',
-        title: 'Todo al día',
+        title: 'Todo al dÃ­a',
         message: 'No tienes avisos pendientes.',
         icon: Icons.mark_email_read_outlined,
       );
@@ -298,6 +297,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             child: _NotifCard(
               data: n,
               onTap: () {
+                if (n.isQuestionnaireCompleted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Cuestionario completado por el paciente.')),
+                  );
+                  return;
+                }
                 if (n.appointmentId != null) {
                   _openAppointmentPrompt(n);
                   return;
@@ -311,9 +316,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //   TOP BAR
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _NotifTopBar extends StatelessWidget {
   const _NotifTopBar({required this.onBack});
@@ -367,9 +372,9 @@ class _IconPill extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //   HERO
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _NotifHero extends StatelessWidget {
   const _NotifHero({required this.total, required this.unread});
@@ -504,9 +509,9 @@ class _NotifStatCell extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //   DIVIDER
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _NotifSectionDivider extends StatelessWidget {
   const _NotifSectionDivider({required this.tag, required this.count});
@@ -555,9 +560,9 @@ class _NotifSectionDivider extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //   CARD
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _NotifCard extends StatelessWidget {
   const _NotifCard({required this.data, required this.onTap});
@@ -565,6 +570,14 @@ class _NotifCard extends StatelessWidget {
   final VoidCallback onTap;
 
   ({String tag, Color color, IconData icon, String actionHint}) _meta() {
+    if (data.isQuestionnaireCompleted) {
+      return (
+        tag: 'CUESTIONARIO',
+        color: KeepiColors.orange,
+        icon: Icons.assignment_turned_in_outlined,
+        actionHint: 'Completado por paciente',
+      );
+    }
     if (data.appointmentId != null) {
       return (
         tag: 'CITA',
@@ -594,14 +607,14 @@ class _NotifCard extends StatelessWidget {
     if (raw == null || raw.isEmpty) return '';
     final dt = DateTime.tryParse(raw)?.toLocal();
     if (dt == null) return '';
-    return '${_two(dt.day)} ${_monthsEsUpper[dt.month - 1]} · ${_two(dt.hour)}:${_two(dt.minute)}';
+    return '${_two(dt.day)} ${_monthsEsUpper[dt.month - 1]} Â· ${_two(dt.hour)}:${_two(dt.minute)}';
   }
 
   @override
   Widget build(BuildContext context) {
     final m = _meta();
     final stateColor = data.read ? KeepiColors.slateLight : KeepiColors.orange;
-    final stateLabel = data.read ? 'LEÍDA' : 'NUEVA';
+    final stateLabel = data.read ? 'LEÃDA' : 'NUEVA';
 
     return InkWell(
       onTap: onTap,
@@ -766,9 +779,9 @@ class _NotifCard extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //   STATE WIDGETS
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _NotifLoadingBox extends StatelessWidget {
   const _NotifLoadingBox();

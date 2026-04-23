@@ -19,7 +19,6 @@ import '../common/storage_choice_flow.dart';
 import 'doctor_calendar_tab.dart'; 
 import 'documentos_screen.dart';
 import 'doctor_assign_prescription_screen.dart';
-import 'doctor_patient_medical_record_screen.dart';
 import '../common/notifications_screen.dart';
 import 'doctor_patient_timeline_screen.dart';
 
@@ -188,30 +187,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
-  // 2. VER EXPEDIENTE MÉDICO
-  Future<void> _openMedicalRecord(PatientListItem patient) async {
-    final svc = DoctorService(context.read<ApiClient>());
-    try {
-      final record = await svc.fetchPatientMedicalRecord(patient.id);
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => DoctorPatientMedicalRecordScreen( 
-            patientName: patient.name,
-            patientId: patient.id,
-            record: record,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(DoctorService.messageFromDio(e))),
-      );
-    }
-  }
-
-  // 3. ASIGNAR RECETA
+  // 2. ASIGNAR RECETA
   Future<void> _openAssignPrescription(PatientListItem patient) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -223,7 +199,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
-  // 4. VER HISTORIAL DEL PACIENTE
+  // 3. VER HISTORIAL DEL PACIENTE
       Future _openTimeline(PatientListItem patient) async {
         await Navigator.of(context).push(
           MaterialPageRoute(
@@ -404,7 +380,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) => _PatientTile(
             patient: _patients[index],
-            onViewMedicalRecord: () => _openMedicalRecord(_patients[index]),
             onAssignAppointment: () => _handleScheduleAppointment(_patients[index]),
             onAssignPrescription: () => _openAssignPrescription(_patients[index]),
             onRequestAnalysis: () => _openRequestAnalysis(_patients[index]),
@@ -455,7 +430,6 @@ class _LogoIcon extends StatelessWidget {
 
 class _PatientTile extends StatelessWidget {
   final PatientListItem patient;
-  final VoidCallback onViewMedicalRecord;
   final VoidCallback onAssignAppointment;
   final VoidCallback onAssignPrescription;
   final VoidCallback onRequestAnalysis;
@@ -463,7 +437,6 @@ class _PatientTile extends StatelessWidget {
 
   const _PatientTile({
     required this.patient,
-    required this.onViewMedicalRecord,
     required this.onAssignAppointment,
     required this.onAssignPrescription,
     required this.onRequestAnalysis,
@@ -485,14 +458,12 @@ class _PatientTile extends StatelessWidget {
             trailing: PopupMenuButton(
               icon: const Icon(Icons.more_vert_rounded, color: KeepiColors.slateLight),
               onSelected: (value) {
-                if (value == 'medical_record') onViewMedicalRecord();
                 if (value == 'assign_appointment') onAssignAppointment();
                 if (value == 'assign_prescription') onAssignPrescription();
                 if (value == 'request_analysis') onRequestAnalysis();
                 if (value == 'view_timeline') onViewTimeline(); // 3. Ejecutamos la función
               },
               itemBuilder: (context) => const [
-                PopupMenuItem(value: 'medical_record', child: Text('Ver expediente médico')),
                 PopupMenuItem(value: 'assign_appointment', child: Text('Asignar cita')),
                 PopupMenuItem(value: 'assign_prescription', child: Text('Asignar receta')),
                 PopupMenuItem(value: 'request_analysis', child: Text('Solicitar análisis')),

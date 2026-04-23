@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import '../core/api_endpoints.dart';
 import '../models/timeline_event.dart';
 import 'api_client.dart';
-import 'patient_medical_record_service.dart';
 import 'appointment_service.dart';
 
 /// Llamadas a `/api/v1/doctors/patients` y `/api/v1/analysis-requests`.
@@ -15,14 +14,12 @@ class DoctorService {
   Future<CreatePatientResult> createPatient({
     required String email,
     required String name,
-    required Map<String, dynamic> medicalRecord,
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.doctorsPatients,
       data: {
         'email': email.trim(),
         'name': name.trim(),
-        'medical_record': medicalRecord,
       },
     );
     final d = res.data!;
@@ -141,13 +138,6 @@ class DoctorService {
       status: d.status,
       message: 'Cita registrada',
     );
-  }
-
-  Future<MedicalRecordDto> fetchPatientMedicalRecord(String patientId) async {
-    final res = await _api.dio.get<Map<String, dynamic>>(
-      ApiEndpoints.doctorsPatientMedicalRecord(patientId),
-    );
-    return MedicalRecordDto.fromJson(res.data!);
   }
 
   // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---

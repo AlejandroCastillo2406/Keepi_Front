@@ -16,9 +16,6 @@ class ApiEndpoints {
   static String get authMe => _path(Config.pathAuthMe);
   static String get authChangePassword => _path(Config.pathAuthChangePassword);
   static String get doctorsPatients => _path(Config.pathDoctorsPatients);
-  static String get meMedicalRecord => _path(Config.pathMeMedicalRecord);
-  static String doctorsPatientMedicalRecord(String patientId) =>
-      _path('${Config.pathDoctorsPatients}/$patientId/medical-record');
   static String get authGoogleMobileAuthorize => _path(Config.pathAuthGoogleMobileAuthorize);
   static String get authGoogleCallback => _path(Config.pathAuthGoogleCallback);
 
@@ -92,4 +89,11 @@ class ApiEndpoints {
       _path('/questionnaire/templates/$templateId');
   static String questionnaireTemplateQuestions(String templateId) =>
       _path('/questionnaire/templates/$templateId/questions');
+  static String get questionnaireInvitations => _path('/questionnaire/invitations');
+  static String questionnaireInvitationById(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId');
+  static String questionnairePublicByToken(String token) =>
+      _path('/questionnaire/public/$token');
+  static String questionnairePublicSubmitByToken(String token) =>
+      _path('/questionnaire/public/$token/submit');
 }

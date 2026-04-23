@@ -191,6 +191,31 @@ class QuestionnaireService {
     return TemplateDetail.fromJson(res.data!);
   }
 
+  Future<InvitationSendResult> sendInvitationBatch({
+    required String patientId,
+    List<String> templateIds = const [],
+    List<String> questionIds = const [],
+    int expiresInHours = 72,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.questionnaireInvitations,
+      data: {
+        'patient_id': patientId,
+        'template_ids': templateIds,
+        'question_ids': questionIds,
+        'expires_in_hours': expiresInHours,
+      },
+    );
+    return InvitationSendResult.fromJson(res.data!);
+  }
+
+  Future<InvitationSummary> getInvitationStatus(String invitationId) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.questionnaireInvitationById(invitationId),
+    );
+    return InvitationSummary.fromJson(res.data!);
+  }
+
   List<Question> _parseQuestions(dynamic data) {
     if (data is! List) return const [];
     return data
