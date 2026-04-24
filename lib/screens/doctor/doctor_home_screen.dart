@@ -381,6 +381,128 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
+  Future<void> _openPatientProfileDialog(PatientListItem p) async {
+    final initial = p.name.isEmpty ? '?' : p.name[0].toUpperCase();
+    
+    await showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 1. Cabecera con Avatar
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: KeepiColors.skyBlueSoft,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: KeepiColors.skyBlue, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: KeepiColors.skyBlue,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 24,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // 2. Datos del paciente
+              Text(
+                p.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: KeepiColors.slate,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                p.email,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  color: KeepiColors.slateLight,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // 3. Sección de Cuestionarios
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'RESPUESTAS DE CUESTIONARIOS',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.8,
+                    color: KeepiColors.slate,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: KeepiColors.surfaceBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: KeepiColors.cardBorder),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.quiz_outlined, color: KeepiColors.slateLight),
+                    SizedBox(height: 8),
+                    Text(
+                      'Aquí conectaremos tu API para mostrar las respuestas de este paciente.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: KeepiColors.slateLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+              // 4. Botón de cerrar
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: KeepiColors.slateSoft,
+                    foregroundColor: KeepiColors.slate,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text(
+                    'CERRAR',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Build ───────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -570,13 +692,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   )
                 else
                   for (final p in list)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _PatientTile(
-                        patient: p,
-                        onTap: () => _openPatientActions(p),
-                      ),
-                    ),
+              Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _PatientTile(
+              patient: p,
+              // AQUÍ ESTÁN LOS CAMBIOS:
+              onProfileTap: () => _openPatientProfileDialog(p), 
+              onArrowTap: () => _openPatientActions(p),
+    ),
+  ),
               ]),
             ),
           ),
@@ -1101,131 +1225,159 @@ class _SectionDivider extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────
 
 class _PatientTile extends StatelessWidget {
-  const _PatientTile({required this.patient, required this.onTap});
+  const _PatientTile({
+    required this.patient, 
+    required this.onProfileTap, 
+    required this.onArrowTap,
+  });
 
   final PatientListItem patient;
-  final VoidCallback onTap;
+  final VoidCallback onProfileTap;
+  final VoidCallback onArrowTap;
 
   @override
   Widget build(BuildContext context) {
     final initial = patient.name.isEmpty ? '?' : patient.name[0].toUpperCase();
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: KeepiColors.cardBorder),
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      // Usamos Material transparente para que los InkWell hijos muestren el efecto ripple
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: KeepiColors.skyBlueSoft,
-                shape: BoxShape.circle,
-                border: Border.all(color: KeepiColors.skyBlue, width: 1.6),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                initial,
-                style: const TextStyle(
-                  color: KeepiColors.skyBlue,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
+            // ÁREA 1: Todo el perfil del paciente (abre la ventanita)
+            Expanded(
+              child: InkWell(
+                onTap: onProfileTap,
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: KeepiColors.skyBlueSoft,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: KeepiColors.skyBlue, width: 1.6),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          initial,
+                          style: const TextStyle(
+                            color: KeepiColors.skyBlue,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  decoration: const BoxDecoration(
+                                    color: KeepiColors.skyBlue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 7),
+                                const Text(
+                                  'PACIENTE',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.4,
+                                    color: KeepiColors.skyBlue,
+                                  ),
+                                ),
+                                if (patient.mustChangePassword) ...[
+                                  // ... (manteniendo tu lógica de primer acceso)
+                                  const SizedBox(width: 7),
+                                  Container(
+                                    width: 2,
+                                    height: 2,
+                                    decoration: BoxDecoration(
+                                      color: KeepiColors.slateLight.withValues(alpha: 0.6),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  const Text(
+                                    'PRIMER ACCESO',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.2,
+                                      color: KeepiColors.orange,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              patient.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w700,
+                                color: KeepiColors.slate,
+                                letterSpacing: -0.25,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              patient.email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: KeepiColors.slateLight,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 5,
-                        height: 5,
-                        decoration: const BoxDecoration(
-                          color: KeepiColors.skyBlue,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      const Text(
-                        'PACIENTE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
-                          color: KeepiColors.skyBlue,
-                        ),
-                      ),
-                      if (patient.mustChangePassword) ...[
-                        const SizedBox(width: 7),
-                        Container(
-                          width: 2,
-                          height: 2,
-                          decoration: BoxDecoration(
-                            color: KeepiColors.slateLight.withValues(alpha: 0.6),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        const Text(
-                          'PRIMER ACCESO',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
-      color: KeepiColors.orange,
-                          ),
-                        ),
-                      ],
-                    ],
+            // ÁREA 2: La flecha (Abre el menú de acciones que ya tenías)
+            InkWell(
+              onTap: onArrowTap,
+              borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 14, 14, 14),
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    color: KeepiColors.slateSoft,
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    patient.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: KeepiColors.slate,
-                      letterSpacing: -0.25,
-                    ),
+                  child: const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 17,
+                    color: KeepiColors.slate,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    patient.email,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: KeepiColors.slateLight,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 34,
-              height: 34,
-              decoration: const BoxDecoration(
-                color: KeepiColors.slateSoft,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_forward_rounded,
-                size: 17,
-                color: KeepiColors.slate,
+                ),
               ),
             ),
           ],
