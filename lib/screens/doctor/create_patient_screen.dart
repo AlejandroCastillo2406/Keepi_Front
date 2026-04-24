@@ -5,6 +5,7 @@ import '../../models/questionnaire_models.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../services/questionnaire_service.dart';
+import 'questionnaire/questionnaire_invite_picker_block.dart';
 
 class CreatePatientScreen extends StatefulWidget {
   const CreatePatientScreen({super.key, required this.api});
@@ -26,7 +27,6 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
   List<Question> _globalQuestions = [];
   final Set<String> _selectedTemplateIds = <String>{};
   final Set<String> _selectedQuestionIds = <String>{};
-  int _expiryHours = 72;
 
   @override
   void initState() {
@@ -84,7 +84,6 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
           patientId: created.id,
           templateIds: _selectedTemplateIds.toList(),
           questionIds: _selectedQuestionIds.toList(),
-          expiresInHours: _expiryHours,
         );
       }
 
@@ -179,14 +178,16 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                   },
                 ),
                 const SizedBox(height: 22),
-                _QuestionnaireBlock(
+                QuestionnaireInvitePickerBlock(
+                  title: 'Cuestionarios iniciales',
+                  description:
+                      'Selecciona plantillas y/o preguntas globales para enviar por link al paciente.',
                   loading: _loadingQuestionnaires,
                   error: _questionnaireError,
                   templates: _templates,
                   globalQuestions: _globalQuestions,
                   selectedTemplateIds: _selectedTemplateIds,
                   selectedQuestionIds: _selectedQuestionIds,
-                  expiryHours: _expiryHours,
                   onRetry: _loadQuestionnaires,
                   onToggleTemplate: (id, value) {
                     setState(() {
@@ -205,10 +206,6 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                         _selectedQuestionIds.remove(id);
                       }
                     });
-                  },
-                  onExpiryChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _expiryHours = value);
                   },
                 ),
                 const SizedBox(height: 22),
@@ -229,103 +226,6 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _QuestionnaireBlock extends StatelessWidget {
-  const _QuestionnaireBlock({
-    required this.loading,
-    required this.error,
-    required this.templates,
-    required this.globalQuestions,
-    required this.selectedTemplateIds,
-    required this.selectedQuestionIds,
-    required this.expiryHours,
-    required this.onRetry,
-    required this.onToggleTemplate,
-    required this.onToggleQuestion,
-    required this.onExpiryChanged,
-  });
-
-  final bool loading;
-  final String? error;
-  final List<TemplateSummary> templates;
-  final List<Question> globalQuestions;
-  final Set<String> selectedTemplateIds;
-  final Set<String> selectedQuestionIds;
-  final int expiryHours;
-  final VoidCallback onRetry;
-  final void Function(String id, bool value) onToggleTemplate;
-  final void Function(String id, bool value) onToggleQuestion;
-  final ValueChanged<int?> onExpiryChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: KeepiColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Cuestionarios iniciales',
-            style: TextStyle(fontWeight: FontWeight.w700, color: KeepiColors.slate),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Selecciona plantillas y/o preguntas globales para enviar por link al paciente.',
-            style: TextStyle(fontSize: 12.5, color: KeepiColors.slateLight),
-          ),
-          const SizedBox(height: 12),
-          if (loading)
-            const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
-          else if (error != null)
-            Row(
-              children: [
-                Expanded(child: Text(error!, style: const TextStyle(color: Colors.red))),
-                TextButton(onPressed: onRetry, child: const Text('Reintentar')),
-              ],
-            )
-          else ...[
-            const Text('Plantillas', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            for (final t in templates)
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(t.name),
-                subtitle: Text('${t.totalQuestions} preguntas'),
-                value: selectedTemplateIds.contains(t.id),
-                onChanged: (v) => onToggleTemplate(t.id, v ?? false),
-              ),
-            const SizedBox(height: 8),
-            const Text('Preguntas adicionales', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            for (final q in globalQuestions)
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(q.text, maxLines: 2, overflow: TextOverflow.ellipsis),
-                value: selectedQuestionIds.contains(q.id),
-                onChanged: (v) => onToggleQuestion(q.id, v ?? false),
-              ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<int>(
-              initialValue: expiryHours,
-              decoration: const InputDecoration(labelText: 'Vencimiento del link'),
-              items: const [24, 48, 72, 168]
-                  .map((h) => DropdownMenuItem<int>(value: h, child: Text('$h horas')))
-                  .toList(),
-              onChanged: onExpiryChanged,
-            ),
-          ],
-        ],
       ),
     );
   }

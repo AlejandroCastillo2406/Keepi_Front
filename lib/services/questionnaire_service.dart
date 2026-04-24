@@ -195,7 +195,6 @@ class QuestionnaireService {
     required String patientId,
     List<String> templateIds = const [],
     List<String> questionIds = const [],
-    int expiresInHours = 72,
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.questionnaireInvitations,
@@ -203,7 +202,6 @@ class QuestionnaireService {
         'patient_id': patientId,
         'template_ids': templateIds,
         'question_ids': questionIds,
-        'expires_in_hours': expiresInHours,
       },
     );
     return InvitationSendResult.fromJson(res.data!);
