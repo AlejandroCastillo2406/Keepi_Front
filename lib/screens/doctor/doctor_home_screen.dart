@@ -4,7 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import '../../services/questionnaire_service.dart';
 import '../../core/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -434,7 +434,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
               ),
               const SizedBox(height: 24),
               
-              // 3. Sección de Cuestionarios
+              // 3. Sección de Cuestionarios (DATOS REALES)
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -448,27 +448,87 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: KeepiColors.surfaceBg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: KeepiColors.cardBorder),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(Icons.quiz_outlined, color: KeepiColors.slateLight),
-                    SizedBox(height: 8),
-                    Text(
-                      'Aquí conectaremos tu API para mostrar las respuestas de este paciente.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: KeepiColors.slateLight,
-                      ),
-                    ),
-                  ],
+              
+              // Contenedor flexible para la lista
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 250), // Evita que se salga de la pantalla
+                child: FutureBuilder<List<dynamic>>(
+                  // AQUÍ LLAMAMOS A LA API REAL
+                  future: QuestionnaireService(context.read<ApiClient>()).fetchPatientResponses(p.id),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: CircularProgressIndicator(color: KeepiColors.orange),
+                        ),
+                      );
+                    }
+                    
+                    if (snapshot.hasError) {
+                      return const Text(
+                        'Error al cargar las respuestas.',
+                        style: TextStyle(color: Colors.red, fontSize: 13),
+                      );
+                    }
+
+                    final respuestas = snapshot.data ?? [];
+
+                    if (respuestas.isEmpty) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: KeepiColors.surfaceBg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: KeepiColors.cardBorder),
+                        ),
+                        child: const Text(
+                          'Este paciente aún no ha respondido cuestionarios.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: KeepiColors.slateLight),
+                        ),
+                      );
+                    }
+
+                    // Lista de respuestas
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: respuestas.length,
+                      separatorBuilder: (_, __) => const Divider(color: KeepiColors.cardBorder),
+                      itemBuilder: (context, index) {
+                        final respuesta = respuestas[index];
+                        final pregunta = respuesta['question_text'] ?? 'Pregunta';
+                        final valor = respuesta['answer_value'] ?? 'Sin respuesta';
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                pregunta,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: KeepiColors.slate,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                valor.toString(),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: KeepiColors.orange,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
               

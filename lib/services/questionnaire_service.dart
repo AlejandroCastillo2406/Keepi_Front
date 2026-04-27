@@ -214,6 +214,26 @@ class QuestionnaireService {
     return InvitationSummary.fromJson(res.data!);
   }
 
+  // ─── NUEVO: Respuestas del Paciente ───
+
+  /// Obtiene las respuestas de los cuestionarios de un paciente específico.
+  Future<List<dynamic>> fetchPatientResponses(String patientId) async {
+    try {
+      // Llamada al endpoint de FastAPI que acabamos de crear
+      final res = await _api.dio.get<dynamic>('/api/v1/questionnaire/patients/$patientId/responses');
+      
+      final data = res.data;
+      if (data is! List) return [];
+      
+      return data; 
+    } catch (e) {
+      print("Error obteniendo respuestas: $e");
+      return [];
+    }
+  }
+
+  // ────────────────────────────────────────
+
   List<Question> _parseQuestions(dynamic data) {
     if (data is! List) return const [];
     return data
