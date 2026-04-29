@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:app_links/app_links.dart';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api_endpoints.dart';
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
@@ -24,7 +27,9 @@ const Duration _kIOSTransitionDuration = Duration(milliseconds: 380);
 
 /// Formatea fecha ISO (ej. 2033-01-01T00:00:00Z) a "día mes año" en español. Ignora hora y zona.
 String formatExpiryDateForDisplay(String? isoDate) {
-  if (isoDate == null || isoDate.isEmpty) return '—';
+  if (isoDate == null || isoDate.isEmpty) {
+    return '—';
+  }
   try {
     final datePart = isoDate.split('T').first;
     final parts = datePart.split('-');
@@ -32,8 +37,27 @@ String formatExpiryDateForDisplay(String? isoDate) {
     final year = int.tryParse(parts[0]);
     final month = int.tryParse(parts[1]);
     final day = int.tryParse(parts[2]);
-    if (year == null || month == null || day == null || month < 1 || month > 12) return isoDate;
-    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    if (year == null ||
+        month == null ||
+        day == null ||
+        month < 1 ||
+        month > 12) {
+      return isoDate;
+    }
+    const months = [
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre'
+    ];
     return '$day ${months[month - 1]} $year';
   } catch (_) {
     return isoDate;
@@ -64,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<DriveFile> _rootFiles = const [];
   int? _analysisUsed;
   int? _analysisLimit;
+  DateTime? _lastDriveReconnectPromptAt;
 
   @override
   void initState() {
@@ -88,7 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onGoogleDriveCallback(Uri? uri) {
     if (uri == null) return;
     final s = uri.toString();
-    if (s.contains('oauth2redirect') && uri.queryParameters['success'] == '1' && mounted) {
+    if (s.contains('oauth2redirect') &&
+        uri.queryParameters['success'] == '1' &&
+        mounted) {
       _loadSettings();
       return;
     }
@@ -158,6 +185,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final driveService = DriveStructureService(api);
       final subscriptionService = SubscriptionService(api);
       final res = await driveService.getMobileDashboard();
+      if (res.requiresDriveAuth) {
+        await _maybePromptDriveReconnect(
+          api: api,
+          authorizationUrl: res.authorizationUrl,
+        );
+      }
       List<DriveFolder>? folders = res.folders;
       List<DriveFile> rootFiles = res.rootFiles;
       if (_config != null && _config!.isKeepiCloud) {
@@ -165,8 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final rootRes = await driveService.getKeepiCloudRoot();
           folders = rootRes.folders;
           rootFiles = rootRes.rootFiles;
-        } catch (_) {
-        }
+        } catch (_) {}
       }
       UsageStatsResponse? usage;
       try {
@@ -188,6 +220,13 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
+      final driveAuthDetail = _extractDriveAuthDetail(e);
+      if (driveAuthDetail != null) {
+        await _maybePromptDriveReconnect(
+          api: api,
+          authorizationUrl: driveAuthDetail['authorization_url'] as String?,
+        );
+      }
       if (mounted) {
         setState(() {
           _driveFolders = null;
@@ -204,16 +243,105 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Map<String, dynamic>? _extractDriveAuthDetail(Object error) {
+    if (error is! DioException) return null;
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final requiresDriveAuth = data['requires_drive_auth'] == true;
+      if (requiresDriveAuth) return data;
+      final detail = data['detail'];
+      if (detail is Map<String, dynamic> &&
+          detail['requires_drive_auth'] == true) {
+        return detail;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _maybePromptDriveReconnect({
+    required ApiClient api,
+    String? authorizationUrl,
+  }) async {
+    if (!mounted) return;
+    final now = DateTime.now();
+    if (_lastDriveReconnectPromptAt != null &&
+        now.difference(_lastDriveReconnectPromptAt!).inMinutes < 10) {
+      return;
+    }
+    _lastDriveReconnectPromptAt = now;
+
+    String? authUrl = authorizationUrl;
+    if (authUrl == null || authUrl.isEmpty) {
+      try {
+        final res = await api.dio.get<Map<String, dynamic>>(
+          ApiEndpoints.authGoogleMobileAuthorize,
+        );
+        authUrl = res.data?['authorization_url'] as String?;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
+    final shouldReconnect = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Reconectar Google Drive'),
+            content: const Text(
+              'Tu sesion de Google Drive caduco o fue revocada. '
+              'Necesitas reconectar para ver y guardar documentos.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Ahora no'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Reconectar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!shouldReconnect || !mounted || authUrl == null || authUrl.isEmpty) {
+      return;
+    }
+
+    final uri = Uri.tryParse(authUrl);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo abrir la autorizacion de Google Drive.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo abrir el navegador para reconectar Drive.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      floatingActionButton: _config != null && (_config!.isGoogleDrive || _config!.isKeepiCloud)
-          ? _IOSFAB(
-              onPressed: _onAddFileTap,
-            )
-          : null,
+      floatingActionButton:
+          _config != null && (_config!.isGoogleDrive || _config!.isKeepiCloud)
+              ? _IOSFAB(
+                  onPressed: _onAddFileTap,
+                )
+              : null,
       appBar: AppBar(
         title: Row(
           children: [
@@ -280,197 +408,214 @@ class _HomeScreenState extends State<HomeScreen> {
         blobOpacity: 0.2,
         child: SafeArea(
           child: RefreshIndicator(
-          onRefresh: _loadSettings,
-          color: KeepiColors.orange,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 100),
-            child: TweenAnimationBuilder<double>(
-              key: ValueKey('content_$_loading'),
-              tween: Tween<double>(begin: 0, end: 1),
-              duration: _kIOSTransitionDuration,
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) => Opacity(opacity: value, child: child),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: KeepiColors.cardBorder.withOpacity(0.5),
-                      width: 1,
+            onRefresh: _loadSettings,
+            color: KeepiColors.orange,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 100),
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey('content_$_loading'),
+                tween: Tween<double>(begin: 0, end: 1),
+                duration: _kIOSTransitionDuration,
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) =>
+                    Opacity(opacity: value, child: child),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: KeepiColors.cardBorder.withOpacity(0.5),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: KeepiColors.slate.withOpacity(0.06),
+                            blurRadius: 20,
+                            offset: const Offset(0, 6),
+                          ),
+                          BoxShadow(
+                            color: KeepiColors.skyBlue.withOpacity(0.06),
+                            blurRadius: 28,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: KeepiColors.orange.withOpacity(0.03),
+                            blurRadius: 16,
+                            offset: const Offset(-2, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(2),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  KeepiColors.orange,
+                                  KeepiColors.orangeLight,
+                                  KeepiColors.skyBlue,
+                                ],
+                                stops: [0.0, 0.5, 1.0],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Hola, ${auth.name ?? auth.email ?? "Usuario"}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.3,
+                                        color: KeepiColors.slate,
+                                      ),
+                                ),
+                                if (auth.email != null) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    auth.email!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: KeepiColors.slateLight,
+                                          fontSize: 14,
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: KeepiColors.slate.withOpacity(0.06),
-                        blurRadius: 20,
-                        offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: KeepiColors.skyBlue.withOpacity(0.06),
-                        blurRadius: 28,
-                        offset: const Offset(0, 4),
-                      ),
-                      BoxShadow(
-                        color: KeepiColors.orange.withOpacity(0.03),
-                        blurRadius: 16,
-                        offset: const Offset(-2, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(2),
-                          gradient: const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              KeepiColors.orange,
-                              KeepiColors.orangeLight,
-                              KeepiColors.skyBlue,
-                            ],
-                            stops: [0.0, 0.5, 1.0],
+                    const SizedBox(height: 28),
+                    if (_loading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: KeepiColors.orange,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 18),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hola, ${auth.name ?? auth.email ?? "Usuario"}',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.3,
-                                    color: KeepiColors.slate,
-                                  ),
+                      )
+                    else if (_error != null)
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: KeepiColors.orange.withOpacity(0.3)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: KeepiColors.slate.withOpacity(0.05),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
                             ),
-                            if (auth.email != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                auth.email!,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: KeepiColors.slateLight,
-                                      fontSize: 14,
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
                           ],
                         ),
-                      ),
-                    ],
-                  ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: KeepiColors.orange.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.error_outline_rounded,
+                                  color: KeepiColors.orange, size: 22),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Error al cargar',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: KeepiColors.slate,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _error!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: KeepiColors.slateLight,
+                                          height: 1.4,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (_config != null &&
+                        (_config!.isGoogleDrive || _config!.isKeepiCloud))
+                      _DriveFoldersSection(
+                        isKeepiCloud: _config!.isKeepiCloud,
+                        keepiCloudUserId:
+                            _config!.isKeepiCloud ? auth.userId : null,
+                        driveFolders: _driveFolders,
+                        rootFiles: _rootFiles,
+                        loadingDrive: _loadingDrive,
+                        driveError: _driveError,
+                        totalKeepi: _totalKeepi,
+                        expiringSoonCount: _expiringSoonCount,
+                        expiringSoon: _expiringSoon,
+                        analysisUsed: _analysisUsed,
+                        analysisLimit: _analysisLimit,
+                        onFolderTap: (folder) {
+                          Navigator.of(context).push(
+                            CupertinoPageRoute<void>(
+                              builder: (context) => FolderContentsScreen(
+                                folderId: folder.id,
+                                folderName: folder.name,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      _StorageSection(config: _config!),
+                  ],
                 ),
-                const SizedBox(height: 28),
-                if (_loading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: KeepiColors.orange,
-                        ),
-                      ),
-                    ),
-                  )
-                else if (_error != null)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: KeepiColors.orange.withOpacity(0.3)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: KeepiColors.slate.withOpacity(0.05),
-                          blurRadius: 18,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: KeepiColors.orange.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 22),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Error al cargar',
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      color: KeepiColors.slate,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _error!,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: KeepiColors.slateLight,
-                                      height: 1.4,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_config != null && (_config!.isGoogleDrive || _config!.isKeepiCloud))
-                  _DriveFoldersSection(
-                    isKeepiCloud: _config!.isKeepiCloud,
-                    keepiCloudUserId: _config!.isKeepiCloud ? auth.userId : null,
-                    driveFolders: _driveFolders,
-                    rootFiles: _rootFiles,
-                    loadingDrive: _loadingDrive,
-                    driveError: _driveError,
-                    totalKeepi: _totalKeepi,
-                    expiringSoonCount: _expiringSoonCount,
-                    expiringSoon: _expiringSoon,
-                    analysisUsed: _analysisUsed,
-                    analysisLimit: _analysisLimit,
-                    onFolderTap: (folder) {
-                      Navigator.of(context).push(
-                        CupertinoPageRoute<void>(
-                          builder: (context) => FolderContentsScreen(
-                            folderId: folder.id,
-                            folderName: folder.name,
-                          ),
-                        ),
-                      );
-                    },
-                  )
-                else
-                  _StorageSection(config: _config!),
-              ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-    ),
     );
   }
 
@@ -525,7 +670,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 SizedBox(
                   width: 32,
                   height: 32,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: KeepiColors.orange),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: KeepiColors.orange),
                 ),
                 SizedBox(height: 16),
                 Text('Analizando documento…'),
@@ -546,7 +692,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final isTimeout = err.toLowerCase().contains('timeout');
       final msg = isTimeout
           ? 'El análisis tardó demasiado. Revisa tu conexión o intenta con un archivo más pequeño.'
-          : err.replaceFirst('DioException [bad response]: ', '').replaceFirst('DioException [connection timeout]: ', '').replaceFirst('DioException [send timeout]: ', '').replaceFirst('DioException [receive timeout]: ', '');
+          : err
+              .replaceFirst('DioException [bad response]: ', '')
+              .replaceFirst('DioException [connection timeout]: ', '')
+              .replaceFirst('DioException [send timeout]: ', '')
+              .replaceFirst('DioException [receive timeout]: ', '');
       scaffold.showSnackBar(
         SnackBar(
           content: Text(isTimeout ? msg : 'Error al analizar: $msg'),
@@ -563,7 +713,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (analyzeResult.subscriptionRequired) {
       scaffold.showSnackBar(
         SnackBar(
-          content: Text(analyzeResult.message ?? 'Se requiere una suscripción activa para analizar documentos.'),
+          content: Text(analyzeResult.message ??
+              'Se requiere una suscripción activa para analizar documentos.'),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
         ),
@@ -596,7 +747,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 SizedBox(
                   width: 32,
                   height: 32,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: KeepiColors.orange),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: KeepiColors.orange),
                 ),
                 SizedBox(height: 16),
                 Text('Guardando archivo …'),
@@ -619,7 +771,8 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.of(context).pop();
       scaffold.showSnackBar(
         SnackBar(
-          content: Text('Error al guardar: ${e.toString().replaceFirst('DioException [bad response]: ', '')}'),
+          content: Text(
+              'Error al guardar: ${e.toString().replaceFirst('DioException [bad response]: ', '')}'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -738,7 +891,8 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
                     color: KeepiColors.skyBlueSoft,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(Icons.analytics_outlined, color: KeepiColors.orange, size: 28),
+                  child: const Icon(Icons.analytics_outlined,
+                      color: KeepiColors.orange, size: 28),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -775,8 +929,10 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
                       controller: _categoryController,
                       decoration: InputDecoration(
                         hintText: 'Ej: Facturas, Identificación',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -792,8 +948,10 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
                       controller: _fileNameController,
                       decoration: InputDecoration(
                         hintText: 'Nombre con el que se guardará',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                       ),
                     ),
                     if (result.confidenceScore > 0) ...[
@@ -815,7 +973,8 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(null),
-                  child: const Text('Cancelar', style: TextStyle(color: KeepiColors.slateLight)),
+                  child: const Text('Cancelar',
+                      style: TextStyle(color: KeepiColors.slateLight)),
                 ),
                 const SizedBox(width: 12),
                 FilledButton(
@@ -846,7 +1005,8 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
                       expiryDate: result.expiryDate,
                     ));
                   },
-                  style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: KeepiColors.orange),
                   child: const Text('Guardar en Drive'),
                 ),
               ],
@@ -887,7 +1047,8 @@ class _ReadOnlyField extends StatelessWidget {
           ),
           child: Text(
             value,
-            style: theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slate),
+            style:
+                theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slate),
           ),
         ),
       ],
@@ -934,6 +1095,7 @@ class _DriveFoldersSection extends StatelessWidget {
   });
 
   final bool isKeepiCloud;
+
   /// Para Keepi Cloud: no mostrar la carpeta raíz (users/uid); solo contenido.
   final String? keepiCloudUserId;
   final List<DriveFolder>? driveFolders;
@@ -998,7 +1160,8 @@ class _DriveFoldersSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (isKeepiCloud ? KeepiColors.skyBlue : KeepiColors.orange).withOpacity(0.12),
+                color: (isKeepiCloud ? KeepiColors.skyBlue : KeepiColors.orange)
+                    .withOpacity(0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -1053,7 +1216,8 @@ class _DriveFoldersSection extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
-                  Icon(Icons.error_outline_rounded, color: colorScheme.error, size: 24),
+                  Icon(Icons.error_outline_rounded,
+                      color: colorScheme.error, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -1076,13 +1240,17 @@ class _DriveFoldersSection extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      isKeepiCloud ? Icons.cloud_rounded : Icons.folder_open_rounded,
+                      isKeepiCloud
+                          ? Icons.cloud_rounded
+                          : Icons.folder_open_rounded,
                       size: 64,
                       color: KeepiColors.slateLight.withOpacity(0.45),
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      isKeepiCloud ? 'Sin contenido en Keepi Cloud' : 'No hay carpetas en la raíz',
+                      isKeepiCloud
+                          ? 'Sin contenido en Keepi Cloud'
+                          : 'No hay carpetas en la raíz',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: KeepiColors.slateLight,
@@ -1160,7 +1328,8 @@ class _DriveFoldersSection extends StatelessWidget {
                   color: KeepiColors.skyBlue.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.schedule_rounded, size: 22, color: KeepiColors.skyBlue),
+                child: const Icon(Icons.schedule_rounded,
+                    size: 22, color: KeepiColors.skyBlue),
               ),
               const SizedBox(width: 12),
               Text(
@@ -1204,19 +1373,18 @@ class _AnalysisUsageBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUnlimited = limit < 0;
-    final progress = isUnlimited
-        ? 1.0
-        : (limit == 0 ? 0.0 : (used / limit).clamp(0.0, 1.0));
-    final label = isUnlimited
-        ? '$used análisis · Ilimitados'
-        : '$used / $limit análisis';
+    final progress =
+        isUnlimited ? 1.0 : (limit == 0 ? 0.0 : (used / limit).clamp(0.0, 1.0));
+    final label =
+        isUnlimited ? '$used análisis · Ilimitados' : '$used / $limit análisis';
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: KeepiColors.cardBorder.withOpacity(0.6), width: 1),
+        border: Border.all(
+            color: KeepiColors.cardBorder.withOpacity(0.6), width: 1),
         boxShadow: [
           BoxShadow(
             color: KeepiColors.slate.withOpacity(0.04),
@@ -1236,9 +1404,8 @@ class _AnalysisUsageBar extends StatelessWidget {
                   Icon(
                     Icons.analytics_outlined,
                     size: 18,
-                    color: isUnlimited
-                        ? KeepiColors.skyBlue
-                        : KeepiColors.orange,
+                    color:
+                        isUnlimited ? KeepiColors.skyBlue : KeepiColors.orange,
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -1267,9 +1434,7 @@ class _AnalysisUsageBar extends StatelessWidget {
               minHeight: 8,
               backgroundColor: KeepiColors.slateLight.withOpacity(0.2),
               valueColor: AlwaysStoppedAnimation<Color>(
-                isUnlimited
-                    ? KeepiColors.skyBlue
-                    : KeepiColors.orange,
+                isUnlimited ? KeepiColors.skyBlue : KeepiColors.orange,
               ),
             ),
           ),
@@ -1298,7 +1463,8 @@ class _KpiCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: KeepiColors.cardBorder.withOpacity(0.5), width: 1),
+        border: Border.all(
+            color: KeepiColors.cardBorder.withOpacity(0.5), width: 1),
         boxShadow: [
           BoxShadow(
             color: color.withOpacity(0.12),
@@ -1329,10 +1495,10 @@ class _KpiCard extends StatelessWidget {
               Text(
                 value,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                  color: KeepiColors.slate,
-                ),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: KeepiColors.slate,
+                    ),
               ),
             ],
           ),
@@ -1340,9 +1506,9 @@ class _KpiCard extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: KeepiColors.slateLight,
-              height: 1.3,
-            ),
+                  color: KeepiColors.slateLight,
+                  height: 1.3,
+                ),
           ),
         ],
       ),
@@ -1377,9 +1543,9 @@ class _ExpiringDocTile extends StatelessWidget {
                 Text(
                   displayName,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: KeepiColors.slate,
-                  ),
+                        fontWeight: FontWeight.w500,
+                        color: KeepiColors.slate,
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1387,8 +1553,8 @@ class _ExpiringDocTile extends StatelessWidget {
                 Text(
                   'Vence: $dateStr',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: KeepiColors.slateLight,
-                  ),
+                        color: KeepiColors.slateLight,
+                      ),
                 ),
               ],
             ),
@@ -1409,7 +1575,8 @@ class _IOSStyleCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: KeepiColors.cardBorder.withOpacity(0.5), width: 1),
+        border: Border.all(
+            color: KeepiColors.cardBorder.withOpacity(0.5), width: 1),
         boxShadow: [
           BoxShadow(
             color: KeepiColors.slate.withOpacity(0.06),
@@ -1447,9 +1614,8 @@ class _DriveFolderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fileLabel = folder.filesCount == 1
-        ? '1 archivo'
-        : '${folder.filesCount} archivos';
+    final fileLabel =
+        folder.filesCount == 1 ? '1 archivo' : '${folder.filesCount} archivos';
 
     return Material(
       color: Colors.transparent,
@@ -1610,7 +1776,9 @@ class _StorageStatusCard extends StatelessWidget {
         : isDrive
             ? Icons.folder_rounded
             : Icons.cloud_off_rounded;
-    final accentColor = isKeepi ? KeepiColors.skyBlue : (isDrive ? KeepiColors.orange : KeepiColors.slateLight);
+    final accentColor = isKeepi
+        ? KeepiColors.skyBlue
+        : (isDrive ? KeepiColors.orange : KeepiColors.slateLight);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1737,4 +1905,3 @@ class _IOSFABState extends State<_IOSFAB> with SingleTickerProviderStateMixin {
     );
   }
 }
-

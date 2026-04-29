@@ -39,7 +39,8 @@ class DriveFolder {
       name: json['name'] as String,
       createdTime: json['created_time'] as String?,
       modifiedTime: json['modified_time'] as String?,
-      filesCount: (json['files_count'] ?? json['document_count'] as num?)?.toInt() ?? 0,
+      filesCount:
+          (json['files_count'] ?? json['document_count'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -52,14 +53,19 @@ class MobileDashboardResponse {
     required this.expiringSoonCount,
     required this.expiringSoon,
     this.rootFiles = const [],
+    this.requiresDriveAuth = false,
+    this.requiresAction,
+    this.authorizationUrl,
   });
 
   final List<DriveFolder> folders;
   final int totalKeepi;
   final int expiringSoonCount;
   final List<ExpiringDocumentItem> expiringSoon;
-  /// Archivos en la raíz de Keepi Cloud (carpeta del usuario "abierta").
   final List<DriveFile> rootFiles;
+  final bool requiresDriveAuth;
+  final String? requiresAction;
+  final String? authorizationUrl;
 
   factory MobileDashboardResponse.fromJson(Map<String, dynamic> json) {
     final list = json['folders'] as List<dynamic>? ?? [];
@@ -77,6 +83,9 @@ class MobileDashboardResponse {
       rootFiles: rootList
           .map((e) => DriveFile.fromJson(e as Map<String, dynamic>))
           .toList(),
+      requiresDriveAuth: json['requires_drive_auth'] as bool? ?? false,
+      requiresAction: json['requires_action'] as String?,
+      authorizationUrl: json['authorization_url'] as String?,
     );
   }
 }
