@@ -4,7 +4,6 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../services/questionnaire_service.dart';
 import '../../core/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -17,8 +16,9 @@ import '../user/settings_screen.dart';
 import 'create_patient_screen.dart';
 import 'doctor_assign_prescription_screen.dart';
 import 'doctor_calendar_tab.dart';
+import 'doctor_patient_profile_screen.dart';
 import 'doctor_patient_timeline_screen.dart';
-import 'doctor_request_analysis_screen.dart'; 
+import 'doctor_request_analysis_screen.dart';
 import 'documentos_screen.dart';
 import 'questionnaire/questionnaire_settings_screen.dart';
 import 'questionnaire/send_questionnaire_screen.dart';
@@ -28,10 +28,28 @@ import 'questionnaire/send_questionnaire_screen.dart';
 // ────────────────────────────────────────────────────────────────
 
 const _monthsEsUpper = <String>[
-  'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
-  'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC',
+  'ENE',
+  'FEB',
+  'MAR',
+  'ABR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AGO',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DIC',
 ];
-const _weekdaysEsUpper = <String>['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+const _weekdaysEsUpper = <String>[
+  'LUN',
+  'MAR',
+  'MIÉ',
+  'JUE',
+  'VIE',
+  'SÁB',
+  'DOM'
+];
 
 String _greetingForNow() {
   final h = DateTime.now().hour;
@@ -161,7 +179,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   void _onStorageDeepLink(Uri? uri) {
     if (uri == null) return;
     final s = uri.toString();
-    if (s.contains('oauth2redirect') && uri.queryParameters['success'] == '1' && mounted) {
+    if (s.contains('oauth2redirect') &&
+        uri.queryParameters['success'] == '1' &&
+        mounted) {
       _loadUserConfigForStorage();
       return;
     }
@@ -188,7 +208,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   List<AppointmentDto> get _todaysAppointments {
     final now = DateTime.now();
     return _agenda
-        .where((a) => a.appointmentDate != null && _sameDay(a.appointmentDate!.toLocal(), now))
+        .where((a) =>
+            a.appointmentDate != null &&
+            _sameDay(a.appointmentDate!.toLocal(), now))
         .toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
   }
@@ -292,12 +314,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) => Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(primary: KeepiColors.orange),
-          ),
-          child: child!,
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: KeepiColors.orange),
+        ),
+        child: child!,
       ),
-        );
+    );
     if (pickedDate == null || !mounted) return;
 
     final pickedTime = await showTimePicker(
@@ -307,8 +329,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     if (pickedTime == null || !mounted) return;
 
     final finalDateTime = DateTime(
-      pickedDate.year, pickedDate.month, pickedDate.day,
-      pickedTime.hour, pickedTime.minute,
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
     );
 
     try {
@@ -382,182 +407,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _openPatientProfileDialog(PatientListItem p) async {
-    final initial = p.name.isEmpty ? '?' : p.name[0].toUpperCase();
-    
-    await showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 1. Cabecera con Avatar
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: KeepiColors.skyBlueSoft,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: KeepiColors.skyBlue, width: 2),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    color: KeepiColors.skyBlue,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 24,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 2. Datos del paciente
-              Text(
-                p.name,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: KeepiColors.slate,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                p.email,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  color: KeepiColors.slateLight,
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // 3. Sección de Cuestionarios (DATOS REALES)
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'RESPUESTAS DE CUESTIONARIOS',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.8,
-                    color: KeepiColors.slate,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              
-              // Contenedor flexible para la lista
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 250), // Evita que se salga de la pantalla
-                child: FutureBuilder<List<dynamic>>(
-                  // AQUÍ LLAMAMOS A LA API REAL
-                  future: QuestionnaireService(context.read<ApiClient>()).fetchPatientResponses(p.id),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(20.0),
-                          child: CircularProgressIndicator(color: KeepiColors.orange),
-                        ),
-                      );
-                    }
-                    
-                    if (snapshot.hasError) {
-                      return const Text(
-                        'Error al cargar las respuestas.',
-                        style: TextStyle(color: Colors.red, fontSize: 13),
-                      );
-                    }
-
-                    final respuestas = snapshot.data ?? [];
-
-                    if (respuestas.isEmpty) {
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: KeepiColors.surfaceBg,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: KeepiColors.cardBorder),
-                        ),
-                        child: const Text(
-                          'Este paciente aún no ha respondido cuestionarios.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: KeepiColors.slateLight),
-                        ),
-                      );
-                    }
-
-                    // Lista de respuestas
-                    return ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: respuestas.length,
-                      separatorBuilder: (_, __) => const Divider(color: KeepiColors.cardBorder),
-                      itemBuilder: (context, index) {
-                        final respuesta = respuestas[index];
-                        final pregunta = respuesta['question_text'] ?? 'Pregunta';
-                        final valor = respuesta['answer_value'] ?? 'Sin respuesta';
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                pregunta,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: KeepiColors.slate,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                valor.toString(),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: KeepiColors.orange,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              
-              const SizedBox(height: 24),
-              // 4. Botón de cerrar
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: KeepiColors.slateSoft,
-                    foregroundColor: KeepiColors.slate,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text(
-                    'CERRAR',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-              )
-            ],
-          ),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DoctorPatientProfileScreen(
+          patientId: p.id,
+          patientName: p.name,
+          patientEmail: p.email,
+          mustChangePassword: p.mustChangePassword,
+          onOpenTimeline: () => _openTimeline(p),
+          onOpenRequestAnalysis: () => _openRequestAnalysis(p),
+          onOpenAssignPrescription: () => _openAssignPrescription(p),
+          onOpenSchedule: () => _scheduleAppointment(p),
+          onOpenQuestionnaire: () => _openSendQuestionnaire(p),
         ),
       ),
     );
@@ -611,7 +472,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   // ── Home tab (dashboard) ────────────────────────────────────
   Widget _buildHomeTab(AuthProvider auth) {
     final today = _todaysAppointments;
-    final upcoming = _upcomingAppointments.where((a) => !_sameDay(a.appointmentDate!.toLocal(), DateTime.now())).take(3).toList();
+    final upcoming = _upcomingAppointments
+        .where((a) => !_sameDay(a.appointmentDate!.toLocal(), DateTime.now()))
+        .take(3)
+        .toList();
 
     return RefreshIndicator(
       color: KeepiColors.orange,
@@ -674,7 +538,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                 ),
                 const SizedBox(height: 28),
                 if (upcoming.isNotEmpty) ...[
-                  _SectionDivider(tag: 'PRÓXIMAS CITAS', count: upcoming.length),
+                  _SectionDivider(
+                      tag: 'PRÓXIMAS CITAS', count: upcoming.length),
                   const SizedBox(height: 14),
                   for (final a in upcoming)
                     Padding(
@@ -752,15 +617,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   )
                 else
                   for (final p in list)
-              Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _PatientTile(
-              patient: p,
-              // AQUÍ ESTÁN LOS CAMBIOS:
-              onProfileTap: () => _openPatientProfileDialog(p), 
-              onArrowTap: () => _openPatientActions(p),
-    ),
-  ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _PatientTile(
+                        patient: p,
+                        // AQUÍ ESTÁN LOS CAMBIOS:
+                        onProfileTap: () => _openPatientProfileDialog(p),
+                        onArrowTap: () => _openPatientActions(p),
+                      ),
+                    ),
               ]),
             ),
           ),
@@ -933,7 +798,7 @@ class _HomeHero extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        children: [
           Row(
             children: [
               Container(width: 22, height: 2, color: KeepiColors.slate),
@@ -986,7 +851,8 @@ class _HomeHero extends StatelessWidget {
             items: [
               _StatItem(value: patients, label: 'PACIENTES'),
               _StatItem(value: todayAppts, label: 'CITAS HOY'),
-              _StatItem(value: pending, label: 'POR CONFIRMAR', accent: pending > 0),
+              _StatItem(
+                  value: pending, label: 'POR CONFIRMAR', accent: pending > 0),
             ],
           ),
         ],
@@ -1046,7 +912,10 @@ class _PatientsHero extends StatelessWidget {
           _StatsStrip(
             items: [
               _StatItem(value: total, label: 'TOTAL'),
-              _StatItem(value: filtered, label: 'MOSTRANDO', accent: filtered != total && total > 0),
+              _StatItem(
+                  value: filtered,
+                  label: 'MOSTRANDO',
+                  accent: filtered != total && total > 0),
             ],
           ),
         ],
@@ -1071,7 +940,7 @@ class _ProfileHero extends StatelessWidget {
           Row(
             children: [
               Container(width: 22, height: 2, color: KeepiColors.slate),
-        const SizedBox(width: 8),
+              const SizedBox(width: 8),
               const Text(
                 'CUENTA',
                 style: TextStyle(
@@ -1152,7 +1021,8 @@ class _ProfileHero extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────
 
 class _StatItem {
-  const _StatItem({required this.value, required this.label, this.accent = false});
+  const _StatItem(
+      {required this.value, required this.label, this.accent = false});
   final int value;
   final String label;
   final bool accent;
@@ -1242,7 +1112,10 @@ class _SectionDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(width: 18, height: 1, color: KeepiColors.slate.withValues(alpha: 0.45)),
+        Container(
+            width: 18,
+            height: 1,
+            color: KeepiColors.slate.withValues(alpha: 0.45)),
         const SizedBox(width: 10),
         Text(
           tag,
@@ -1256,7 +1129,7 @@ class _SectionDivider extends StatelessWidget {
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
+          decoration: BoxDecoration(
             color: KeepiColors.slateSoft,
             borderRadius: BorderRadius.circular(999),
           ),
@@ -1273,7 +1146,8 @@ class _SectionDivider extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Container(height: 1, color: KeepiColors.slate.withValues(alpha: 0.12)),
+          child: Container(
+              height: 1, color: KeepiColors.slate.withValues(alpha: 0.12)),
         ),
       ],
     );
@@ -1286,8 +1160,8 @@ class _SectionDivider extends StatelessWidget {
 
 class _PatientTile extends StatelessWidget {
   const _PatientTile({
-    required this.patient, 
-    required this.onProfileTap, 
+    required this.patient,
+    required this.onProfileTap,
     required this.onArrowTap,
   });
 
@@ -1298,7 +1172,7 @@ class _PatientTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final initial = patient.name.isEmpty ? '?' : patient.name[0].toUpperCase();
-    
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1316,7 +1190,8 @@ class _PatientTile extends StatelessWidget {
             Expanded(
               child: InkWell(
                 onTap: onProfileTap,
-                borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+                borderRadius:
+                    const BorderRadius.horizontal(left: Radius.circular(16)),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
                   child: Row(
@@ -1327,7 +1202,8 @@ class _PatientTile extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: KeepiColors.skyBlueSoft,
                           shape: BoxShape.circle,
-                          border: Border.all(color: KeepiColors.skyBlue, width: 1.6),
+                          border: Border.all(
+                              color: KeepiColors.skyBlue, width: 1.6),
                         ),
                         alignment: Alignment.center,
                         child: Text(
@@ -1371,7 +1247,8 @@ class _PatientTile extends StatelessWidget {
                                     width: 2,
                                     height: 2,
                                     decoration: BoxDecoration(
-                                      color: KeepiColors.slateLight.withValues(alpha: 0.6),
+                                      color: KeepiColors.slateLight
+                                          .withValues(alpha: 0.6),
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -1422,7 +1299,8 @@ class _PatientTile extends StatelessWidget {
             // ÁREA 2: La flecha (Abre el menú de acciones que ya tenías)
             InkWell(
               onTap: onArrowTap,
-              borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.horizontal(right: Radius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 14, 14, 14),
                 child: Container(
@@ -1584,7 +1462,8 @@ class _PatientActionsSheet extends StatelessWidget {
               icon: Icons.outgoing_mail,
               accent: KeepiColors.skyBlue,
               title: 'Enviar cuestionario',
-              subtitle: 'Link por correo con plantillas o preguntas que elijas.',
+              subtitle:
+                  'Link por correo con plantillas o preguntas que elijas.',
               onTap: onQuestionnaire,
             ),
           ],
@@ -1636,8 +1515,8 @@ class _ActionRow extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
                     title,
                     style: const TextStyle(
@@ -1721,9 +1600,8 @@ class _AgendaCard extends StatelessWidget {
     final date = appointment.appointmentDate?.toLocal();
     final day = date?.day ?? 0;
     final monthAbbr = date != null ? _monthsEsUpper[date.month - 1] : '—';
-    final timeLabel = date != null
-        ? '${_two(date.hour)}:${_two(date.minute)}'
-        : 'Sin hora';
+    final timeLabel =
+        date != null ? '${_two(date.hour)}:${_two(date.minute)}' : 'Sin hora';
     final statusColor = _statusColor();
     final needsAttention = appointment.status == 'pending_patient_approval' ||
         appointment.status == 'pending_doctor_proposal';
@@ -1741,7 +1619,7 @@ class _AgendaCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+        children: [
           SizedBox(
             width: 48,
             child: Column(
@@ -1772,7 +1650,7 @@ class _AgendaCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-        Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1841,7 +1719,9 @@ class _AgendaCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  appointment.reason.isEmpty ? 'Consulta médica' : appointment.reason,
+                  appointment.reason.isEmpty
+                      ? 'Consulta médica'
+                      : appointment.reason,
                   style: const TextStyle(
                     fontSize: 13,
                     color: KeepiColors.slateLight,
@@ -1980,9 +1860,9 @@ class _ShortcutTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: KeepiColors.cardBorder),
         ),
-      child: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          children: [
             Container(
               width: 32,
               height: 32,
@@ -2018,7 +1898,8 @@ class _ShortcutTile extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: 4),
-                Icon(Icons.arrow_forward_rounded, size: 11, color: KeepiColors.slateLight),
+                Icon(Icons.arrow_forward_rounded,
+                    size: 11, color: KeepiColors.slateLight),
               ],
             ),
           ],
@@ -2125,8 +2006,8 @@ class _SearchField extends StatelessWidget {
   final ValueChanged<String> onChanged;
 
   @override
-      Widget build(BuildContext context) {
-        return Container(
+  Widget build(BuildContext context) {
+    return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -2138,12 +2019,15 @@ class _SearchField extends StatelessWidget {
         style: const TextStyle(fontSize: 14, color: KeepiColors.slate),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: KeepiColors.slateLight, fontSize: 14),
-          prefixIcon: const Icon(Icons.search_rounded, color: KeepiColors.slateLight, size: 20),
+          hintStyle:
+              const TextStyle(color: KeepiColors.slateLight, fontSize: 14),
+          prefixIcon: const Icon(Icons.search_rounded,
+              color: KeepiColors.slateLight, size: 20),
           suffixIcon: controller.text.isEmpty
               ? null
               : IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18, color: KeepiColors.slateLight),
+                  icon: const Icon(Icons.close_rounded,
+                      size: 18, color: KeepiColors.slateLight),
                   onPressed: () {
                     controller.clear();
                     onChanged('');
@@ -2154,13 +2038,14 @@ class _SearchField extends StatelessWidget {
           focusedBorder: InputBorder.none,
           errorBorder: InputBorder.none,
           disabledBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           filled: false,
-            ),
-          ),
-        );
-      }
-    }
+        ),
+      ),
+    );
+  }
+}
 
 // ────────────────────────────────────────────────────────────────
 //   STATE WIDGETS
@@ -2176,7 +2061,8 @@ class _LoadingBox extends StatelessWidget {
         child: SizedBox(
           width: 22,
           height: 22,
-          child: CircularProgressIndicator(color: KeepiColors.orange, strokeWidth: 2.4),
+          child: CircularProgressIndicator(
+              color: KeepiColors.orange, strokeWidth: 2.4),
         ),
       ),
     );
@@ -2202,7 +2088,8 @@ class _ErrorBox extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 18),
+              Icon(Icons.error_outline_rounded,
+                  color: KeepiColors.orange, size: 18),
               SizedBox(width: 8),
               Text(
                 'NO PUDIMOS CARGAR',
@@ -2218,7 +2105,8 @@ class _ErrorBox extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             message,
-            style: const TextStyle(fontSize: 13.5, color: KeepiColors.slate, height: 1.4),
+            style: const TextStyle(
+                fontSize: 13.5, color: KeepiColors.slate, height: 1.4),
           ),
           const SizedBox(height: 10),
           InkWell(
@@ -2233,7 +2121,8 @@ class _ErrorBox extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.refresh_rounded, size: 16, color: KeepiColors.slate),
+                  Icon(Icons.refresh_rounded,
+                      size: 16, color: KeepiColors.slate),
                   SizedBox(width: 6),
                   Text(
                     'REINTENTAR',
@@ -2282,7 +2171,10 @@ class _EmptyStateCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(width: 18, height: 1, color: KeepiColors.slate.withValues(alpha: 0.45)),
+              Container(
+                  width: 18,
+                  height: 1,
+                  color: KeepiColors.slate.withValues(alpha: 0.45)),
               const SizedBox(width: 8),
               Text(
                 tag,
@@ -2342,7 +2234,7 @@ class _InlineEmpty extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
-  color: Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: KeepiColors.cardBorder),
       ),
@@ -2420,7 +2312,8 @@ class _NavItemData {
 }
 
 class _NavItem extends StatelessWidget {
-  const _NavItem({required this.data, required this.active, required this.onTap});
+  const _NavItem(
+      {required this.data, required this.active, required this.onTap});
   final _NavItemData data;
   final bool active;
   final VoidCallback onTap;
@@ -2433,11 +2326,11 @@ class _NavItem extends StatelessWidget {
       radius: 48,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-        children: [
+          children: [
             Icon(data.icon, size: 22, color: color),
-          const SizedBox(height: 4),
+            const SizedBox(height: 4),
             Text(
               data.label,
               style: TextStyle(
