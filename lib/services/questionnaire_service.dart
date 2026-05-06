@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
 import '../core/api_endpoints.dart';
 import '../models/questionnaire_models.dart';
 import 'api_client.dart';
@@ -219,7 +221,6 @@ class QuestionnaireService {
   /// Obtiene las respuestas de los cuestionarios de un paciente específico.
   Future<List<dynamic>> fetchPatientResponses(String patientId) async {
     try {
-      // Llamada al endpoint de FastAPI que acabamos de crear
       final res = await _api.dio.get<dynamic>('/api/v1/questionnaire/patients/$patientId/responses');
       
       final data = res.data;
@@ -229,6 +230,44 @@ class QuestionnaireService {
     } catch (e) {
       print("Error obteniendo respuestas: $e");
       return [];
+    }
+  }
+
+  // ─── EXTRACCIÓN OCR CON IA (NUEVO) ───
+
+  /// Envía imágenes al backend para extraer preguntas médicas limpias usando AWS Textract + Claude
+  Future<List<String>> extractQuestionsFromImages(List<File> images) async {
+    try {
+      // Usamos FormData porque vamos a enviar archivos
+      final formData = FormData();
+
+      for (var image in images) {
+        String fileName = image.path.split('/').last;
+        formData.files.add(MapEntry(
+          'imagenes', // <-- Debe coincidir con el nombre en FastAPI
+          await MultipartFile.fromFile(image.path, filename: fileName),
+        ));
+      }
+
+      // Hacemos la petición usando Dio. Tu ApiClient ya debería inyectar el token.
+      final res = await _api.dio.post<Map<String, dynamic>>(
+        ApiEndpoints.questionnaireExtractOcr,
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+        ),
+      );
+
+      final data = res.data;
+      if (data != null && data['success'] == true) {
+        // Parseamos la lista de JSON a una lista de Strings en Dart
+        return List<String>.from(data['preguntas'] as List);
+      } else {
+        throw Exception('El servidor no devolvió éxito.');
+      }
+    } catch (e) {
+      print('Error en extractQuestionsFromImages: $e');
+      rethrow;
     }
   }
 

@@ -92,6 +92,7 @@ class ApiEndpoints {
       _path('/patient/appointments/$appointmentId/respond');
 
   // ──────── Cuestionarios de salud (solo doctor) ────────
+  static String get questionnaireExtractOcr => _path('/questionnaire/extract-ocr');
   static String get questionnaireSpecialties =>
       _path('/questionnaire/specialties');
   static String questionnaireSpecialtyQuestions(String specialtyId,

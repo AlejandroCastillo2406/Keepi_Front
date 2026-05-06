@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../models/questionnaire_models.dart';
@@ -138,6 +141,270 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
     }
   }
 
+  // =========================================================
+  // FLUJO DE ESCANEO OCR + IA
+  // =========================================================
+  Future<void> _pickAndProcessImages() async {
+    final picker = ImagePicker();
+    List<File> files = [];
+
+    // 1. Elegir cámara o galería
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Escanear hojas'),
+        content: const Text('¿De dónde quieres obtener la imagen de tu cuestionario?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ImageSource.gallery),
+            child: const Text('Galería'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
+            onPressed: () => Navigator.pop(ctx, ImageSource.camera),
+            child: const Text('Cámara'),
+          ),
+        ],
+      ),
+    );
+
+    if (source == null) return;
+
+    // 2. Tomar fotos
+    if (source == ImageSource.gallery) {
+      final picked = await picker.pickMultiImage();
+      files = picked.map((e) => File(e.path)).toList();
+    } else {
+      bool more = true;
+      while (more) {
+        final picked = await picker.pickImage(source: ImageSource.camera);
+        if (picked != null) {
+          files.add(File(picked.path));
+          // Bucle por si son varias hojas
+          more = await showDialog<bool>(
+                context: context,
+                barrierDismissible: false,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Hoja capturada'),
+                  content: const Text('¿Deseas capturar otra hoja para esta misma plantilla?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('No, continuar'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: KeepiColors.skyBlue),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sí, otra hoja'),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+        } else {
+          more = false;
+        }
+      }
+    }
+
+    if (files.isEmpty) return;
+
+    // 3. Mostrar modal de carga
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: KeepiColors.orange),
+            SizedBox(width: 16),
+            Expanded(child: Text('Analizando...')),
+          ],
+        ),
+      ),
+    );
+
+    // 4. Enviar a FastAPI
+    try {
+      final questions = await _service.extractQuestionsFromImages(files);
+      if (!mounted) return;
+      Navigator.pop(context); // Cierra loading
+
+      if (questions.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se detectaron preguntas en la imagen.')),
+        );
+        return;
+      }
+
+      // 5. Mostrar modal de revisión
+      _showReviewAndSaveModal(questions);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Cierra loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error analizando imagen: $e')),
+      );
+    }
+  }
+
+  void _showReviewAndSaveModal(List<String> extractedQuestions) {
+    final titleCtrl = TextEditingController();
+    // Convertimos las preguntas en controladores para que el doctor pueda editarlas
+    final questionCtrls = extractedQuestions.map((q) => TextEditingController(text: q)).toList();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          // ¡AQUÍ ESTABA EL ERROR! Cambiamos 'context' por 'innerCtx' para no sobreescribir el contexto principal
+          builder: (innerCtx, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Revisar Cuestionario'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de la nueva plantilla',
+                        hintText: 'Ej. Diabetes Primera Vez',
+                        border: OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: KeepiColors.orange),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Preguntas detectadas:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 10),
+                    ...List.generate(questionCtrls.length, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: questionCtrls[index],
+                                maxLines: null,
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  prefixIcon: const Icon(Icons.help_outline,
+                                      size: 18, color: KeepiColors.slateLight),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                              onPressed: () {
+                                setStateDialog(() {
+                                  questionCtrls.removeAt(index);
+                                });
+                              },
+                            )
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
+                  onPressed: () async {
+                    final templateName = titleCtrl.text.trim();
+                    if (templateName.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Por favor ingresa un nombre para la plantilla')),
+                      );
+                      return;
+                    }
+
+                    // 1. CAPTURAMOS EL NAVEGADOR Y EL SNACKBAR ANTES DE CERRAR EL MODAL
+                    final navigator = Navigator.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
+
+                    // 2. Cerramos el modal de revisión
+                    Navigator.pop(ctx); 
+
+                    // 3. Mostramos carga de guardado usando el contexto seguro de la pantalla
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => const AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(color: KeepiColors.orange),
+                            SizedBox(width: 16),
+                            Text('Guardando...'),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    try {
+                      // Crear la plantilla vacía
+                      final template = await _service.createTemplate(name: templateName);
+                      
+                      // Crear las preguntas en la base de datos
+                      List<String> questionIds = [];
+                      for (var qc in questionCtrls) {
+                        if (qc.text.trim().isNotEmpty) {
+                          final q = await _service.createQuestion(
+                            text: qc.text.trim(),
+                            responseType: QuestionResponseType.shortText, 
+                            showInHistory: true,
+                          );
+                          questionIds.add(q.id);
+                        }
+                      }
+
+                      // Vincular preguntas a la plantilla
+                      if (questionIds.isNotEmpty) {
+                        await _service.upsertTemplateQuestions(template.id, questionIds);
+                      }
+
+                      // 4. USAMOS EL NAVEGADOR CAPTURADO PARA CERRAR EL "GUARDANDO..." DE FORMA SEGURA
+                      navigator.pop(); 
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('¡Plantilla escaneada y guardada con éxito!')),
+                      );
+                      
+                      // Refrescamos las listas
+                      _tabs.animateTo(1); // Mover a la pestaña de plantillas
+                      await Future.wait([_reloadTemplates(), _reloadGlobals()]);
+                      
+                    } catch (e) {
+                      navigator.pop(); // Quita loading en caso de error
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Error al guardar la plantilla: $e')),
+                      );
+                    }
+                  },
+                  child: const Text('Guardar Plantilla'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  // =========================================================
+
   Future<void> _openQuestionEditor({
     Question? existing,
     String? presetSpecialtyId,
@@ -254,6 +521,23 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
                     ),
                   ),
                   const SizedBox(width: 10),
+
+                  // BOTÓN DE ESCANEAR OCR
+                  Material(
+                    color: KeepiColors.skyBlueSoft,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _pickAndProcessImages,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        child: const Icon(Icons.document_scanner_rounded, color: KeepiColors.skyBlue, size: 20),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // BOTÓN ORIGINAL (+ NUEVA PREGUNTA/PLANTILLA)
                   Material(
                     color: KeepiColors.cardBg,
                     borderRadius: BorderRadius.circular(12),
