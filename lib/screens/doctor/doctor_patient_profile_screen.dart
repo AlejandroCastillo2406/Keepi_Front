@@ -10,6 +10,7 @@ import '../../services/doctor_service.dart';
 import '../../services/questionnaire_service.dart';
 import '../../widgets/patient_care_timeline.dart';
 import 'analysis_document_viewer_screen.dart';
+import 'doctor_upload_analysis_for_patient_screen.dart';
 
 class DoctorPatientProfileScreen extends StatefulWidget {
   const DoctorPatientProfileScreen({
@@ -134,9 +135,10 @@ class _DoctorPatientProfileScreenState
         .toList()
       ..sort((a, b) => (b.completedAt ?? b.createdAt)
           .compareTo(a.completedAt ?? a.createdAt));
-    final pending = _analysisRequests
+    final inProgress = _analysisRequests
         .where((r) => r.status.toLowerCase() != 'completed')
-        .length;
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final questionnaireGroups =
         _buildQuestionnaireGroups(_questionnaireResponses);
 
@@ -173,9 +175,30 @@ class _DoctorPatientProfileScreenState
                       _PatientStats(
                         totalAnalysis: _analysisRequests.length,
                         uploadedAnalysis: completed.length,
-                        pendingAnalysis: pending,
+                        pendingAnalysis: inProgress.length,
                         timelineEvents: _timeline.length,
                       ),
+                      const SizedBox(height: 22),
+                      _SectionTitle(
+                        tag: 'ANÁLISIS EN PROCESO',
+                        count: inProgress.length,
+                      ),
+                      const SizedBox(height: 12),
+                      if (inProgress.isEmpty)
+                        const _InlineEmpty(
+                          icon: Icons.biotech_outlined,
+                          message: 'No hay solicitudes de análisis pendientes.',
+                        )
+                      else
+                        ...inProgress.map(
+                          (r) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _PendingAnalysisCard(
+                              item: r,
+                              onUpload: () => _openDoctorUploadForRequest(r),
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: 22),
                       _SectionTitle(
                         tag: 'ANÁLISIS SUBIDOS',
@@ -189,7 +212,7 @@ class _DoctorPatientProfileScreenState
                               'Aún no hay análisis completados por este paciente.',
                         )
                       else
-                        ...completed.take(8).map((r) => Padding(
+                        ...completed.map((r) => Padding(
                               padding: const EdgeInsets.only(bottom: 10),
                               child: _AnalysisCard(
                                 item: r,
@@ -197,19 +220,6 @@ class _DoctorPatientProfileScreenState
                                 onTap: () => _openAnalysisDocument(r),
                               ),
                             )),
-                      if (completed.length > 8)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2, bottom: 6),
-                          child: Text(
-                            'Mostrando los 8 más recientes.',
-                            style: TextStyle(
-                              color:
-                                  KeepiColors.slateLight.withValues(alpha: 0.9),
-                              fontSize: 12.5,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
                       const SizedBox(height: 16),
                       _SectionTitle(
                         tag: 'TIMELINE CLÍNICO',
@@ -366,6 +376,21 @@ class _DoctorPatientProfileScreenState
       );
     } finally {
       if (mounted) setState(() => _openingDocumentId = null);
+    }
+  }
+
+  Future<void> _openDoctorUploadForRequest(AnalysisRequestDto item) async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => DoctorUploadAnalysisForPatientScreen(
+          requestId: item.id,
+          description: item.description,
+          patientName: widget.patientName,
+        ),
+      ),
+    );
+    if (ok == true && mounted) {
+      await _loadData();
     }
   }
 }
@@ -716,6 +741,110 @@ class _AnalysisCard extends StatelessWidget {
                   ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PendingAnalysisCard extends StatelessWidget {
+  const _PendingAnalysisCard({
+    required this.item,
+    required this.onUpload,
+  });
+
+  final AnalysisRequestDto item;
+  final VoidCallback onUpload;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: KeepiColors.orangeSoft,
+              shape: BoxShape.circle,
+              border:
+                  Border.all(color: KeepiColors.orange.withValues(alpha: 0.6)),
+            ),
+            child: const Icon(
+              Icons.pending_actions_rounded,
+              size: 18,
+              color: KeepiColors.orange,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'SOLICITUD PENDIENTE',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.3,
+                    color: KeepiColors.orange,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.description,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: KeepiColors.slate,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  item.createdAt.trim().isEmpty
+                      ? 'Fecha de solicitud no disponible'
+                      : 'Solicitado: ${item.createdAt}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: KeepiColors.slateLight,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: onUpload,
+                    icon: const Icon(Icons.upload_file_rounded, size: 18),
+                    label: const Text(
+                      'Subir reporte físico',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: KeepiColors.orange,
+                      side: BorderSide(
+                        color: KeepiColors.orange.withValues(alpha: 0.5),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

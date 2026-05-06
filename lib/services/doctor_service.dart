@@ -139,6 +139,17 @@ class DoctorService {
     );
   }
 
+  Future<Map<String, dynamic>> doctorUploadAnalysisAndComplete({
+    required String requestId,
+    required FormData formData,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      '/api/v1/analysis-requests/$requestId/doctor-upload',
+      data: formData,
+    );
+    return res.data ?? <String, dynamic>{};
+  }
+
   // --- UTILIDADES ---
 
   Future<ScheduleAppointmentResult> scheduleAppointment({
