@@ -47,6 +47,7 @@ class DoctorService {
   Future<void> createAnalysisRequest({
     required String patientId,
     required String description,
+    required DateTime expiresAt,
   }) async {
     // 1. RASTREADOR ANTES DE ENVIAR
     print("🛑 [DEBUG] INICIANDO POST A ANALYSIS-REQUESTS...");
@@ -59,6 +60,7 @@ class DoctorService {
         data: {
           'patient_id': patientId,
           'description': description,
+          'expires_at': expiresAt.toUtc().toIso8601String(),
         },
       );
       // 2. RASTREADOR DE ÉXITO REAL

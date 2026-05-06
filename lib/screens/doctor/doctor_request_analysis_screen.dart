@@ -22,6 +22,27 @@ class DoctorRequestAnalysisScreen extends StatefulWidget {
 class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScreen> {
   final _controller = TextEditingController();
   bool _isSending = false;
+  DateTime? _deadline;
+
+  Future<void> _pickDeadline() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: KeepiColors.orange),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        _deadline = picked;
+      });
+    }
+  }
 
   /// Lógica para enviar la solicitud al backend
   Future<void> _sendRequest() async {
@@ -30,6 +51,12 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
     if (message.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor, escribe una descripción')),
+      );
+      return;
+    }
+    if (_deadline == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, selecciona una fecha límite')),
       );
       return;
     }
@@ -43,6 +70,7 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
       await svc.createAnalysisRequest(
         patientId: widget.patientId,
         description: message,
+        expiresAt: _deadline!,
       );
 
       if (!mounted) return;
@@ -158,6 +186,46 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
                       borderRadius: BorderRadius.circular(20),
                       borderSide: const BorderSide(color: KeepiColors.orange, width: 2),
                     ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Selector de fecha límite
+              const Text(
+                'Fecha límite de entrega',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: KeepiColors.slate),
+              ),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: _pickDeadline,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: KeepiColors.cardBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today_rounded, color: KeepiColors.orange, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _deadline == null
+                              ? 'Seleccionar fecha límite'
+                              : '${_deadline!.day.toString().padLeft(2, '0')}/${_deadline!.month.toString().padLeft(2, '0')}/${_deadline!.year}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: _deadline == null ? FontWeight.w500 : FontWeight.w700,
+                            color: _deadline == null ? KeepiColors.slateLight : KeepiColors.slate,
+                          ),
+                        ),
+                      ),
+                      if (_deadline != null)
+                        const Icon(Icons.check_circle_rounded, color: KeepiColors.green, size: 20),
+                    ],
                   ),
                 ),
               ),
