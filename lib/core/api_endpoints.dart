@@ -16,41 +16,57 @@ class ApiEndpoints {
   static String get authMe => _path(Config.pathAuthMe);
   static String get authChangePassword => _path(Config.pathAuthChangePassword);
   static String get doctorsPatients => _path(Config.pathDoctorsPatients);
-  static String get authGoogleMobileAuthorize => _path(Config.pathAuthGoogleMobileAuthorize);
+  static String get authGoogleMobileAuthorize =>
+      _path(Config.pathAuthGoogleMobileAuthorize);
   static String get authGoogleCallback => _path(Config.pathAuthGoogleCallback);
 
   static String get config => _path(Config.pathConfig);
 
   static String get cloudStorageSetup => _path(Config.pathCloudStorageSetup);
 
-  static String get subscriptionsUsageStats => _path(Config.pathSubscriptionsUsageStats);
-  static String get subscriptionsCreateCheckout => _path(Config.pathSubscriptionsCreateCheckout);
+  static String get subscriptionsUsageStats =>
+      _path(Config.pathSubscriptionsUsageStats);
+  static String get subscriptionsCreateCheckout =>
+      _path(Config.pathSubscriptionsCreateCheckout);
 
-  static String get documentsDriveStructure => _path(Config.pathDocumentsDriveStructure);
+  static String get documentsDriveStructure =>
+      _path(Config.pathDocumentsDriveStructure);
   static String documentsDriveFolderContents(String folderId) =>
-      _path(Config.pathDocumentsDriveFolderContents.replaceFirst('{folderId}', folderId));
-  static String documentsDriveFileViewUrl(String fileId) =>
-      _path(Config.pathDocumentsDriveFileViewUrl.replaceFirst('{fileId}', fileId));
-  static String documentsDriveFileContent(String fileId) =>
-      _path(Config.pathDocumentsDriveFileContent.replaceFirst('{fileId}', fileId));
-  static String documentsDriveFileDelete(String fileId) =>
-      _path(Config.pathDocumentsDriveFileDelete.replaceFirst('{fileId}', fileId));
+      _path(Config.pathDocumentsDriveFolderContents
+          .replaceFirst('{folderId}', folderId));
+  static String documentsDriveFileViewUrl(String fileId) => _path(
+      Config.pathDocumentsDriveFileViewUrl.replaceFirst('{fileId}', fileId));
+  static String documentsDriveFileContent(String fileId) => _path(
+      Config.pathDocumentsDriveFileContent.replaceFirst('{fileId}', fileId));
+  static String documentsDriveFileDelete(String fileId) => _path(
+      Config.pathDocumentsDriveFileDelete.replaceFirst('{fileId}', fileId));
 
   static const String analysisRequests = '/analysis-requests/';
-  static String patientAnalysisRequests(String id) => '/analysis-requests/patient/$id';
-  static String completeAnalysisRequest(String id) => '/analysis-requests/$id/complete';
+  static String patientAnalysisRequests(String id) =>
+      '/analysis-requests/patient/$id';
+  static String completeAnalysisRequest(String id) =>
+      '/analysis-requests/$id/complete';
 
-  static String get documentsMobileDashboard => _path(Config.pathDocumentsMobileDashboard);
-  static String get documentsKeepiCloudRoot => _path(Config.pathDocumentsKeepiCloudRoot);
-  static String get documentsS3FoldersContents => _path(Config.pathDocumentsS3FoldersContents);
+  static String get documentsMobileDashboard =>
+      _path(Config.pathDocumentsMobileDashboard);
+  static String documentsMobileDownloadById(String documentId) =>
+      _path('/documents/mobile/download/$documentId');
+  static String get documentsKeepiCloudRoot =>
+      _path(Config.pathDocumentsKeepiCloudRoot);
+  static String get documentsS3FoldersContents =>
+      _path(Config.pathDocumentsS3FoldersContents);
 
-  static String get documentsMobileAnalyze => _path(Config.pathDocumentsMobileAnalyze);
-  static String get documentsMobileSaveAnalyzed => _path(Config.pathDocumentsMobileSaveAnalyzed);
+  static String get documentsMobileAnalyze =>
+      _path(Config.pathDocumentsMobileAnalyze);
+  static String get documentsMobileSaveAnalyzed =>
+      _path(Config.pathDocumentsMobileSaveAnalyzed);
 
   static String get prescriptionsDraft => _path('/prescriptions/draft');
-  static String prescriptionsConfirm(String prescriptionId) => _path('/prescriptions/$prescriptionId/confirm');
+  static String prescriptionsConfirm(String prescriptionId) =>
+      _path('/prescriptions/$prescriptionId/confirm');
   static String get prescriptionsMine => _path('/prescriptions/mine');
-  static String prescriptionScanUrl(String prescriptionId) => _path('/prescriptions/$prescriptionId/scan-url');
+  static String prescriptionScanUrl(String prescriptionId) =>
+      _path('/prescriptions/$prescriptionId/scan-url');
   static String prescriptionReminderOptIn(String prescriptionId) =>
       _path('/prescriptions/$prescriptionId/reminders-opt-in');
 
@@ -58,22 +74,28 @@ class ApiEndpoints {
   static String get notifications => _path('/notifications/');
 
   // --- NUEVAS RUTAS DE CITAS (Sincronizadas con el nuevo Backend) ---
-  
+
   static String get appointmentsDoctorCreate => _path('/appointments/doctor');
-  static String get appointmentsDoctorCalendar => _path('/appointments/doctor/calendar');
+  static String get appointmentsDoctorCalendar =>
+      _path('/appointments/doctor/calendar');
   static String get appointmentsMine => _path('/appointments/mine');
-  
-  static String appointmentById(String appointmentId) => _path('/appointments/$appointmentId');
-  static String appointmentDoctorPropose(String id) => _path('/appointments/$id/doctor/propose');
-  
+
+  static String appointmentById(String appointmentId) =>
+      _path('/appointments/$appointmentId');
+  static String appointmentDoctorPropose(String id) =>
+      _path('/appointments/$id/doctor/propose');
+
   // Flujo del paciente
-  static String get appointmentsPatientRequest => _path('/patient/appointments/request');
-  static String appointmentPatientRespond(String appointmentId) => 
+  static String get appointmentsPatientRequest =>
+      _path('/patient/appointments/request');
+  static String appointmentPatientRespond(String appointmentId) =>
       _path('/patient/appointments/$appointmentId/respond');
 
   // ──────── Cuestionarios de salud (solo doctor) ────────
-  static String get questionnaireSpecialties => _path('/questionnaire/specialties');
-  static String questionnaireSpecialtyQuestions(String specialtyId, {String status = 'all'}) =>
+  static String get questionnaireSpecialties =>
+      _path('/questionnaire/specialties');
+  static String questionnaireSpecialtyQuestions(String specialtyId,
+          {String status = 'all'}) =>
       '${_path('/questionnaire/specialties/$specialtyId/questions')}?status=$status';
   static String questionnaireGlobals({String status = 'all'}) =>
       '${_path('/questionnaire/questions/globals')}?status=$status';
@@ -89,7 +111,8 @@ class ApiEndpoints {
       _path('/questionnaire/templates/$templateId');
   static String questionnaireTemplateQuestions(String templateId) =>
       _path('/questionnaire/templates/$templateId/questions');
-  static String get questionnaireInvitations => _path('/questionnaire/invitations');
+  static String get questionnaireInvitations =>
+      _path('/questionnaire/invitations');
   static String questionnaireInvitationById(String invitationId) =>
       _path('/questionnaire/invitations/$invitationId');
   static String questionnairePublicByToken(String token) =>

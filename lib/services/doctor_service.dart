@@ -36,11 +36,10 @@ class DoctorService {
     final data = res.data;
     if (data is! List) return [];
     return data
-        .map((e) => PatientListItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            PatientListItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
-  
-
 
   // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
 
@@ -48,6 +47,7 @@ class DoctorService {
   Future<void> createAnalysisRequest({
     required String patientId,
     required String description,
+    required DateTime expiresAt,
   }) async {
     // 1. RASTREADOR ANTES DE ENVIAR
     print("🛑 [DEBUG] INICIANDO POST A ANALYSIS-REQUESTS...");
@@ -56,10 +56,11 @@ class DoctorService {
 
     try {
       final response = await _api.dio.post(
-        '/api/v1/analysis-requests/', 
+        '/api/v1/analysis-requests/',
         data: {
           'patient_id': patientId,
           'description': description,
+          'expires_at': expiresAt.toUtc().toIso8601String(),
         },
       );
       // 2. RASTREADOR DE ÉXITO REAL
@@ -71,31 +72,40 @@ class DoctorService {
       rethrow; // <-- Esto asegura que la pantalla roja sepa del error
     }
   }
-  
+
   /// [PACIENTE] Obtiene sus solicitudes de análisis pendientes.
   Future<List<AnalysisRequestDto>> fetchMyPendingRequests() async {
-    final res = await _api.dio.get<dynamic>('/api/v1/analysis-requests/me'); // <--- AÑADIDO: /api/v1
+    final res = await _api.dio
+        .get<dynamic>('/api/v1/analysis-requests/me'); // <--- AÑADIDO: /api/v1
     final data = res.data;
     if (data is! List) return [];
     return data
-        .map((e) => AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
   /// [DOCTOR] Obtiene el historial de solicitudes de un paciente específico.
-  Future<List<AnalysisRequestDto>> fetchPatientAnalysisRequests(String patientId) async {
-    final res = await _api.dio.get<dynamic>('/api/v1/analysis-requests/patient/$patientId'); // <--- AÑADIDO: /api/v1
+  Future<List<AnalysisRequestDto>> fetchPatientAnalysisRequests(
+      String patientId) async {
+    final res = await _api.dio.get<dynamic>(
+        '/api/v1/analysis-requests/patient/$patientId'); // <--- AÑADIDO: /api/v1
     final data = res.data;
     if (data is! List) return [];
     return data
-        .map((e) => AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
   Future<List<TimelineEvent>> fetchPatientTimeline(String patientId) async {
-    final response = await _api.dio.get('/api/v1/doctors/patients/$patientId/timeline');
+    final response =
+        await _api.dio.get('/api/v1/doctors/patients/$patientId/timeline');
     final List<dynamic> data = response.data as List<dynamic>;
-    return data.map((json) => TimelineEvent.fromJson(Map<String, dynamic>.from(json as Map))).toList();
+    return data
+        .map((json) =>
+            TimelineEvent.fromJson(Map<String, dynamic>.from(json as Map)))
+        .toList();
   }
 
   /// [PACIENTE] Historial y próximos pasos (misma fuente que ve el médico en el timeline).
@@ -104,8 +114,16 @@ class DoctorService {
     final data = response.data;
     if (data is! List) return [];
     return data
-        .map((json) => TimelineEvent.fromJson(Map<String, dynamic>.from(json as Map)))
+        .map((json) =>
+            TimelineEvent.fromJson(Map<String, dynamic>.from(json as Map)))
         .toList();
+  }
+
+  /// URL de descarga/visualización para abrir un documento dentro de WebView.
+  String getMobileDocumentUrl(String documentId) {
+    final relative = ApiEndpoints.documentsMobileDownloadById(documentId);
+    final base = _api.dio.options.baseUrl;
+    return Uri.parse(base).resolve(relative).toString();
   }
 
   /// [PACIENTE] Marca una solicitud como completada vinculando el ID del documento subido.
@@ -141,10 +159,8 @@ class DoctorService {
   }
 
   // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
-  
 
   // --- UTILIDADES ---
-
 
   static String messageFromDio(Object e) {
     if (e is! DioException) return e.toString();
@@ -162,19 +178,29 @@ class DoctorService {
 class CreatePatientResult {
   final String id, email, name;
   final String? message;
-  CreatePatientResult({required this.id, required this.email, required this.name, this.message});
+  CreatePatientResult(
+      {required this.id,
+      required this.email,
+      required this.name,
+      this.message});
 }
 
 class ScheduleAppointmentResult {
   final String id, status, message;
-  ScheduleAppointmentResult({required this.id, required this.status, required this.message});
+  ScheduleAppointmentResult(
+      {required this.id, required this.status, required this.message});
 }
 
 class PatientListItem {
   final String id, email, name;
   final bool mustChangePassword;
   final String? createdAt;
-  PatientListItem({required this.id, required this.email, required this.name, required this.mustChangePassword, this.createdAt});
+  PatientListItem(
+      {required this.id,
+      required this.email,
+      required this.name,
+      required this.mustChangePassword,
+      this.createdAt});
 
   factory PatientListItem.fromJson(Map<String, dynamic> json) {
     return PatientListItem(
@@ -212,14 +238,14 @@ class AnalysisRequestDto {
   factory AnalysisRequestDto.fromJson(Map<String, dynamic> json) {
     return AnalysisRequestDto(
       id: json['id']?.toString() ?? '',
-      
+
       // EL TRUCO ESTÁ AQUÍ: Lee ambas opciones (con guion o con mayúscula)
       doctorId: (json['doctor_id'] ?? json['doctorId'])?.toString() ?? '',
       patientId: (json['patient_id'] ?? json['patientId'])?.toString() ?? '',
-      
+
       description: json['description']?.toString() ?? 'Sin descripción',
       status: json['status']?.toString() ?? 'pending',
-      
+
       createdAt: (json['created_at'] ?? json['createdAt'])?.toString() ?? '',
       documentId: (json['document_id'] ?? json['documentId'])?.toString(),
       completedAt: (json['completed_at'] ?? json['completedAt'])?.toString(),

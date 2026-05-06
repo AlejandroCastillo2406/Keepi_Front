@@ -10,7 +10,10 @@ class ApiClient {
       baseUrl: Config.apiBaseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
     ));
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
@@ -25,6 +28,8 @@ class ApiClient {
   void setAccessToken(String? token) {
     _accessToken = token;
   }
+
+  String? get accessToken => _accessToken;
 
   Dio get dio => _dio;
 }
