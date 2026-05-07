@@ -2,7 +2,7 @@ import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import 'patient_health_summary_widget.dart';
 import '../../core/app_theme.dart';
 import '../../models/timeline_event.dart';
 import '../../services/api_client.dart';
@@ -179,6 +179,33 @@ class _DoctorPatientProfileScreenState
                         timelineEvents: _timeline.length,
                       ),
                       const SizedBox(height: 22),
+                      
+                      // --- WIDGET DE RESUMEN DE SALUD ---
+                      FutureBuilder<Map<String, dynamic>?>(
+                        future: QuestionnaireService(context.read<ApiClient>()).getLatestPatientKPIs(widget.patientId),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.only(bottom: 22.0),
+                              child: Center(
+                                child: CircularProgressIndicator(color: KeepiColors.orange, strokeWidth: 2),
+                              ),
+                            );
+                          }
+                          
+                          if (!snapshot.hasData || snapshot.data == null) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final kpiData = snapshot.data!;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 22.0),
+                            child: PatientHealthSummaryWidget(kpiData: kpiData),
+                          );
+                        },
+                      ),
+                      // ----------------------------------
+
                       _SectionTitle(
                         tag: 'ANÁLISIS EN PROCESO',
                         count: inProgress.length,
