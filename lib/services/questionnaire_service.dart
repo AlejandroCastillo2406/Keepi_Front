@@ -216,7 +216,7 @@ class QuestionnaireService {
     return InvitationSummary.fromJson(res.data!);
   }
 
-  // ─── NUEVO: Respuestas del Paciente ───
+  // ─── Respuestas del Paciente ───
 
   /// Obtiene las respuestas de los cuestionarios de un paciente específico.
   Future<List<dynamic>> fetchPatientResponses(String patientId) async {
@@ -233,7 +233,69 @@ class QuestionnaireService {
     }
   }
 
-  // ─── EXTRACCIÓN OCR CON IA (NUEVO) ───
+// --- NUEVO: Extracción de KPIs de Salud CORREGIDO ---
+  Future<Map<String, dynamic>?> getLatestPatientKPIs(String patientId) async {
+    try {
+      final responses = await fetchPatientResponses(patientId);
+      if (responses.isEmpty) return null;
+
+      double? weight;
+      double? height;
+
+      // Iteramos directamente sobre las respuestas porque la API envía una lista plana
+      for (var answer in responses) {
+        if (answer is Map) {
+          // Usamos las llaves exactas que tienes en tu doctor_patient_profile_screen
+          final text = (answer['question_text'] ?? '').toString().toLowerCase();
+          final valueStr = (answer['answer_value'] ?? '').toString();
+
+          // Limpiamos el string para sacar solo el número. 
+          // Esto convertirá el "{value: 166}" de tu base de datos en "166"
+          final numericString = valueStr.replaceAll(RegExp(r'[^0-9.]'), '');
+          final numericValue = double.tryParse(numericString);
+
+          if (numericValue != null) {
+            // Buscamos peso
+            if (text.contains('peso') && weight == null) {
+              weight = numericValue;
+            } 
+            // Buscamos estatura
+            else if ((text.contains('estatura') || text.contains('altura')) && height == null) {
+              height = numericValue;
+            }
+          }
+        }
+        
+        // Si ya encontramos ambos, dejamos de buscar para no gastar recursos
+        if (weight != null && height != null) break;
+      }
+
+      // Si no encontró ni peso ni estatura en todo el historial, no muestra el widget
+      if (weight == null && height == null) return null;
+
+      double? bmi;
+      if (weight != null && height != null && height > 0) {
+        // Convertimos centímetros a metros si es necesario (ej: 166 -> 1.66)
+        double h = height > 3.0 ? height / 100 : height;
+        bmi = weight / (h * h);
+        height = h; 
+      } else if (height != null && height > 3.0) {
+        // Si solo hay estatura, la normalizamos para la vista
+        height = height / 100;
+      }
+
+      return {
+        'weight': weight,
+        'height': height,
+        'bmi': bmi,
+      };
+    } catch (e) {
+      print('Error en getLatestPatientKPIs: $e');
+      return null;
+    }
+  }
+  
+  // ─── EXTRACCIÓN OCR CON IA ───
 
   /// Envía imágenes al backend para extraer preguntas médicas limpias usando AWS Textract + Claude
   Future<List<String>> extractQuestionsFromImages(List<File> images) async {
