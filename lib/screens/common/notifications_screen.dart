@@ -1,10 +1,11 @@
-﻿
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
+import '../../services/notification_navigation.dart';
 import '../../services/notifications_service.dart';
 import '../../services/prescription_service.dart';
 import '../../providers/auth_provider.dart';
@@ -57,6 +58,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   // â”€â”€ Acciones de recordatorio de receta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  Future<void> _openAnalysisDocument(AppNotificationDto n) async {
+    final data = NotificationNavigation.dataFromNotification(n);
+    if (!NotificationNavigation.isAnalysisRequestCompleted(data)) return;
+    await NotificationNavigation.openAnalysisDocument(
+      context,
+      data: data,
+      title: n.title,
+    );
+  }
+
   Future<void> _openReminderPrompt(AppNotificationDto n) async {
     final prescriptionId = n.prescriptionId;
     if (prescriptionId == null || prescriptionId.isEmpty) return;
@@ -297,6 +308,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             child: _NotifCard(
               data: n,
               onTap: () {
+                if (n.isAnalysisRequestCompleted) {
+                  _openAnalysisDocument(n);
+                  return;
+                }
                 if (n.isQuestionnaireCompleted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Cuestionario completado por el paciente.')),
@@ -570,6 +585,14 @@ class _NotifCard extends StatelessWidget {
   final VoidCallback onTap;
 
   ({String tag, Color color, IconData icon, String actionHint}) _meta() {
+    if (data.isAnalysisRequestCompleted) {
+      return (
+        tag: 'ANÁLISIS',
+        color: KeepiColors.orange,
+        icon: Icons.biotech_outlined,
+        actionHint: 'Toca para ver el archivo',
+      );
+    }
     if (data.isQuestionnaireCompleted) {
       return (
         tag: 'CUESTIONARIO',
