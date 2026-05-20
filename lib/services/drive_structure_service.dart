@@ -239,6 +239,14 @@ class DriveStructureService {
     await _api.dio.delete(ApiEndpoints.documentsDriveFileDelete(fileId));
   }
 
+  Future<DriveFileViewInfo> getS3FileViewUrl(String path) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.documentsS3FileViewUrl,
+      queryParameters: {'path': path},
+    );
+    return DriveFileViewInfo.fromJson(res.data!);
+  }
+
   Future<DriveFolderContentsResponse> getS3FolderContents(String path) async {
     final res = await _api.dio.get<Map<String, dynamic>>(
       ApiEndpoints.documentsS3FoldersContents,

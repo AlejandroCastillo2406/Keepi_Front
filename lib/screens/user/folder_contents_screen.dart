@@ -11,6 +11,7 @@ import '../../core/decorative_background.dart';
 import '../../core/file_type_style.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
+import '../../services/document_file_opener.dart';
 import '../../services/drive_structure_service.dart';
 
 class FolderContentsScreen extends StatefulWidget {
@@ -338,61 +339,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
   }
 
   Future<void> _openFilePreview(DriveFile file) async {
-    final api = context.read<ApiClient>();
-    final service = DriveStructureService(api);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-    scaffoldMessenger.showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(width: 12),
-            Text('Abriendo vista previa…'),
-          ],
-        ),
-        duration: Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-
-    try {
-      final info = await service.getFileViewUrl(file.id);
-      if (info.viewUrl.isEmpty) {
-        if (mounted) {
-          scaffoldMessenger.hideCurrentSnackBar();
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(
-              content: Text('No se pudo obtener la vista previa de este archivo.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return;
-      }
-      final uri = Uri.parse(info.viewUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-      if (mounted) scaffoldMessenger.hideCurrentSnackBar();
-    } catch (e) {
-      if (mounted) {
-        scaffoldMessenger.hideCurrentSnackBar();
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString().replaceFirst('DioException [bad response]: ', '')}'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
+    await DocumentFileOpener.open(context, file: file);
   }
 
   Future<void> _downloadFile(DriveFile file) async {

@@ -32,6 +32,7 @@ class AppNotificationDto {
     required this.type,
     required this.read,
     required this.payload,
+    this.documentId,
     this.createdAt,
   });
 
@@ -43,14 +44,22 @@ class AppNotificationDto {
   final Map<String, dynamic> payload;
   final String? createdAt;
 
+  final String? documentId;
+
   String? get prescriptionId => payload['prescription_id']?.toString();
   String get reminderQuestion =>
       payload['question']?.toString() ?? message;
   String? get appointmentId => payload['appointment_id']?.toString();
+  String? get analysisRequestId => payload['analysis_request_id']?.toString();
   String? get questionnaireInvitationId => payload['invitation_id']?.toString();
   bool get isQuestionnaireCompleted =>
       payload['type']?.toString() == 'questionnaire_completed' ||
       type == 'questionnaire_completed';
+  bool get isAnalysisRequestCompleted =>
+      payload['type']?.toString() == 'analysis_request_completed' ||
+      type == 'analysis_request_completed' ||
+      ((documentId ?? '').isNotEmpty &&
+          (analysisRequestId ?? '').isNotEmpty);
   String? get appointmentAction => payload['action']?.toString();
   DateTime? get proposedStartAt {
     final raw = payload['proposed_start_at']?.toString();
@@ -59,13 +68,23 @@ class AppNotificationDto {
   }
 
   factory AppNotificationDto.fromJson(Map<String, dynamic> j) {
+    final payload =
+        Map<String, dynamic>.from((j['payload'] as Map?) ?? const {});
+    final rootDocId = j['document_id']?.toString();
+    final docId = (rootDocId != null && rootDocId.isNotEmpty)
+        ? rootDocId
+        : payload['document_id']?.toString();
+    if (docId != null && docId.isNotEmpty) {
+      payload['document_id'] = docId;
+    }
     return AppNotificationDto(
       id: j['id'] as String? ?? '',
       title: j['title'] as String? ?? 'Notificación',
       message: j['message'] as String? ?? '',
       type: j['type'] as String? ?? 'info',
       read: (j['read'] as bool?) ?? false,
-      payload: Map<String, dynamic>.from((j['payload'] as Map?) ?? const {}),
+      payload: payload,
+      documentId: docId,
       createdAt: j['created_at'] as String?,
     );
   }

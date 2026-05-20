@@ -47,7 +47,7 @@ class DoctorService {
   Future<void> createAnalysisRequest({
     required String patientId,
     required String description,
-    required DateTime expiresAt,
+    DateTime? expiresAt,
   }) async {
     // 1. RASTREADOR ANTES DE ENVIAR
     print("🛑 [DEBUG] INICIANDO POST A ANALYSIS-REQUESTS...");
@@ -55,13 +55,24 @@ class DoctorService {
     print("🛑 [DEBUG] DATOS: patient_id: $patientId");
 
     try {
+      final payload = <String, dynamic>{
+        'patient_id': patientId,
+        'description': description,
+      };
+      if (expiresAt != null) {
+        final endOfDay = DateTime(
+          expiresAt.year,
+          expiresAt.month,
+          expiresAt.day,
+          23,
+          59,
+          59,
+        );
+        payload['expires_at'] = endOfDay.toUtc().toIso8601String();
+      }
       final response = await _api.dio.post(
         '/api/v1/analysis-requests/',
-        data: {
-          'patient_id': patientId,
-          'description': description,
-          'expires_at': expiresAt.toUtc().toIso8601String(),
-        },
+        data: payload,
       );
       // 2. RASTREADOR DE ÉXITO REAL
       print("✅ [DEBUG] RESPUESTA REAL DEL SERVIDOR: ${response.statusCode}");
@@ -126,6 +137,17 @@ class DoctorService {
     return Uri.parse(base).resolve(relative).toString();
   }
 
+  /// [DOCTOR] Sube un reporte físico y completa la solicitud del paciente.
+  Future<void> doctorUploadAnalysisAndComplete({
+    required String requestId,
+    required FormData formData,
+  }) async {
+    await _api.dio.patch(
+      '/api/v1/analysis-requests/$requestId/doctor-upload',
+      data: formData,
+    );
+  }
+
   /// [PACIENTE] Marca una solicitud como completada vinculando el ID del documento subido.
   Future<void> completeAnalysisRequest({
     required String requestId,
@@ -137,17 +159,6 @@ class DoctorService {
         'document_id': documentId,
       },
     );
-  }
-
-  Future<Map<String, dynamic>> doctorUploadAnalysisAndComplete({
-    required String requestId,
-    required FormData formData,
-  }) async {
-    final res = await _api.dio.post<Map<String, dynamic>>(
-      '/api/v1/analysis-requests/$requestId/doctor-upload',
-      data: formData,
-    );
-    return res.data ?? <String, dynamic>{};
   }
 
   // --- UTILIDADES ---

@@ -221,7 +221,9 @@ class QuestionnaireService {
   /// Obtiene las respuestas de los cuestionarios de un paciente específico.
   Future<List<dynamic>> fetchPatientResponses(String patientId) async {
     try {
-      final res = await _api.dio.get<dynamic>('/api/v1/questionnaire/patients/$patientId/responses');
+      final res = await _api.dio.get<dynamic>(
+        ApiEndpoints.questionnairePatientResponses(patientId),
+      );
       
       final data = res.data;
       if (data is! List) return [];

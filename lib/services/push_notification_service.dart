@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
+import 'notification_navigation.dart';
 import 'prescription_service.dart';
 
 class PushNotificationService {
@@ -73,6 +74,18 @@ class PushNotificationService {
     String? fallbackTitle,
     String? fallbackQuestion,
   }) async {
+    if (NotificationNavigation.isAnalysisRequestCompleted(data)) {
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        await NotificationNavigation.openAnalysisDocument(
+          context,
+          data: data,
+          title: data['title']?.toString() ?? fallbackTitle,
+        );
+      }
+      return;
+    }
+
     final appointmentId = data['appointment_id']?.toString();
     if (appointmentId != null && appointmentId.isNotEmpty) {
       await _handleAppointmentFromPush(

@@ -55,6 +55,8 @@ class ApiEndpoints {
       _path(Config.pathDocumentsKeepiCloudRoot);
   static String get documentsS3FoldersContents =>
       _path(Config.pathDocumentsS3FoldersContents);
+  static String get documentsS3FileViewUrl =>
+      _path('/documents/s3/files/view-url');
 
   static String get documentsMobileAnalyze =>
       _path(Config.pathDocumentsMobileAnalyze);
@@ -92,7 +94,6 @@ class ApiEndpoints {
       _path('/patient/appointments/$appointmentId/respond');
 
   // ──────── Cuestionarios de salud (solo doctor) ────────
-  static String get questionnaireExtractOcr => _path('/questionnaire/extract-ocr');
   static String get questionnaireSpecialties =>
       _path('/questionnaire/specialties');
   static String questionnaireSpecialtyQuestions(String specialtyId,
@@ -116,6 +117,10 @@ class ApiEndpoints {
       _path('/questionnaire/invitations');
   static String questionnaireInvitationById(String invitationId) =>
       _path('/questionnaire/invitations/$invitationId');
+  static String get questionnaireExtractOcr =>
+      _path('/questionnaire/extract-ocr');
+  static String questionnairePatientResponses(String patientId) =>
+      _path('/questionnaire/patients/$patientId/responses');
   static String questionnairePublicByToken(String token) =>
       _path('/questionnaire/public/$token');
   static String questionnairePublicSubmitByToken(String token) =>
