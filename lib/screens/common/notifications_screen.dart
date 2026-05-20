@@ -68,6 +68,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  Future<void> _openDocumentReplacement(AppNotificationDto n) async {
+    final data = NotificationNavigation.dataFromNotification(n);
+    if (!NotificationNavigation.isDocumentReplaced(data)) return;
+    await NotificationNavigation.openDocumentReplacement(context, data: data);
+  }
+
   Future<void> _openReminderPrompt(AppNotificationDto n) async {
     final prescriptionId = n.prescriptionId;
     if (prescriptionId == null || prescriptionId.isEmpty) return;
@@ -308,6 +314,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             child: _NotifCard(
               data: n,
               onTap: () {
+                if (n.isDocumentReplaced) {
+                  _openDocumentReplacement(n);
+                  return;
+                }
                 if (n.isAnalysisRequestCompleted) {
                   _openAnalysisDocument(n);
                   return;

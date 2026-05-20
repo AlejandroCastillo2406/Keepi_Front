@@ -45,75 +45,213 @@ class DriveFolder {
   }
 }
 
-/// Respuesta de GET /api/v1/documents/mobile/dashboard (KPIs + carpetas + próximos a vencer)
+/// Respuesta de GET /api/v1/documents/mobile/dashboard (KPIs + carpetas + alertas)
 class MobileDashboardResponse {
   MobileDashboardResponse({
     required this.folders,
     required this.totalKeepi,
-    required this.expiringSoonCount,
-    required this.expiringSoon,
+    required this.alertsCount,
+    required this.alertsExpiredCount,
+    required this.alertsExpiringCount,
+    required this.alerts,
     this.rootFiles = const [],
     this.requiresDriveAuth = false,
     this.requiresAction,
     this.authorizationUrl,
+    this.storagePreference,
   });
 
   final List<DriveFolder> folders;
   final int totalKeepi;
-  final int expiringSoonCount;
-  final List<ExpiringDocumentItem> expiringSoon;
+  final int alertsCount;
+  final int alertsExpiredCount;
+  final int alertsExpiringCount;
+  final List<DocumentAlertItem> alerts;
   final List<DriveFile> rootFiles;
   final bool requiresDriveAuth;
   final String? requiresAction;
   final String? authorizationUrl;
+  final String? storagePreference;
+
+  /// Compatibilidad con código anterior.
+  int get expiringSoonCount => alertsCount;
+  List<DocumentAlertItem> get expiringSoon => alerts;
 
   factory MobileDashboardResponse.fromJson(Map<String, dynamic> json) {
     final list = json['folders'] as List<dynamic>? ?? [];
-    final expiringList = json['expiring_soon'] as List<dynamic>? ?? [];
+    final alertsList =
+        json['alerts'] as List<dynamic>? ?? json['expiring_soon'] as List<dynamic>? ?? [];
     final rootList = json['root_files'] as List<dynamic>? ?? [];
+    final alerts = alertsList
+        .map((e) => DocumentAlertItem.fromJson(e as Map<String, dynamic>))
+        .toList();
     return MobileDashboardResponse(
       folders: list
           .map((e) => DriveFolder.fromJson(e as Map<String, dynamic>))
           .toList(),
       totalKeepi: (json['total_keepi'] as num?)?.toInt() ?? 0,
-      expiringSoonCount: (json['expiring_soon_count'] as num?)?.toInt() ?? 0,
-      expiringSoon: expiringList
-          .map((e) => ExpiringDocumentItem.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      alertsCount: (json['alerts_count'] as num?)?.toInt() ??
+          (json['expiring_soon_count'] as num?)?.toInt() ??
+          alerts.length,
+      alertsExpiredCount: (json['alerts_expired_count'] as num?)?.toInt() ??
+          alerts.where((a) => a.isExpired).length,
+      alertsExpiringCount: (json['alerts_expiring_count'] as num?)?.toInt() ??
+          alerts.where((a) => a.isExpiringSoon).length,
+      alerts: alerts,
       rootFiles: rootList
           .map((e) => DriveFile.fromJson(e as Map<String, dynamic>))
           .toList(),
       requiresDriveAuth: json['requires_drive_auth'] as bool? ?? false,
       requiresAction: json['requires_action'] as String?,
       authorizationUrl: json['authorization_url'] as String?,
+      storagePreference: json['storage_preference'] as String?,
     );
   }
 }
 
-class ExpiringDocumentItem {
-  ExpiringDocumentItem({
+enum DocumentAlertStatus { expired, expiringSoon }
+
+class DocumentAlertItem {
+  DocumentAlertItem({
     required this.id,
     required this.name,
+    required this.status,
     this.expiryDate,
     this.category,
     this.fileName,
+    this.cloudProvider,
+    this.canReplace = true,
   });
 
   final String id;
   final String name;
+  final DocumentAlertStatus status;
   final String? expiryDate;
   final String? category;
   final String? fileName;
+  final String? cloudProvider;
+  final bool canReplace;
 
-  factory ExpiringDocumentItem.fromJson(Map<String, dynamic> json) {
+  bool get isExpired => status == DocumentAlertStatus.expired;
+  bool get isExpiringSoon => status == DocumentAlertStatus.expiringSoon;
+
+  String? get keepiDocumentId => id.isNotEmpty ? id : null;
+  bool get canEditMetadata => true;
+
+  factory DocumentAlertItem.fromJson(Map<String, dynamic> json) {
+    final rawStatus = json['alert_status']?.toString() ?? '';
+    final status = rawStatus == 'expired'
+        ? DocumentAlertStatus.expired
+        : DocumentAlertStatus.expiringSoon;
     final expiry = json['expiry_date'];
-    return ExpiringDocumentItem(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
+    return DocumentAlertItem(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Documento',
+      status: status,
       expiryDate: expiry?.toString(),
-      category: json['category'] as String?,
-      fileName: json['file_name'] as String?,
+      category: json['category']?.toString(),
+      fileName: json['file_name']?.toString(),
+      cloudProvider: json['cloud_provider']?.toString(),
+      canReplace: json['can_replace'] as bool? ?? true,
     );
+  }
+}
+
+/// Alias legacy.
+typedef ExpiringDocumentItem = DocumentAlertItem;
+
+class DocumentMetadataDto {
+  DocumentMetadataDto({
+    required this.id,
+    required this.name,
+    required this.category,
+    this.fileName,
+    this.storageFileName,
+    this.cloudProvider,
+    this.description,
+    this.expiryDate,
+    this.documentNumber,
+    this.organization,
+    this.isReplaced = false,
+    this.replacedByName,
+    this.replacedByCategory,
+    this.isReplacement = false,
+    this.replacesDocumentName,
+    this.replacesDocumentCategory,
+  });
+
+  final String id;
+  final String name;
+  final String category;
+  final String? fileName;
+  /// Nombre actual del archivo en Drive o Keepi Cloud (S3).
+  final String? storageFileName;
+  final String? cloudProvider;
+  final String? description;
+  final String? expiryDate;
+  final String? documentNumber;
+  final String? organization;
+  final bool isReplaced;
+  final String? replacedByName;
+  final String? replacedByCategory;
+  final bool isReplacement;
+  final String? replacesDocumentName;
+  final String? replacesDocumentCategory;
+
+  bool get isKeepiCloud => cloudProvider == 'keepi_cloud';
+  bool get isGoogleDrive => cloudProvider == 'google_drive';
+
+  factory DocumentMetadataDto.fromJson(Map<String, dynamic> json) {
+    return DocumentMetadataDto(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      fileName: json['file_name']?.toString(),
+      storageFileName: json['storage_file_name']?.toString(),
+      cloudProvider: json['cloud_provider']?.toString(),
+      description: json['description']?.toString(),
+      expiryDate: json['expiry_date']?.toString(),
+      documentNumber: json['document_number']?.toString(),
+      organization: json['organization']?.toString(),
+      isReplaced: json['is_replaced'] == true,
+      replacedByName: json['replaced_by_name']?.toString(),
+      replacedByCategory: json['replaced_by_category']?.toString(),
+      isReplacement: json['is_replacement'] == true,
+      replacesDocumentName: json['replaces_document_name']?.toString(),
+      replacesDocumentCategory: json['replaces_document_category']?.toString(),
+    );
+  }
+}
+
+class DocumentMetadataUpdate {
+  DocumentMetadataUpdate({
+    this.name,
+    this.fileName,
+    this.category,
+    this.description,
+    this.expiryDate,
+    this.documentNumber,
+    this.organization,
+  });
+
+  final String? name;
+  final String? fileName;
+  final String? category;
+  final String? description;
+  final String? expiryDate;
+  final String? documentNumber;
+  final String? organization;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{};
+    if (name != null) map['name'] = name;
+    if (fileName != null) map['file_name'] = fileName;
+    if (category != null) map['category'] = category;
+    if (description != null) map['description'] = description;
+    if (expiryDate != null) map['expiry_date'] = expiryDate;
+    if (documentNumber != null) map['document_number'] = documentNumber;
+    if (organization != null) map['organization'] = organization;
+    return map;
   }
 }
 
@@ -127,6 +265,19 @@ class DriveFile {
     this.createdTime,
     this.modifiedTime,
     this.keepiVerified = false,
+    this.keepiDocumentId,
+    this.canEditMetadata = false,
+    this.category,
+    this.description,
+    this.expiryDate,
+    this.documentNumber,
+    this.organization,
+    this.isReplaced = false,
+    this.replacedByName,
+    this.replacedByCategory,
+    this.isReplacement = false,
+    this.replacesDocumentName,
+    this.replacesDocumentCategory,
   });
 
   final String id;
@@ -136,17 +287,47 @@ class DriveFile {
   final String? createdTime;
   final String? modifiedTime;
   final bool keepiVerified;
+  final String? keepiDocumentId;
+  final bool canEditMetadata;
+  final String? category;
+  final String? description;
+  final String? expiryDate;
+  final String? documentNumber;
+  final String? organization;
+  final bool isReplaced;
+  final String? replacedByName;
+  final String? replacedByCategory;
+  final bool isReplacement;
+  final String? replacesDocumentName;
+  final String? replacesDocumentCategory;
+
+  String? get editableDocumentId => keepiDocumentId;
 
   factory DriveFile.fromJson(Map<String, dynamic> json) {
     final size = json['size'];
+    final keepiDocId = json['keepi_document_id']?.toString();
     return DriveFile(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Archivo',
       size: size?.toString(),
       mimeType: json['mime_type'] as String?,
       createdTime: json['created_time'] as String?,
       modifiedTime: json['modified_time'] as String?,
       keepiVerified: json['keepi_verified'] as bool? ?? false,
+      keepiDocumentId: keepiDocId,
+      canEditMetadata:
+          json['can_edit_metadata'] as bool? ?? (keepiDocId != null && keepiDocId.isNotEmpty),
+      category: json['category']?.toString(),
+      description: json['description']?.toString(),
+      expiryDate: json['expiry_date']?.toString(),
+      documentNumber: json['document_number']?.toString(),
+      organization: json['organization']?.toString(),
+      isReplaced: json['is_replaced'] == true,
+      replacedByName: json['replaced_by_name']?.toString(),
+      replacedByCategory: json['replaced_by_category']?.toString(),
+      isReplacement: json['is_replacement'] == true,
+      replacesDocumentName: json['replaces_document_name']?.toString(),
+      replacesDocumentCategory: json['replaces_document_category']?.toString(),
     );
   }
 }
@@ -237,6 +418,24 @@ class DriveStructureService {
 
   Future<void> deleteFile(String fileId) async {
     await _api.dio.delete(ApiEndpoints.documentsDriveFileDelete(fileId));
+  }
+
+  Future<DocumentMetadataDto> fetchDocumentMetadata(String documentId) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.documentsMobileMetadataById(documentId),
+    );
+    return DocumentMetadataDto.fromJson(res.data!);
+  }
+
+  Future<DocumentMetadataDto> updateDocumentMetadata(
+    String documentId,
+    DocumentMetadataUpdate body,
+  ) async {
+    final res = await _api.dio.patch<Map<String, dynamic>>(
+      ApiEndpoints.documentsMobileMetadataById(documentId),
+      data: body.toJson(),
+    );
+    return DocumentMetadataDto.fromJson(res.data!);
   }
 
   Future<DriveFileViewInfo> getS3FileViewUrl(String path) async {

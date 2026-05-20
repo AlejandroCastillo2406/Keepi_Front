@@ -60,6 +60,15 @@ class AppNotificationDto {
       type == 'analysis_request_completed' ||
       ((documentId ?? '').isNotEmpty &&
           (analysisRequestId ?? '').isNotEmpty);
+  bool get isDocumentReplaced =>
+      payload['type']?.toString() == 'document_replaced' ||
+      type == 'document_replaced' ||
+      ((payload['old_document_id']?.toString() ?? '').isNotEmpty &&
+          (payload['new_document_id']?.toString() ?? documentId ?? '')
+              .isNotEmpty);
+  String? get replacedOldDocumentId => payload['old_document_id']?.toString();
+  String? get replacedNewDocumentId =>
+      payload['new_document_id']?.toString() ?? documentId;
   String? get appointmentAction => payload['action']?.toString();
   DateTime? get proposedStartAt {
     final raw = payload['proposed_start_at']?.toString();

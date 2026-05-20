@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../screens/doctor/analysis_document_viewer_screen.dart';
+import '../widgets/document_replacement_banner.dart';
 import 'api_client.dart';
 import 'doctor_service.dart';
 import 'notifications_service.dart';
@@ -22,6 +23,17 @@ class NotificationNavigation {
     return docId != null && reqId != null && reqId.isNotEmpty;
   }
 
+  static bool isDocumentReplaced(Map<String, dynamic> data) {
+    final t = data['type']?.toString() ?? '';
+    if (t == 'document_replaced') return true;
+    final oldId = data['old_document_id']?.toString();
+    final newId = data['new_document_id']?.toString();
+    return oldId != null &&
+        oldId.isNotEmpty &&
+        newId != null &&
+        newId.isNotEmpty;
+  }
+
   static Map<String, dynamic> dataFromNotification(AppNotificationDto n) {
     final merged = <String, dynamic>{...n.payload};
     if (n.documentId != null) merged['document_id'] = n.documentId;
@@ -32,6 +44,27 @@ class NotificationNavigation {
       merged['type'] = n.type;
     }
     return merged;
+  }
+
+  static Future<void> openDocumentReplacement(
+    BuildContext context, {
+    required Map<String, dynamic> data,
+  }) async {
+    final oldId = data['old_document_id']?.toString();
+    final newId =
+        data['new_document_id']?.toString() ?? documentIdFrom(data);
+    if (oldId == null || oldId.isEmpty || newId == null || newId.isEmpty) {
+      return;
+    }
+    showDocumentReplacementComparisonSheet(
+      context,
+      oldDocumentId: oldId,
+      newDocumentId: newId,
+      oldName: data['old_name']?.toString(),
+      newName: data['new_name']?.toString(),
+      oldCategory: data['old_category']?.toString(),
+      newCategory: data['new_category']?.toString(),
+    );
   }
 
   static Future<void> openAnalysisDocument(

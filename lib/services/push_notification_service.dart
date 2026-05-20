@@ -46,6 +46,39 @@ class PushNotificationService {
     if (!_firebaseReady || _tapHandlersConfigured) return;
     _tapHandlersConfigured = true;
 
+    FirebaseMessaging.onMessage.listen((message) async {
+      final context = navigatorKey.currentContext;
+      if (context == null) return;
+      final title = message.notification?.title ??
+          message.data['title']?.toString() ??
+          'Notificación';
+      final body = message.notification?.body ??
+          message.data['body']?.toString() ??
+          '';
+      if (title.isEmpty && body.isEmpty) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            body.isEmpty ? title : '$title: $body',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          action: SnackBarAction(
+            label: 'Ver',
+            onPressed: () {
+              _handlePushAction(
+                navigatorKey: navigatorKey,
+                data: message.data,
+                fallbackTitle: message.notification?.title,
+                fallbackQuestion: message.notification?.body,
+              );
+            },
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    });
+
     FirebaseMessaging.onMessageOpenedApp.listen((message) async {
       await _handlePushAction(
         navigatorKey: navigatorKey,
@@ -81,6 +114,17 @@ class PushNotificationService {
           context,
           data: data,
           title: data['title']?.toString() ?? fallbackTitle,
+        );
+      }
+      return;
+    }
+
+    if (NotificationNavigation.isDocumentReplaced(data)) {
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        await NotificationNavigation.openDocumentReplacement(
+          context,
+          data: data,
         );
       }
       return;

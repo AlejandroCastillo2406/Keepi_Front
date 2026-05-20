@@ -13,6 +13,8 @@ import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/document_file_opener.dart';
 import '../../services/drive_structure_service.dart';
+import '../../widgets/document_metadata_edit_sheet.dart';
+import '../../widgets/document_replacement_banner.dart';
 
 class FolderContentsScreen extends StatefulWidget {
   const FolderContentsScreen({
@@ -293,6 +295,9 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
                     file: files[i],
                     isLast: i == files.length - 1,
                     onTap: () => _openFilePreview(files[i]),
+                    onEdit: files[i].canEditMetadata
+                        ? () => _editFileMetadata(files[i])
+                        : null,
                     onDownload: () => _downloadFile(files[i]),
                     onDelete: () => _confirmDeleteFile(files[i]),
                   ),
@@ -340,6 +345,26 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
 
   Future<void> _openFilePreview(DriveFile file) async {
     await DocumentFileOpener.open(context, file: file);
+  }
+
+  Future<void> _editFileMetadata(DriveFile file) async {
+    final docId = file.editableDocumentId;
+    if (docId == null || docId.isEmpty) return;
+    final saved = await openDocumentMetadataEditor(
+      context,
+      documentId: docId,
+      preview: file,
+    );
+    if (saved && mounted) {
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Metadatos actualizados'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _downloadFile(DriveFile file) async {
@@ -589,12 +614,14 @@ class _FileTile extends StatelessWidget {
     required this.file,
     required this.isLast,
     required this.onTap,
+    this.onEdit,
     required this.onDownload,
     required this.onDelete,
   });
   final DriveFile file;
   final bool isLast;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
   final VoidCallback onDownload;
   final VoidCallback onDelete;
 
@@ -654,7 +681,8 @@ class _FileTile extends StatelessWidget {
                                     ),
                                   ),
                                 if (file.keepiVerified) ...[
-                                  if (_formatSize(file.size).isNotEmpty) const SizedBox(width: 8),
+                                  if (_formatSize(file.size).isNotEmpty)
+                                    const SizedBox(width: 8),
                                   const Tooltip(
                                     message: 'Analizado por Keepi',
                                     child: Icon(
@@ -664,6 +692,7 @@ class _FileTile extends StatelessWidget {
                                     ),
                                   ),
                                 ],
+                                DocumentReplacementInfoIcon(file: file),
                               ],
                             ),
                           ],
@@ -674,6 +703,16 @@ class _FileTile extends StatelessWidget {
                 ),
               ),
             ),
+            if (onEdit != null)
+              IconButton(
+                onPressed: onEdit,
+                icon: const Icon(
+                  Icons.edit_rounded,
+                  size: 20,
+                  color: KeepiColors.orange,
+                ),
+                tooltip: 'Editar metadatos',
+              ),
             PopupMenuButton<String>(
               padding: EdgeInsets.zero,
               icon: const Icon(Icons.more_vert, color: KeepiColors.slateLight, size: 22),

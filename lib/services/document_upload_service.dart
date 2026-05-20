@@ -73,6 +73,7 @@ class DocumentUploadService {
     required String category,
     required String fileName,
     String? expiryDate,
+    String? replacesDocumentId,
   }) async {
     final pathName = file.path.split(RegExp(r'[/\\]')).last;
     final multipart = await MultipartFile.fromFile(file.path, filename: pathName);
@@ -81,6 +82,8 @@ class DocumentUploadService {
       'category': category,
       'file_name': fileName,
       if (expiryDate != null && expiryDate.isNotEmpty) 'expiry_date': expiryDate,
+      if (replacesDocumentId != null && replacesDocumentId.isNotEmpty)
+        'replaces_document_id': replacesDocumentId,
     });
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.documentsMobileSaveAnalyzed,

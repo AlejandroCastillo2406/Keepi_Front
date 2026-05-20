@@ -11,6 +11,11 @@ import '../../services/api_client.dart';
 import '../../services/config_service.dart' as config_dto;
 import '../../services/document_file_opener.dart';
 import '../../services/drive_structure_service.dart';
+import '../../widgets/document_alert_tile.dart';
+import '../../widgets/document_analyze_flow.dart';
+import '../../widgets/document_metadata_edit_sheet.dart';
+import '../../widgets/document_replacement_banner.dart';
+import '../../widgets/ios_fab.dart';
 import '../common/storage_choice_flow.dart';
 import '../user/folder_contents_screen.dart';
 
@@ -27,9 +32,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
   config_dto.UserConfigResponse? _config;
   List<DriveFolder> _folders = [];
   List<DriveFile> _rootFiles = [];
-  List<ExpiringDocumentItem> _expiringSoon = [];
+  List<DocumentAlertItem> _alerts = [];
   int _totalKeepi = 0;
-  int _expiringSoonCount = 0;
+  int _alertsCount = 0;
+  int _alertsExpiredCount = 0;
   bool _loading = true;
   String? _error;
   bool _requiresDriveAuth = false;
@@ -68,9 +74,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
           _config = config;
           _folders = [];
           _rootFiles = [];
-          _expiringSoon = [];
+          _alerts = [];
           _totalKeepi = 0;
-          _expiringSoonCount = 0;
+          _alertsCount = 0;
+          _alertsExpiredCount = 0;
           _loading = false;
         });
         return;
@@ -115,9 +122,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         _config = config;
         _folders = folders;
         _rootFiles = rootFiles;
-        _expiringSoon = dashboard.expiringSoon;
+        _alerts = dashboard.alerts;
         _totalKeepi = dashboard.totalKeepi;
-        _expiringSoonCount = dashboard.expiringSoonCount;
+        _alertsCount = dashboard.alertsCount;
+        _alertsExpiredCount = dashboard.alertsExpiredCount;
         _requiresDriveAuth = dashboard.requiresDriveAuth;
         _authorizationUrl = dashboard.authorizationUrl;
         _loading = false;
@@ -191,6 +199,63 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     await DocumentFileOpener.open(context, file: file);
   }
 
+  Future<void> _openAlertDocument(DocumentAlertItem item) async {
+    final file = DriveFile(
+      id: item.id,
+      name: item.fileName ?? item.name,
+      keepiDocumentId: item.keepiDocumentId,
+      canEditMetadata: item.canEditMetadata,
+    );
+    await DocumentFileOpener.open(context, file: file);
+  }
+
+  Future<void> _replaceAlertDocument(DocumentAlertItem item) async {
+    final docId = item.keepiDocumentId;
+    if (docId == null || docId.isEmpty || !item.canReplace) return;
+    final cfg = _config;
+    await runDocumentReplaceFlow(
+      context,
+      replacesDocumentId: docId,
+      onSaved: _load,
+      saveButtonLabel: cfg != null && cfg.isKeepiCloud
+          ? 'Guardar en Keepi Cloud'
+          : 'Guardar en Drive',
+    );
+  }
+
+  Future<void> _editAlertMetadata(DocumentAlertItem item) async {
+    final docId = item.keepiDocumentId;
+    if (docId == null || docId.isEmpty) return;
+    final saved = await openDocumentMetadataEditor(
+      context,
+      documentId: docId,
+    );
+    if (saved && mounted) {
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Metadatos actualizados')),
+      );
+    }
+  }
+
+  Future<void> _editFileMetadata(DriveFile file) async {
+    final docId = file.editableDocumentId;
+    if (docId == null || docId.isEmpty) return;
+    final saved = await openDocumentMetadataEditor(
+      context,
+      documentId: docId,
+      preview: file,
+    );
+    if (saved && mounted) {
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Metadatos actualizados')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = _config;
@@ -198,8 +263,19 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     final isDrive = config?.isGoogleDrive ?? false;
     final notConfigured = config?.isNotConfigured ?? false;
 
+    final canAnalyze = !notConfigured && (isKeepi || isDrive);
+
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
+      floatingActionButton: canAnalyze
+          ? IosFab(
+              onPressed: () => runDocumentAnalyzeFlow(
+                context,
+                onSaved: _load,
+                saveButtonLabel: isKeepi ? 'Guardar en Keepi Cloud' : 'Guardar en Drive',
+              ),
+            )
+          : null,
       body: SafeArea(
         bottom: false,
         child: DecorativeBackground(
@@ -220,7 +296,8 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                         : (isKeepi ? 'Keepi Cloud' : 'Google Drive'),
                     isKeepi: isKeepi,
                     totalKeepi: _totalKeepi,
-                    expiringCount: _expiringSoonCount,
+                    alertsCount: _alertsCount,
+                    alertsExpiredCount: _alertsExpiredCount,
                   ),
                 ),
                 SliverPadding(
@@ -271,9 +348,9 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
 
     final hasFolders = _folders.isNotEmpty;
     final hasRoot = _rootFiles.isNotEmpty;
-    final hasExpiring = _expiringSoon.isNotEmpty;
+    final hasAlerts = _alerts.isNotEmpty;
 
-    if (!hasFolders && !hasRoot && !hasExpiring) {
+    if (!hasFolders && !hasRoot && !hasAlerts) {
       return _DocEmptyCard(
         tag: isKeepi ? 'KEEPI CLOUD' : 'GOOGLE DRIVE',
         title: 'Sin contenido',
@@ -287,13 +364,28 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasExpiring) ...[
-          _DocSectionDivider(tag: 'PRÓXIMOS A VENCER', count: _expiringSoon.length),
+        if (hasAlerts) ...[
+          _DocSectionDivider(tag: 'ALERTAS', count: _alerts.length),
+          const SizedBox(height: 8),
+          const Text(
+            'Documentos vencidos o por vencer en 30 días (tu nube activa).',
+            style: TextStyle(
+              fontSize: 12.5,
+              color: KeepiColors.slateLight,
+              height: 1.35,
+            ),
+          ),
           const SizedBox(height: 12),
-          for (final item in _expiringSoon.take(5))
+          for (final item in _alerts.take(8))
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _ExpiringCard(item: item),
+              child: DocumentAlertTile(
+                item: item,
+                compact: true,
+                onTap: () => _openAlertDocument(item),
+                onEdit: () => _editAlertMetadata(item),
+                onReplace: () => _replaceAlertDocument(item),
+              ),
             ),
           const SizedBox(height: 18),
         ],
@@ -320,6 +412,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
               child: _FileCard(
                 file: file,
                 onTap: () => _openFile(file),
+                onEdit: file.canEditMetadata ? () => _editFileMetadata(file) : null,
               ),
             ),
         ],
@@ -387,13 +480,15 @@ class _DocHero extends StatelessWidget {
     required this.storageLabel,
     required this.isKeepi,
     required this.totalKeepi,
-    required this.expiringCount,
+    required this.alertsCount,
+    required this.alertsExpiredCount,
   });
 
   final String storageLabel;
   final bool isKeepi;
   final int totalKeepi;
-  final int expiringCount;
+  final int alertsCount;
+  final int alertsExpiredCount;
 
   @override
   Widget build(BuildContext context) {
@@ -468,10 +563,12 @@ class _DocHero extends StatelessWidget {
                   Container(width: 1, color: KeepiColors.cardBorder),
                   Expanded(
                     child: _StatCell(
-                      value: expiringCount,
-                      label: 'POR VENCER',
-                      color: expiringCount > 0
-                          ? KeepiColors.orange
+                      value: alertsCount,
+                      label: 'ALERTAS',
+                      color: alertsCount > 0
+                          ? (alertsExpiredCount > 0
+                              ? const Color(0xFFD32F2F)
+                              : KeepiColors.orange)
                           : KeepiColors.slate,
                     ),
                   ),
@@ -660,9 +757,14 @@ class _FolderCard extends StatelessWidget {
 }
 
 class _FileCard extends StatelessWidget {
-  const _FileCard({required this.file, required this.onTap});
+  const _FileCard({
+    required this.file,
+    required this.onTap,
+    this.onEdit,
+  });
   final DriveFile file;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -671,13 +773,14 @@ class _FileCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: KeepiColors.cardBorder),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               width: 40,
@@ -701,15 +804,26 @@ class _FileCard extends StatelessWidget {
                 ),
               ),
             ),
+            DocumentReplacementInfoIcon(file: file),
             if (file.keepiVerified)
               const Padding(
-                padding: EdgeInsets.only(right: 6),
+                padding: EdgeInsets.only(left: 2),
                 child: Icon(
                   Icons.verified_rounded,
                   size: 18,
                   color: KeepiColors.green,
                 ),
               ),
+            if (onEdit != null)
+                IconButton(
+                  onPressed: onEdit,
+                  icon: const Icon(
+                    Icons.edit_rounded,
+                    size: 20,
+                    color: KeepiColors.orange,
+                  ),
+                  tooltip: 'Editar metadatos',
+                ),
             const Icon(
               Icons.open_in_new_rounded,
               size: 18,
@@ -717,55 +831,6 @@ class _FileCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ExpiringCard extends StatelessWidget {
-  const _ExpiringCard({required this.item});
-  final ExpiringDocumentItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: KeepiColors.orange.withValues(alpha: 0.35),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.schedule_rounded, color: KeepiColors.orange, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: KeepiColors.slate,
-                  ),
-                ),
-                if (item.expiryDate != null)
-                  Text(
-                    'Vence: ${item.expiryDate}',
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: KeepiColors.slateLight,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

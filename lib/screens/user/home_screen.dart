@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,54 +13,18 @@ import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/config_service.dart' as config_dto;
-import '../../services/document_upload_service.dart';
 import '../../services/drive_structure_service.dart';
+import '../../widgets/document_analyze_flow.dart';
+import '../../widgets/ios_fab.dart';
 import '../../services/subscription_service.dart';
+import '../../widgets/document_alert_tile.dart';
+import '../../widgets/document_replacement_banner.dart';
 import '../common/storage_choice_flow.dart';
 import 'folder_contents_screen.dart';
 import 'settings_screen.dart';
 
 /// Duración estándar para transiciones suaves estilo iOS.
 const Duration _kIOSTransitionDuration = Duration(milliseconds: 380);
-
-/// Formatea fecha ISO (ej. 2033-01-01T00:00:00Z) a "día mes año" en español. Ignora hora y zona.
-String formatExpiryDateForDisplay(String? isoDate) {
-  if (isoDate == null || isoDate.isEmpty) {
-    return '—';
-  }
-  try {
-    final datePart = isoDate.split('T').first;
-    final parts = datePart.split('-');
-    if (parts.length != 3) return isoDate;
-    final year = int.tryParse(parts[0]);
-    final month = int.tryParse(parts[1]);
-    final day = int.tryParse(parts[2]);
-    if (year == null ||
-        month == null ||
-        day == null ||
-        month < 1 ||
-        month > 12) {
-      return isoDate;
-    }
-    const months = [
-      'Enero',
-      'Febrero',
-      'Marzo',
-      'Abril',
-      'Mayo',
-      'Junio',
-      'Julio',
-      'Agosto',
-      'Septiembre',
-      'Octubre',
-      'Noviembre',
-      'Diciembre'
-    ];
-    return '$day ${months[month - 1]} $year';
-  } catch (_) {
-    return isoDate;
-  }
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -83,8 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingDrive = false;
   String? _driveError;
   int _totalKeepi = 0;
-  int _expiringSoonCount = 0;
-  List<ExpiringDocumentItem> _expiringSoon = const [];
+  int _alertsCount = 0;
+  List<DocumentAlertItem> _alerts = const [];
   List<DriveFile> _rootFiles = const [];
   int? _analysisUsed;
   int? _analysisLimit;
@@ -159,8 +121,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _loadingDrive = false;
           _driveError = null;
           _totalKeepi = 0;
-          _expiringSoonCount = 0;
-          _expiringSoon = const [];
+          _alertsCount = 0;
+          _alerts = const [];
           _rootFiles = const [];
           _analysisUsed = null;
           _analysisLimit = null;
@@ -210,8 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _driveFolders = folders;
           _totalKeepi = res.totalKeepi;
-          _expiringSoonCount = res.expiringSoonCount;
-          _expiringSoon = res.expiringSoon;
+          _alertsCount = res.alertsCount;
+          _alerts = res.alerts;
           _rootFiles = rootFiles;
           _analysisUsed = usage?.analysisUsed;
           _analysisLimit = usage?.analysisLimit;
@@ -231,8 +193,8 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _driveFolders = null;
           _totalKeepi = 0;
-          _expiringSoonCount = 0;
-          _expiringSoon = const [];
+          _alertsCount = 0;
+          _alerts = const [];
           _rootFiles = const [];
           _analysisUsed = null;
           _analysisLimit = null;
@@ -338,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       floatingActionButton:
           _config != null && (_config!.isGoogleDrive || _config!.isKeepiCloud)
-              ? _IOSFAB(
+              ? IosFab(
                   onPressed: _onAddFileTap,
                 )
               : null,
@@ -592,10 +554,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         loadingDrive: _loadingDrive,
                         driveError: _driveError,
                         totalKeepi: _totalKeepi,
-                        expiringSoonCount: _expiringSoonCount,
-                        expiringSoon: _expiringSoon,
+                        alertsCount: _alertsCount,
+                        alerts: _alerts,
                         analysisUsed: _analysisUsed,
                         analysisLimit: _analysisLimit,
+                        onReplaceAlert: _replaceAlertDocument,
                         onFolderTap: (folder) {
                           Navigator.of(context).push(
                             CupertinoPageRoute<void>(
@@ -620,438 +583,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onAddFileTap() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      withData: false,
-      allowMultiple: false,
-    );
-    if (result == null || result.files.isEmpty) return;
-    final platformFile = result.files.single;
-    final path = platformFile.path;
-    if (path == null || path.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo acceder al archivo seleccionado.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return;
-    }
-    final file = File(path);
-    if (!await file.exists()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('El archivo ya no existe.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return;
-    }
-
-    final api = context.read<ApiClient>();
-    final uploadService = DocumentUploadService(api);
-    final scaffold = ScaffoldMessenger.of(context);
-
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: KeepiColors.orange),
-                ),
-                SizedBox(height: 16),
-                Text('Analizando documento…'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    AnalyzeResult analyzeResult;
-    try {
-      analyzeResult = await uploadService.analyze(file);
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      final err = e.toString();
-      final isTimeout = err.toLowerCase().contains('timeout');
-      final msg = isTimeout
-          ? 'El análisis tardó demasiado. Revisa tu conexión o intenta con un archivo más pequeño.'
-          : err
-              .replaceFirst('DioException [bad response]: ', '')
-              .replaceFirst('DioException [connection timeout]: ', '')
-              .replaceFirst('DioException [send timeout]: ', '')
-              .replaceFirst('DioException [receive timeout]: ', '');
-      scaffold.showSnackBar(
-        SnackBar(
-          content: Text(isTimeout ? msg : 'Error al analizar: $msg'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 5),
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    Navigator.of(context).pop();
-
-    if (analyzeResult.subscriptionRequired) {
-      scaffold.showSnackBar(
-        SnackBar(
-          content: Text(analyzeResult.message ??
-              'Se requiere una suscripción activa para analizar documentos.'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-
-    final saved = await _showAnalyzeResultModal(
-      context: context,
-      result: analyzeResult,
-      originalFileName: platformFile.name,
-    );
-    if (saved == null) return;
-
-    final category = saved.category;
-    final fileName = saved.fileName;
-    final expiryDate = saved.expiryDate;
-
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: KeepiColors.orange),
-                ),
-                SizedBox(height: 16),
-                Text('Guardando archivo …'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    try {
-      await uploadService.saveAnalyzed(
-        file: file,
-        category: category,
-        fileName: fileName,
-        expiryDate: expiryDate,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      scaffold.showSnackBar(
-        SnackBar(
-          content: Text(
-              'Error al guardar: ${e.toString().replaceFirst('DioException [bad response]: ', '')}'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    Navigator.of(context).pop();
-    scaffold.showSnackBar(
-      const SnackBar(
-        content: Text('Documento guardado correctamente'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: KeepiColors.green,
-      ),
-    );
-    final apiRef = context.read<ApiClient>();
-    _loadDriveStructure(apiRef);
-  }
-
-  /// Muestra el modal de resumen del análisis. Retorna los datos a guardar o null si canceló.
-  static Future<_SaveFormData?> _showAnalyzeResultModal({
-    required BuildContext context,
-    required AnalyzeResult result,
-    required String originalFileName,
-  }) async {
-    return showDialog<_SaveFormData>(
-      context: context,
-      builder: (ctx) => _AnalyzeResultModal(
-        result: result,
-        originalFileName: originalFileName,
-      ),
-    );
-  }
-}
-
-class _SaveFormData {
-  _SaveFormData({
-    required this.category,
-    required this.fileName,
-    this.expiryDate,
-  });
-  final String category;
-  final String fileName;
-  final String? expiryDate;
-}
-
-class _AnalyzeResultModal extends StatefulWidget {
-  const _AnalyzeResultModal({
-    required this.result,
-    required this.originalFileName,
-  });
-  final AnalyzeResult result;
-  final String originalFileName;
-
-  @override
-  State<_AnalyzeResultModal> createState() => _AnalyzeResultModalState();
-}
-
-class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
-  late TextEditingController _categoryController;
-  late TextEditingController _fileNameController;
-
-  @override
-  void initState() {
-    super.initState();
-    _categoryController = TextEditingController(
-      text: widget.result.manualClassificationRequired
-          ? 'Pendiente de clasificación'
-          : widget.result.category,
-    );
-    _fileNameController = TextEditingController(
-      text: widget.result.recommendedName.isNotEmpty
-          ? widget.result.recommendedName
-          : widget.originalFileName,
+    final cfg = _config;
+    await runDocumentAnalyzeFlow(
+      context,
+      onSaved: () => _loadDriveStructure(context.read<ApiClient>()),
+      saveButtonLabel: cfg != null && cfg.isKeepiCloud
+          ? 'Guardar en Keepi Cloud'
+          : 'Guardar en Drive',
     );
   }
 
-  @override
-  void dispose() {
-    _categoryController.dispose();
-    _fileNameController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final result = widget.result;
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 520),
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: KeepiColors.slate.withOpacity(0.12),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: KeepiColors.skyBlueSoft,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.analytics_outlined,
-                      color: KeepiColors.orange, size: 28),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    'Resumen del análisis',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: KeepiColors.slate,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _ReadOnlyField(
-                      label: 'Fecha de vencimiento',
-                      value: formatExpiryDateForDisplay(result.expiryDate),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Categoría',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: KeepiColors.slateLight,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _categoryController,
-                      decoration: InputDecoration(
-                        hintText: 'Ej: Facturas, Identificación',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Nombre del archivo',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: KeepiColors.slateLight,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _fileNameController,
-                      decoration: InputDecoration(
-                        hintText: 'Nombre con el que se guardará',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                    if (result.confidenceScore > 0) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Confianza del análisis: ${(result.confidenceScore * 100).toStringAsFixed(0)}%',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: KeepiColors.slateLight,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(null),
-                  child: const Text('Cancelar',
-                      style: TextStyle(color: KeepiColors.slateLight)),
-                ),
-                const SizedBox(width: 12),
-                FilledButton(
-                  onPressed: () {
-                    final category = _categoryController.text.trim();
-                    final fileName = _fileNameController.text.trim();
-                    if (category.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Escribe una categoría.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                      return;
-                    }
-                    if (fileName.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Escribe el nombre del archivo.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                      return;
-                    }
-                    Navigator.of(context).pop(_SaveFormData(
-                      category: category,
-                      fileName: fileName,
-                      expiryDate: result.expiryDate,
-                    ));
-                  },
-                  style: FilledButton.styleFrom(
-                      backgroundColor: KeepiColors.orange),
-                  child: const Text('Guardar en Drive'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReadOnlyField extends StatelessWidget {
-  const _ReadOnlyField({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: KeepiColors.slateLight,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: KeepiColors.slateSoft.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: KeepiColors.cardBorder),
-          ),
-          child: Text(
-            value,
-            style:
-                theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slate),
-          ),
-        ),
-      ],
+  Future<void> _replaceAlertDocument(DocumentAlertItem item) async {
+    final docId = item.keepiDocumentId;
+    if (docId == null || docId.isEmpty || !item.canReplace) return;
+    final cfg = _config;
+    await runDocumentReplaceFlow(
+      context,
+      replacesDocumentId: docId,
+      onSaved: () => _loadDriveStructure(context.read<ApiClient>()),
+      saveButtonLabel: cfg != null && cfg.isKeepiCloud
+          ? 'Guardar en Keepi Cloud'
+          : 'Guardar en Drive',
     );
   }
 }
@@ -1087,10 +639,11 @@ class _DriveFoldersSection extends StatelessWidget {
     required this.loadingDrive,
     required this.driveError,
     required this.totalKeepi,
-    required this.expiringSoonCount,
-    required this.expiringSoon,
+    required this.alertsCount,
+    required this.alerts,
     this.analysisUsed,
     this.analysisLimit,
+    this.onReplaceAlert,
     required this.onFolderTap,
   });
 
@@ -1103,10 +656,11 @@ class _DriveFoldersSection extends StatelessWidget {
   final bool loadingDrive;
   final String? driveError;
   final int totalKeepi;
-  final int expiringSoonCount;
-  final List<ExpiringDocumentItem> expiringSoon;
+  final int alertsCount;
+  final List<DocumentAlertItem> alerts;
   final int? analysisUsed;
   final int? analysisLimit;
+  final void Function(DocumentAlertItem item)? onReplaceAlert;
   final void Function(DriveFolder folder) onFolderTap;
 
   @override
@@ -1141,10 +695,10 @@ class _DriveFoldersSection extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: _KpiCard(
-                  label: 'Próximos a vencer',
-                  value: expiringSoonCount.toString(),
-                  icon: Icons.schedule_rounded,
-                  color: KeepiColors.skyBlue,
+                  label: 'Alertas',
+                  value: alertsCount.toString(),
+                  icon: Icons.notifications_active_outlined,
+                  color: alertsCount > 0 ? KeepiColors.orange : KeepiColors.skyBlue,
                 ),
               ),
             ],
@@ -1318,22 +872,22 @@ class _DriveFoldersSection extends StatelessWidget {
               ],
             ),
           ),
-        if (expiringSoon.isNotEmpty) ...[
+        if (alerts.isNotEmpty) ...[
           const SizedBox(height: 28),
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: KeepiColors.skyBlue.withOpacity(0.12),
+                  color: KeepiColors.orange.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.schedule_rounded,
-                    size: 22, color: KeepiColors.skyBlue),
+                child: const Icon(Icons.notifications_active_outlined,
+                    size: 22, color: KeepiColors.orange),
               ),
               const SizedBox(width: 12),
               Text(
-                'Próximos a vencer',
+                'Alertas',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.2,
@@ -1342,13 +896,26 @@ class _DriveFoldersSection extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            'Solo de tu almacenamiento activo · vencidos y por vencer (30 días)',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: KeepiColors.slateLight,
+              height: 1.35,
+            ),
+          ),
           const SizedBox(height: 14),
           _IOSStyleCard(
             child: Column(
               children: [
-                for (int i = 0; i < expiringSoon.length; i++) ...[
-                  _ExpiringDocTile(item: expiringSoon[i]),
-                  if (i < expiringSoon.length - 1)
+                for (int i = 0; i < alerts.length; i++) ...[
+                  DocumentAlertTile(
+                    item: alerts[i],
+                    onReplace: onReplaceAlert != null
+                        ? () => onReplaceAlert!(alerts[i])
+                        : null,
+                  ),
+                  if (i < alerts.length - 1)
                     Divider(
                       height: 1,
                       indent: 56,
@@ -1516,55 +1083,6 @@ class _KpiCard extends StatelessWidget {
   }
 }
 
-class _ExpiringDocTile extends StatelessWidget {
-  const _ExpiringDocTile({required this.item});
-  final ExpiringDocumentItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final displayName = (item.fileName != null && item.fileName!.isNotEmpty)
-        ? item.fileName!
-        : item.name;
-    final dateStr = formatExpiryDateForDisplay(item.expiryDate);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.description_outlined,
-            size: 24,
-            color: KeepiColors.skyBlue,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: KeepiColors.slate,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Vence: $dateStr',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: KeepiColors.slateLight,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _IOSStyleCard extends StatelessWidget {
   const _IOSStyleCard({required this.child});
   final Widget child;
@@ -1701,6 +1219,7 @@ class _RootFileTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
             Icons.description_outlined,
@@ -1740,9 +1259,11 @@ class _RootFileTile extends StatelessWidget {
                           color: KeepiColors.green,
                         ),
                       ],
+                      DocumentReplacementInfoIcon(file: file),
                     ],
                   ),
-                ],
+                ] else
+                  DocumentReplacementInfoIcon(file: file),
               ],
             ),
           ),
@@ -1828,79 +1349,6 @@ class _StorageStatusCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Botón flotante estilo iOS con gradiente del logo y sombra suave.
-class _IOSFAB extends StatefulWidget {
-  const _IOSFAB({required this.onPressed});
-  final VoidCallback onPressed;
-
-  @override
-  State<_IOSFAB> createState() => _IOSFABState();
-}
-
-class _IOSFABState extends State<_IOSFAB> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 120),
-    );
-    _scale = Tween<double>(begin: 1, end: 0.94).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) => _controller.reverse(),
-      onTapCancel: () => _controller.reverse(),
-      onTap: widget.onPressed,
-      child: ScaleTransition(
-        scale: _scale,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: KeepiColors.orange.withOpacity(0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: KeepiColors.slate.withOpacity(0.12),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [KeepiColors.orange, KeepiColors.orangeLight],
-              stops: [0.0, 1.0],
-            ),
-          ),
-          child: const SizedBox(
-            width: 56,
-            height: 56,
-            child: Icon(Icons.add_rounded, color: Colors.white, size: 28),
-          ),
-        ),
       ),
     );
   }

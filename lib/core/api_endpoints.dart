@@ -51,6 +51,8 @@ class ApiEndpoints {
       _path(Config.pathDocumentsMobileDashboard);
   static String documentsMobileDownloadById(String documentId) =>
       _path('/documents/mobile/download/$documentId');
+  static String documentsMobileMetadataById(String documentId) =>
+      _path('/documents/mobile/$documentId/metadata');
   static String get documentsKeepiCloudRoot =>
       _path(Config.pathDocumentsKeepiCloudRoot);
   static String get documentsS3FoldersContents =>
