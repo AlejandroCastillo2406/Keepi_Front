@@ -300,32 +300,28 @@ class QuestionnaireService {
   // ─── EXTRACCIÓN OCR CON IA ───
 
   /// Envía imágenes al backend para extraer preguntas médicas limpias usando AWS Textract + Claude
-  Future<List<String>> extractQuestionsFromImages(List<File> images) async {
+  Future<List<Map<String, dynamic>>> extractQuestionsFromImages(List<File> images) async {
     try {
-      // Usamos FormData porque vamos a enviar archivos
       final formData = FormData();
 
       for (var image in images) {
         String fileName = image.path.split('/').last;
         formData.files.add(MapEntry(
-          'imagenes', // <-- Debe coincidir con el nombre en FastAPI
+          'imagenes',
           await MultipartFile.fromFile(image.path, filename: fileName),
         ));
       }
 
-      // Hacemos la petición usando Dio. Tu ApiClient ya debería inyectar el token.
       final res = await _api.dio.post<Map<String, dynamic>>(
         ApiEndpoints.questionnaireExtractOcr,
         data: formData,
-        options: Options(
-          contentType: 'multipart/form-data',
-        ),
+        options: Options(contentType: 'multipart/form-data'),
       );
 
       final data = res.data;
       if (data != null && data['success'] == true) {
-        // Parseamos la lista de JSON a una lista de Strings en Dart
-        return List<String>.from(data['preguntas'] as List);
+        // Ahora devolvemos la lista completa de mapas con texto, tipo y opciones
+        return List<Map<String, dynamic>>.from(data['preguntas'] as List);
       } else {
         throw Exception('El servidor no devolvió éxito.');
       }

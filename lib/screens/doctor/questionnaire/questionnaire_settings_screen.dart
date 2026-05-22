@@ -142,7 +142,7 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
   }
 
   // =========================================================
-  // FLUJO DE ESCANEO OCR + IA
+  // FLUJO DE ESCANEO OCR + IA (CON TIPOS DE PREGUNTA)
   // =========================================================
   Future<void> _pickAndProcessImages() async {
     final picker = ImagePicker();
@@ -180,7 +180,6 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
         final picked = await picker.pickImage(source: ImageSource.camera);
         if (picked != null) {
           files.add(File(picked.path));
-          // Bucle por si son varias hojas
           more = await showDialog<bool>(
                 context: context,
                 barrierDismissible: false,
@@ -226,19 +225,19 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
 
     // 4. Enviar a FastAPI
     try {
-      final questions = await _service.extractQuestionsFromImages(files);
+      final questionsData = await _service.extractQuestionsFromImages(files);
       if (!mounted) return;
       Navigator.pop(context); // Cierra loading
 
-      if (questions.isEmpty) {
+      if (questionsData.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se detectaron preguntas en la imagen.')),
         );
         return;
       }
 
-      // 5. Mostrar modal de revisión
-      _showReviewAndSaveModal(questions);
+      // 5. Mostrar modal de revisión con la nueva estructura
+      _showReviewAndSaveModal(questionsData);
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // Cierra loading
@@ -248,17 +247,51 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
     }
   }
 
-  void _showReviewAndSaveModal(List<String> extractedQuestions) {
+  void _showReviewAndSaveModal(List<Map<String, dynamic>> extractedData) {
     final titleCtrl = TextEditingController();
-    // Convertimos las preguntas en controladores para que el doctor pueda editarlas
-    final questionCtrls = extractedQuestions.map((q) => TextEditingController(text: q)).toList();
+    
+    // Función de apoyo para mapear el texto de la IA al Enum de Flutter
+    QuestionResponseType parseType(String typeStr) {
+      switch (typeStr) {
+        case 'single_choice': return QuestionResponseType.singleChoice;
+        case 'multi_choice': return QuestionResponseType.multiChoice;
+        case 'yes_no': return QuestionResponseType.yesNo;
+        case 'numeric': return QuestionResponseType.numeric;
+        case 'long_text': return QuestionResponseType.longText;
+        case 'short_text':
+        default: return QuestionResponseType.shortText;
+      }
+    }
+
+    // Nombres amigables para mostrar en la interfaz
+    String getFriendlyTypeName(QuestionResponseType t) {
+      switch(t) {
+        case QuestionResponseType.singleChoice: return 'Opción Única';
+        case QuestionResponseType.multiChoice: return 'Opción Múltiple';
+        case QuestionResponseType.yesNo: return 'Sí / No';
+        case QuestionResponseType.numeric: return 'Numérico';
+        case QuestionResponseType.longText: return 'Texto Largo';
+        case QuestionResponseType.shortText: return 'Texto Corto';
+      }
+    }
+
+    // Convertimos la data estructurada para manejarla en la pantalla
+    final parsedQuestions = extractedData.map((item) {
+      final typeStr = item['tipo'] ?? 'short_text';
+      final List<String>? options = (item['opciones'] as List?)?.map((e) => e.toString()).toList();
+      return {
+        'ctrl': TextEditingController(text: item['texto']),
+        'type': parseType(typeStr),
+        'options': options,
+      };
+    }).toList();
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
         return StatefulBuilder(
-          // ¡AQUÍ ESTABA EL ERROR! Cambiamos 'context' por 'innerCtx' para no sobreescribir el contexto principal
+          // Usamos innerCtx para evitar el Sombreado de Contexto
           builder: (innerCtx, setStateDialog) {
             return AlertDialog(
               title: const Text('Revisar Cuestionario'),
@@ -271,7 +304,7 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
                       controller: titleCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Nombre de la nueva plantilla',
-                        hintText: 'Ej. Diabetes Primera Vez',
+                        hintText: 'Ej. Chequeo General',
                         border: OutlineInputBorder(),
                         focusedBorder: OutlineInputBorder(
                           borderSide: BorderSide(color: KeepiColors.orange),
@@ -282,31 +315,63 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
                     const Text('Preguntas detectadas:',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 10),
-                    ...List.generate(questionCtrls.length, (index) {
+                    ...List.generate(parsedQuestions.length, (index) {
+                      final q = parsedQuestions[index];
+                      final ctrl = q['ctrl'] as TextEditingController;
+                      final type = q['type'] as QuestionResponseType;
+                      final opts = q['options'] as List<String>?;
+
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 12.0),
+                        padding: const EdgeInsets.only(bottom: 16.0),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: TextField(
-                                controller: questionCtrls[index],
-                                maxLines: null,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  prefixIcon: const Icon(Icons.help_outline,
-                                      size: 18, color: KeepiColors.slateLight),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TextField(
+                                    controller: ctrl,
+                                    maxLines: null,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      prefixIcon: const Icon(Icons.help_outline,
+                                          size: 18, color: KeepiColors.slateLight),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 6),
+                                  // Etiqueta visual para que el doctor vea qué detectó la IA
+                                  Wrap(
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 8,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: KeepiColors.orangeSoft,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          getFriendlyTypeName(type), 
+                                          style: const TextStyle(fontSize: 11, color: KeepiColors.orange, fontWeight: FontWeight.bold)
+                                        ),
+                                      ),
+                                      if (opts != null && opts.isNotEmpty)
+                                        Text('Opciones: ${opts.join(", ")}', 
+                                            style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)),
+                                    ],
+                                  )
+                                ],
                               ),
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                               onPressed: () {
                                 setStateDialog(() {
-                                  questionCtrls.removeAt(index);
+                                  parsedQuestions.removeAt(index);
                                 });
                               },
                             )
@@ -333,14 +398,12 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
                       return;
                     }
 
-                    // 1. CAPTURAMOS EL NAVEGADOR Y EL SNACKBAR ANTES DE CERRAR EL MODAL
+                    // CAPTURAMOS EL NAVEGADOR ANTES DE CERRAR
                     final navigator = Navigator.of(context);
                     final messenger = ScaffoldMessenger.of(context);
 
-                    // 2. Cerramos el modal de revisión
-                    Navigator.pop(ctx); 
+                    Navigator.pop(ctx); // Cierra modal de revisión
 
-                    // 3. Mostramos carga de guardado usando el contexto seguro de la pantalla
                     showDialog(
                       context: context,
                       barrierDismissible: false,
@@ -349,46 +412,48 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
                           children: [
                             CircularProgressIndicator(color: KeepiColors.orange),
                             SizedBox(width: 16),
-                            Text('Guardando...'),
+                            Text('Guardando con tipos asignados...'),
                           ],
                         ),
                       ),
                     );
 
                     try {
-                      // Crear la plantilla vacía
                       final template = await _service.createTemplate(name: templateName);
-                      
-                      // Crear las preguntas en la base de datos
                       List<String> questionIds = [];
-                      for (var qc in questionCtrls) {
-                        if (qc.text.trim().isNotEmpty) {
+                      
+                      for (var item in parsedQuestions) {
+                        final ctrl = item['ctrl'] as TextEditingController;
+                        final type = item['type'] as QuestionResponseType;
+                        final opts = item['options'] as List<String>?;
+
+                        if (ctrl.text.trim().isNotEmpty) {
+                          // Se guardan con su tipo y sus opciones en la BD
                           final q = await _service.createQuestion(
-                            text: qc.text.trim(),
-                            responseType: QuestionResponseType.shortText, 
+                            text: ctrl.text.trim(),
+                            responseType: type, 
+                            options: opts, 
                             showInHistory: true,
                           );
                           questionIds.add(q.id);
                         }
                       }
 
-                      // Vincular preguntas a la plantilla
                       if (questionIds.isNotEmpty) {
                         await _service.upsertTemplateQuestions(template.id, questionIds);
                       }
 
-                      // 4. USAMOS EL NAVEGADOR CAPTURADO PARA CERRAR EL "GUARDANDO..." DE FORMA SEGURA
+                      // USAMOS EL NAVEGADOR CAPTURADO
                       navigator.pop(); 
                       messenger.showSnackBar(
                         const SnackBar(content: Text('¡Plantilla escaneada y guardada con éxito!')),
                       );
                       
-                      // Refrescamos las listas
-                      _tabs.animateTo(1); // Mover a la pestaña de plantillas
+                      _tabs.animateTo(1); 
                       await Future.wait([_reloadTemplates(), _reloadGlobals()]);
                       
                     } catch (e) {
-                      navigator.pop(); // Quita loading en caso de error
+                      navigator.pop(); 
                       messenger.showSnackBar(
                         SnackBar(content: Text('Error al guardar la plantilla: $e')),
                       );
