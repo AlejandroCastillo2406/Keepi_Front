@@ -19,6 +19,10 @@ class Config {
   static String get pathCloudStorageSetup => _env('API_PATH_CLOUD_STORAGE_SETUP');
   static String get pathSubscriptionsUsageStats => _env('API_PATH_SUBSCRIPTIONS_USAGE_STATS');
   static String get pathSubscriptionsCreateCheckout => _env('API_PATH_SUBSCRIPTIONS_CREATE_CHECKOUT');
+  static String get pathSubscriptionsCreatePaymentIntent =>
+      _env('API_PATH_SUBSCRIPTIONS_CREATE_PAYMENT_INTENT');
+
+  static String get stripePublishableKey => _env('STRIPE_PUBLISHABLE_KEY');
   static String get pathDocumentsDriveStructure => _env('API_PATH_DOCUMENTS_DRIVE_STRUCTURE');
   static String get pathDocumentsDriveFolderContents => _env('API_PATH_DOCUMENTS_DRIVE_FOLDER_CONTENTS');
   static String get pathDocumentsDriveFileViewUrl => _env('API_PATH_DOCUMENTS_DRIVE_FILE_VIEW_URL');

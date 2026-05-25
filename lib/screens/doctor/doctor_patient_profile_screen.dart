@@ -10,6 +10,7 @@ import '../../services/doctor_service.dart';
 import '../../services/questionnaire_service.dart';
 import '../../widgets/patient_care_timeline.dart';
 import 'analysis_document_viewer_screen.dart';
+import 'doctor_upload_analysis_for_patient_screen.dart';
 
 class DoctorPatientProfileScreen extends StatefulWidget {
   const DoctorPatientProfileScreen({
@@ -134,9 +135,11 @@ class _DoctorPatientProfileScreenState
         .toList()
       ..sort((a, b) => (b.completedAt ?? b.createdAt)
           .compareTo(a.completedAt ?? a.createdAt));
-    final pending = _analysisRequests
+    final pendingList = _analysisRequests
         .where((r) => r.status.toLowerCase() != 'completed')
-        .length;
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final pendingCount = pendingList.length;
     final questionnaireGroups =
         _buildQuestionnaireGroups(_questionnaireResponses);
 
@@ -173,43 +176,70 @@ class _DoctorPatientProfileScreenState
                       _PatientStats(
                         totalAnalysis: _analysisRequests.length,
                         uploadedAnalysis: completed.length,
-                        pendingAnalysis: pending,
+                        pendingAnalysis: pendingCount,
                         timelineEvents: _timeline.length,
                       ),
                       const SizedBox(height: 22),
                       _SectionTitle(
-                        tag: 'ANÁLISIS SUBIDOS',
-                        count: completed.length,
+                        tag: 'ANÁLISIS',
+                        count: pendingCount + completed.length,
                       ),
                       const SizedBox(height: 12),
-                      if (completed.isEmpty)
+                      if (pendingList.isEmpty && completed.isEmpty)
                         const _InlineEmpty(
                           icon: Icons.biotech_outlined,
                           message:
-                              'Aún no hay análisis completados por este paciente.',
+                              'Aún no hay análisis solicitados para este paciente.',
                         )
-                      else
-                        ...completed.take(8).map((r) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _AnalysisCard(
-                                item: r,
-                                isOpening: _openingDocumentId == r.id,
-                                onTap: () => _openAnalysisDocument(r),
-                              ),
-                            )),
-                      if (completed.length > 8)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2, bottom: 6),
-                          child: Text(
-                            'Mostrando los 8 más recientes.',
-                            style: TextStyle(
-                              color:
-                                  KeepiColors.slateLight.withValues(alpha: 0.9),
-                              fontSize: 12.5,
-                              fontStyle: FontStyle.italic,
-                            ),
+                      else ...[
+                        if (pendingList.isNotEmpty) ...[
+                          const _AnalysisSubsectionLabel(
+                            label: 'PENDIENTES DE SUBIR',
+                            hint:
+                                'El paciente puede traer el reporte en físico; tú puedes subirlo aquí.',
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          ...pendingList.take(8).map(
+                                (r) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _AnalysisCard(
+                                    item: r,
+                                    isPending: true,
+                                    onTap: () => _openDoctorUploadPending(r),
+                                  ),
+                                ),
+                              ),
+                          if (pendingList.length > 8)
+                            _AnalysisListFootnote(
+                              text:
+                                  'Mostrando 8 de ${pendingList.length} pendientes.',
+                            ),
+                          const SizedBox(height: 14),
+                        ],
+                        if (completed.isNotEmpty) ...[
+                          if (pendingList.isNotEmpty)
+                            const _AnalysisSubsectionLabel(
+                              label: 'SUBIDOS / COMPLETADOS',
+                            ),
+                          if (pendingList.isNotEmpty) const SizedBox(height: 8),
+                          ...completed.take(8).map(
+                                (r) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _AnalysisCard(
+                                    item: r,
+                                    isPending: false,
+                                    isOpening: _openingDocumentId == r.id,
+                                    onTap: () => _openAnalysisDocument(r),
+                                  ),
+                                ),
+                              ),
+                          if (completed.length > 8)
+                            _AnalysisListFootnote(
+                              text:
+                                  'Mostrando los 8 completados más recientes.',
+                            ),
+                        ],
+                      ],
                       const SizedBox(height: 16),
                       _SectionTitle(
                         tag: 'TIMELINE CLÍNICO',
@@ -293,6 +323,18 @@ class _DoctorPatientProfileScreenState
                         subtitle: 'Enviar nueva solicitud y link de subida.',
                         onTap: widget.onOpenRequestAnalysis,
                       ),
+                      if (pendingList.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _ActionButton(
+                          icon: Icons.upload_file_rounded,
+                          accent: KeepiColors.orange,
+                          title: 'Subir reporte en consultorio',
+                          subtitle: pendingList.length == 1
+                              ? 'Sube el análisis físico del paciente.'
+                              : '${pendingList.length} solicitudes pendientes; abre la más reciente.',
+                          onTap: () => _openDoctorUploadPending(pendingList.first),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       _ActionButton(
                         icon: Icons.medication_outlined,
@@ -321,6 +363,19 @@ class _DoctorPatientProfileScreenState
                   ),
       ),
     );
+  }
+
+  Future<void> _openDoctorUploadPending(AnalysisRequestDto item) async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => DoctorUploadAnalysisForPatientScreen(
+          requestId: item.id,
+          description: item.description,
+          patientName: widget.patientName,
+        ),
+      ),
+    );
+    if (ok == true && mounted) await _loadData();
   }
 
   Future<void> _openAnalysisDocument(AnalysisRequestDto item) async {
@@ -621,20 +676,85 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+class _AnalysisSubsectionLabel extends StatelessWidget {
+  const _AnalysisSubsectionLabel({
+    required this.label,
+    this.hint,
+  });
+
+  final String label;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: KeepiColors.slateLight,
+          ),
+        ),
+        if (hint != null && hint!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            hint!,
+            style: TextStyle(
+              fontSize: 12,
+              color: KeepiColors.slateLight.withValues(alpha: 0.95),
+              height: 1.35,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AnalysisListFootnote extends StatelessWidget {
+  const _AnalysisListFootnote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: KeepiColors.slateLight.withValues(alpha: 0.9),
+          fontSize: 12.5,
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+    );
+  }
+}
+
 class _AnalysisCard extends StatelessWidget {
   const _AnalysisCard({
     required this.item,
     required this.onTap,
+    this.isPending = false,
     this.isOpening = false,
   });
 
   final AnalysisRequestDto item;
   final VoidCallback onTap;
+  final bool isPending;
   final bool isOpening;
 
   @override
   Widget build(BuildContext context) {
     final completedAt = item.completedAt?.trim();
+    final accent = isPending ? KeepiColors.orange : KeepiColors.skyBlue;
+    final accentSoft =
+        isPending ? KeepiColors.orangeSoft : KeepiColors.skyBlueSoft;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -643,7 +763,11 @@ class _AnalysisCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: KeepiColors.cardBorder),
+          border: Border.all(
+            color: isPending
+                ? KeepiColors.orange.withValues(alpha: 0.35)
+                : KeepiColors.cardBorder,
+          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -652,14 +776,16 @@ class _AnalysisCard extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: KeepiColors.skyBlueSoft,
+                color: accentSoft,
                 shape: BoxShape.circle,
-                border: Border.all(color: KeepiColors.skyBlue, width: 1.4),
+                border: Border.all(color: accent, width: 1.4),
               ),
-              child: const Icon(
-                Icons.biotech_outlined,
+              child: Icon(
+                isPending
+                    ? Icons.upload_file_rounded
+                    : Icons.biotech_outlined,
                 size: 18,
-                color: KeepiColors.skyBlue,
+                color: accent,
               ),
             ),
             const SizedBox(width: 10),
@@ -667,13 +793,13 @@ class _AnalysisCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'ANÁLISIS COMPLETADO',
+                  Text(
+                    isPending ? 'PENDIENTE DE SUBIR' : 'ANÁLISIS COMPLETADO',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.3,
-                      color: KeepiColors.skyBlue,
+                      color: accent,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -688,9 +814,11 @@ class _AnalysisCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    completedAt == null || completedAt.isEmpty
-                        ? 'Fecha de cierre no disponible'
-                        : 'Completado: $completedAt',
+                    isPending
+                        ? 'Solicitado: ${item.createdAt.isNotEmpty ? item.createdAt : '—'} · Toca para subir el reporte físico'
+                        : completedAt == null || completedAt.isEmpty
+                            ? 'Fecha de cierre no disponible'
+                            : 'Completado: $completedAt',
                     style: const TextStyle(
                       fontSize: 12.5,
                       color: KeepiColors.slateLight,
@@ -709,8 +837,10 @@ class _AnalysisCard extends StatelessWidget {
                       color: KeepiColors.orange,
                     ),
                   )
-                : const Icon(
-                    Icons.open_in_new_rounded,
+                : Icon(
+                    isPending
+                        ? Icons.chevron_right_rounded
+                        : Icons.open_in_new_rounded,
                     size: 18,
                     color: KeepiColors.slateLight,
                   ),

@@ -7,7 +7,7 @@ import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/config_service.dart' as config_dto;
-import '../../services/subscription_service.dart';
+import '../../services/stripe_payment_flow.dart';
 
 /// Evita mostrar el diálogo de primera vez más de una vez por pantalla.
 class FirstRunStorageGate {
@@ -189,44 +189,33 @@ Future<void> applyFirstRunStorageChoice(
         if (context.mounted) await onReloadAfterChoice();
       } on DioException catch (e) {
         if (e.response?.statusCode == 402) {
-          final checkoutService = SubscriptionCheckoutService(api);
           try {
-            final session = await checkoutService.createCheckoutSession();
+            await StripePaymentFlow.presentPremiumSubscriptionPayment(api);
             if (!context.mounted) return;
-            final url = session.checkoutUrl;
-            if (url.isNotEmpty) {
-              final uri = Uri.parse(url);
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Completa el pago en el navegador. Al terminar vuelve a la app.',
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                    duration: Duration(seconds: 5),
-                  ),
-                );
-              }
-            }
-          } on DioException catch (e2) {
+            await cloudService.setupStorage(storageType);
             if (context.mounted) {
-              final detail = e2.response?.data is Map
-                  ? (e2.response?.data as Map)['detail']
-                  : null;
-              final msg =
-                  detail is String ? detail : 'Error al obtener la URL de pago.';
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(msg),
+                const SnackBar(
+                  content: Text('Pago completado. Configurando almacenamiento…'),
                   behavior: SnackBarBehavior.floating,
                 ),
               );
             }
+            if (context.mounted) await onReloadAfterChoice();
+          } catch (paymentError) {
+            if (!context.mounted) return;
+            if (!StripePaymentFlow.isUserCanceled(paymentError)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(StripePaymentFlow.errorMessage(paymentError)),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+            if (context.mounted) await onReloadAfterChoice();
           }
-          if (context.mounted) await onReloadAfterChoice();
+          if (context.mounted) setLoading?.call(false);
+          return;
         } else {
           rethrow;
         }

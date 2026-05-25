@@ -10,7 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/config_service.dart' as config_dto;
-import '../../services/subscription_service.dart';
+import '../../services/stripe_payment_flow.dart';
 import '../doctor/questionnaire/questionnaire_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -144,38 +144,24 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         }
       } on DioException catch (e) {
         if (e.response?.statusCode == 402) {
-          // Pago requerido: abrir Stripe Checkout en navegador externo
-          final checkoutService = SubscriptionCheckoutService(api);
           try {
-            final session = await checkoutService.createCheckoutSession();
+            await StripePaymentFlow.presentPremiumSubscriptionPayment(api);
             if (!mounted) return;
-            final url = session.checkoutUrl;
-            if (url.isEmpty) {
-              setState(() => _error = 'No se pudo obtener la URL de pago. Revisa la configuración del servidor.');
-              return;
-            }
-            final uri = Uri.parse(url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            } else {
-              setState(() => _error = 'No se pudo abrir el navegador. URL: $url');
-            }
+            await cloudService.setupStorage('keepi_cloud');
+            if (!mounted) return;
+            await _loadConfig();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Completa el pago en el navegador. Al terminar vuelve a la app. Si cancelas, elige "Sin configurar".'),
+                  content: Text('Pago completado. Almacenamiento Keepi Cloud activado.'),
                   behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 5),
                 ),
               );
             }
-          } on DioException catch (e2) {
-            if (e2.response?.statusCode == 400) {
-              final detail = e2.response?.data is Map ? (e2.response?.data as Map)['detail'] : null;
-              final msg = detail is String ? detail : 'Error al crear la sesión de pago. Intenta de nuevo.';
-              setState(() => _error = msg.toString());
-            } else {
-              setState(() => _error = e2.response?.data?.toString() ?? e2.message ?? 'Error al obtener URL de pago.');
+          } catch (paymentError) {
+            if (!mounted) return;
+            if (!StripePaymentFlow.isUserCanceled(paymentError)) {
+              setState(() => _error = StripePaymentFlow.errorMessage(paymentError));
             }
           }
         } else {

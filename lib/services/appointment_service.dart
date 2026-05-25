@@ -58,6 +58,13 @@ class AppointmentService {
     return list.map((e) => AppointmentDto.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<AppointmentDto> fetchById(String appointmentId) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.appointmentById(appointmentId),
+    );
+    return AppointmentDto.fromJson(res.data ?? const {});
+  }
+
   Future<List<AppointmentDto>> fetchDoctorCalendar({
     required DateTime from,
     required DateTime to,

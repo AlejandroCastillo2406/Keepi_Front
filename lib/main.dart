@@ -9,6 +9,7 @@ import 'providers/auth_provider.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/stripe_payment_flow.dart';
 import 'core/roles.dart';
 import 'screens/auth/auth.dart';
 import 'screens/doctor/doctor.dart';
@@ -19,6 +20,11 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+  try {
+    await StripePaymentFlow.ensureInitialized();
+  } catch (_) {
+    // Stripe se inicializa de nuevo al abrir el pago si falla aquí (p. ej. clave vacía).
+  }
   await PushNotificationService.initializeFirebaseSafely();
   await PushNotificationService.configureTapHandlers(appNavigatorKey);
   runApp(const KeepiApp());

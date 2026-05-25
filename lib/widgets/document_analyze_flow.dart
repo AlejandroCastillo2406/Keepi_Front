@@ -245,6 +245,22 @@ class _AnalyzeResultModal extends StatefulWidget {
   State<_AnalyzeResultModal> createState() => _AnalyzeResultModalState();
 }
 
+/// Si el original es imagen, no dejar que la IA sugiera .pdf en el nombre.
+String _fixRecommendedName(String recommended, String original) {
+  final orig = original.trim();
+  final rec = recommended.trim().isEmpty ? orig : recommended.trim();
+  if (!orig.contains('.')) return rec;
+  final origExt = '.${orig.split('.').last.toLowerCase()}';
+  const imageExts = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic'};
+  if (!imageExts.contains(origExt)) return rec;
+  final lower = rec.toLowerCase();
+  if (lower.endsWith('.pdf')) {
+    final base = rec.length > 4 ? rec.substring(0, rec.length - 4) : rec;
+    return '$base$origExt';
+  }
+  return rec;
+}
+
 class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
   late TextEditingController _categoryController;
   late TextEditingController _fileNameController;
@@ -258,9 +274,12 @@ class _AnalyzeResultModalState extends State<_AnalyzeResultModal> {
           : widget.result.category,
     );
     _fileNameController = TextEditingController(
-      text: widget.result.recommendedName.isNotEmpty
-          ? widget.result.recommendedName
-          : widget.originalFileName,
+      text: _fixRecommendedName(
+        widget.result.recommendedName.isNotEmpty
+            ? widget.result.recommendedName
+            : widget.originalFileName,
+        widget.originalFileName,
+      ),
     );
   }
 

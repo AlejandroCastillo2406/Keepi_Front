@@ -13,12 +13,14 @@ import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/config_service.dart' as config_dto;
+import '../../services/document_file_opener.dart';
 import '../../services/drive_structure_service.dart';
 import '../../widgets/document_analyze_flow.dart';
 import '../../widgets/ios_fab.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/document_alert_tile.dart';
 import '../../widgets/document_replacement_banner.dart';
+import '../../widgets/home_added_search_section.dart';
 import '../common/storage_choice_flow.dart';
 import 'folder_contents_screen.dart';
 import 'settings_screen.dart';
@@ -469,6 +471,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 28),
+                    const HomeAddedSearchSection(),
+                    const SizedBox(height: 28),
                     if (_loading)
                       const Center(
                         child: Padding(
@@ -849,7 +853,13 @@ class _DriveFoldersSection extends StatelessWidget {
                 ],
                 if (isKeepiCloud && rootFiles.isNotEmpty)
                   for (int i = 0; i < rootFiles.length; i++) ...[
-                    _RootFileTile(file: rootFiles[i]),
+                    _RootFileTile(
+                      file: rootFiles[i],
+                      onTap: () => DocumentFileOpener.open(
+                        context,
+                        file: rootFiles[i],
+                      ),
+                    ),
                     if (i < rootFiles.length - 1)
                       Divider(
                         height: 1,
@@ -1200,8 +1210,9 @@ class _DriveFolderTile extends StatelessWidget {
 }
 
 class _RootFileTile extends StatelessWidget {
-  const _RootFileTile({required this.file});
+  const _RootFileTile({required this.file, this.onTap});
   final DriveFile file;
+  final VoidCallback? onTap;
 
   static String _formatSize(String? size) {
     if (size == null || size.isEmpty) return '';
@@ -1216,58 +1227,79 @@ class _RootFileTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sizeStr = _formatSize(file.size);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.description_outlined,
-            size: 24,
-            color: KeepiColors.skyBlue,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  file.name,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: KeepiColors.slate,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.description_outlined,
+          size: 24,
+          color: KeepiColors.skyBlue,
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                file.name,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: KeepiColors.slate,
                 ),
-                if (sizeStr.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Text(
-                        sizeStr,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: KeepiColors.slateLight,
-                        ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (sizeStr.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      sizeStr,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: KeepiColors.slateLight,
                       ),
-                      if (file.keepiVerified) ...[
-                        const SizedBox(width: 8),
-                        const Icon(
-                          Icons.verified_rounded,
-                          size: 16,
-                          color: KeepiColors.green,
-                        ),
-                      ],
-                      DocumentReplacementInfoIcon(file: file),
+                    ),
+                    if (file.keepiVerified) ...[
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.verified_rounded,
+                        size: 16,
+                        color: KeepiColors.green,
+                      ),
                     ],
-                  ),
-                ] else
-                  DocumentReplacementInfoIcon(file: file),
-              ],
-            ),
+                    DocumentReplacementInfoIcon(file: file),
+                  ],
+                ),
+              ] else
+                DocumentReplacementInfoIcon(file: file),
+            ],
           ),
-        ],
+        ),
+        if (onTap != null)
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 22,
+            color: KeepiColors.slateLight,
+          ),
+      ],
+    );
+
+    if (onTap == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: row,
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: row,
+        ),
       ),
     );
   }

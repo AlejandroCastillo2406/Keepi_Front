@@ -50,14 +50,21 @@ class DocumentFileOpener {
       final drive = DriveStructureService(api);
       var viewUrl = '';
       Map<String, String> headers = const {};
+      String? mimeType = file.mimeType;
 
       if (isS3Path(file.id)) {
         final info = await drive.getS3FileViewUrl(file.id);
         viewUrl = info.viewUrl;
-      } else if (isDocumentUuid(file.id)) {
+        mimeType = info.mimeType ?? mimeType;
+      } else if (isDocumentUuid(file.id) ||
+          (file.keepiDocumentId != null &&
+              file.keepiDocumentId!.isNotEmpty &&
+              isDocumentUuid(file.keepiDocumentId!))) {
+        final docId =
+            isDocumentUuid(file.id) ? file.id : file.keepiDocumentId!;
         final svc = DoctorService(api);
         final token = api.accessToken;
-        viewUrl = svc.getMobileDocumentUrl(file.id);
+        viewUrl = svc.getMobileDocumentUrl(docId);
         if (token != null && token.isNotEmpty) {
           headers = {
             'Authorization': 'Bearer $token',
@@ -67,6 +74,7 @@ class DocumentFileOpener {
       } else {
         final info = await drive.getFileViewUrl(file.id);
         viewUrl = info.viewUrl.isNotEmpty ? info.viewUrl : info.downloadUrl;
+        mimeType = info.mimeType ?? mimeType;
       }
 
       if (!context.mounted) return;
@@ -89,6 +97,7 @@ class DocumentFileOpener {
               url: viewUrl,
               title: file.name,
               headers: headers,
+              mimeType: mimeType,
             ),
           ),
         );

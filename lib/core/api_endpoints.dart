@@ -28,6 +28,8 @@ class ApiEndpoints {
       _path(Config.pathSubscriptionsUsageStats);
   static String get subscriptionsCreateCheckout =>
       _path(Config.pathSubscriptionsCreateCheckout);
+  static String get subscriptionsCreatePaymentIntent =>
+      _path(Config.pathSubscriptionsCreatePaymentIntent);
 
   static String get documentsDriveStructure =>
       _path(Config.pathDocumentsDriveStructure);
@@ -76,6 +78,7 @@ class ApiEndpoints {
 
   static String get pushRegister => _path('/push/register');
   static String get notifications => _path('/notifications/');
+  static String get globalSearch => _path('/search/');
 
   // --- NUEVAS RUTAS DE CITAS (Sincronizadas con el nuevo Backend) ---
 

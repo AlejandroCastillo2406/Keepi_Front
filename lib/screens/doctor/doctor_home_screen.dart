@@ -22,6 +22,9 @@ import 'doctor_request_analysis_screen.dart';
 import 'documentos_screen.dart';
 import 'questionnaire/questionnaire_settings_screen.dart';
 import 'questionnaire/send_questionnaire_screen.dart';
+import '../../services/search_result_navigation.dart';
+import '../../services/search_service.dart';
+import '../../widgets/home_added_search_section.dart';
 
 // ────────────────────────────────────────────────────────────────
 //   CONSTANTES / HELPERS
@@ -362,6 +365,24 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     }
   }
 
+  Future<void> _openAgendaAppointment(AppointmentDto a) async {
+    final date = a.appointmentDate ?? a.createdAt;
+    await SearchResultNavigation.open(
+      context,
+      GlobalSearchItem(
+        id: a.id,
+        type: 'appointment',
+        title: a.reason.isNotEmpty ? a.reason : 'Cita médica',
+        subtitle: 'Estado: ${a.status}',
+        patientId: a.patientId,
+        date: date,
+        status: a.status,
+      ),
+      patients: _patients,
+      onDoctorOpenAgenda: () => setState(() => _currentIndex = 2),
+    );
+  }
+
   Future<void> _openSendQuestionnaire(PatientListItem p) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -499,6 +520,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
             ),
           ),
           SliverPadding(
+            padding: const EdgeInsets.fromLTRB(22, 8, 22, 0),
+            sliver: SliverToBoxAdapter(
+              child: HomeAddedSearchSection(
+                patients: _patients,
+                onDoctorOpenAgenda: () => setState(() => _currentIndex = 2),
+              ),
+            ),
+          ),
+          SliverPadding(
             padding: const EdgeInsets.fromLTRB(22, 6, 22, 120),
             sliver: SliverList(
               delegate: SliverChildListDelegate.fixed([
@@ -525,7 +555,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   for (final a in today)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: _AgendaCard(appointment: a, patients: _patients),
+                      child: _AgendaCard(
+                        appointment: a,
+                        patients: _patients,
+                        onTap: () => _openAgendaAppointment(a),
+                      ),
                     ),
                 const SizedBox(height: 28),
                 const _SectionDivider(tag: 'ATAJOS', count: 4),
@@ -544,7 +578,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   for (final a in upcoming)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: _AgendaCard(appointment: a, patients: _patients),
+                      child: _AgendaCard(
+                        appointment: a,
+                        patients: _patients,
+                        onTap: () => _openAgendaAppointment(a),
+                      ),
                     ),
                 ],
               ]),
@@ -1556,9 +1594,14 @@ class _ActionRow extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────
 
 class _AgendaCard extends StatelessWidget {
-  const _AgendaCard({required this.appointment, required this.patients});
+  const _AgendaCard({
+    required this.appointment,
+    required this.patients,
+    this.onTap,
+  });
   final AppointmentDto appointment;
   final List<PatientListItem> patients;
+  final VoidCallback? onTap;
 
   String _statusLabel() {
     switch (appointment.status) {
@@ -1606,7 +1649,7 @@ class _AgendaCard extends StatelessWidget {
     final needsAttention = appointment.status == 'pending_patient_approval' ||
         appointment.status == 'pending_doctor_proposal';
 
-    return Container(
+    final card = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1769,6 +1812,15 @@ class _AgendaCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
       ),
     );
   }

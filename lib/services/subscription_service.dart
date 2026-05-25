@@ -41,32 +41,35 @@ class UsageStatsResponse {
   bool get isUnlimited => analysisLimit < 0;
 }
 
-class SubscriptionCheckoutService {
-  SubscriptionCheckoutService(this._api);
+class SubscriptionPaymentService {
+  SubscriptionPaymentService(this._api);
   final ApiClient _api;
 
-  Future<CheckoutSessionResponse> createCheckoutSession() async {
+  Future<PaymentIntentResponse> createPaymentIntent({String plan = 'premium'}) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
-      ApiEndpoints.subscriptionsCreateCheckout,
-      data: {'plan': 'premium'},
+      ApiEndpoints.subscriptionsCreatePaymentIntent,
+      data: {'plan': plan},
     );
-    return CheckoutSessionResponse.fromJson(res.data!);
+    return PaymentIntentResponse.fromJson(res.data!);
   }
 }
 
-class CheckoutSessionResponse {
-  CheckoutSessionResponse({
-    required this.checkoutUrl,
-    this.checkoutSessionId,
+class PaymentIntentResponse {
+  PaymentIntentResponse({
+    required this.clientSecret,
+    required this.status,
+    this.subscriptionId,
   });
 
-  final String checkoutUrl;
-  final String? checkoutSessionId;
+  final String clientSecret;
+  final String status;
+  final String? subscriptionId;
 
-  factory CheckoutSessionResponse.fromJson(Map<String, dynamic> json) {
-    return CheckoutSessionResponse(
-      checkoutUrl: json['checkout_url'] as String? ?? '',
-      checkoutSessionId: json['checkout_session_id'] as String?,
+  factory PaymentIntentResponse.fromJson(Map<String, dynamic> json) {
+    return PaymentIntentResponse(
+      clientSecret: json['client_secret'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      subscriptionId: json['subscription_id'] as String?,
     );
   }
 }
