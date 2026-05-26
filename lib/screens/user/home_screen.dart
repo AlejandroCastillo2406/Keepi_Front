@@ -103,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _config = config;
         _loading = false;
       });
-      await maybeShowFirstRunStorageDialog(
+      await ensureDefaultKeepiCloudStorage(
         context,
         config: config,
         gate: _storageGate,

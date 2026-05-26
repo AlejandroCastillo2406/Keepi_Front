@@ -35,7 +35,7 @@ class UserConfigResponse {
     return UserConfigResponse(
       id: json['id'] as String,
       userId: json['user_id'] as String,
-      cloudProvider: json['cloud_provider'] as String? ?? 'google_drive',
+      cloudProvider: json['cloud_provider'] as String? ?? 'keepi_cloud',
       notificationPreferences: json['notification_preferences'] as Map<String, dynamic>?,
       createdAt: json['created_at'] as String?,
       updatedAt: json['updated_at'] as String?,

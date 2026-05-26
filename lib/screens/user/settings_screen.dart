@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,7 +9,6 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/config_service.dart' as config_dto;
-import '../../services/stripe_payment_flow.dart';
 import '../doctor/questionnaire/questionnaire_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -130,43 +128,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     try {
       final api = context.read<ApiClient>();
       final cloudService = CloudStorageService(api);
-      try {
-        await cloudService.setupStorage('keepi_cloud');
-        if (!mounted) return;
-        await _loadConfig();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Almacenamiento actualizado a Keepi Cloud'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } on DioException catch (e) {
-        if (e.response?.statusCode == 402) {
-          try {
-            await StripePaymentFlow.presentPremiumSubscriptionPayment(api);
-            if (!mounted) return;
-            await cloudService.setupStorage('keepi_cloud');
-            if (!mounted) return;
-            await _loadConfig();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Pago completado. Almacenamiento Keepi Cloud activado.'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          } catch (paymentError) {
-            if (!mounted) return;
-            if (!StripePaymentFlow.isUserCanceled(paymentError)) {
-              setState(() => _error = StripePaymentFlow.errorMessage(paymentError));
-            }
-          }
-        } else {
-          rethrow;
-        }
+      await cloudService.setupStorage('keepi_cloud');
+      if (!mounted) return;
+      await _loadConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Almacenamiento actualizado a Keepi Cloud'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -344,7 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       _StorageTile(
                         icon: Icons.cloud_rounded,
                         title: 'Keepi Cloud',
-                        subtitle: 'Almacenamiento Keepi (requiere plan Premium por Stripe).',
+                        subtitle: 'Almacenamiento seguro en la nube de Keepi (S3).',
                         isCurrent: _config!.isKeepiCloud,
                         isDisabled: _switching,
                         onTap: _config!.isKeepiCloud ? null : _switchToKeepiCloud,
