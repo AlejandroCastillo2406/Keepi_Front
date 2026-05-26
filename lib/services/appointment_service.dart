@@ -119,6 +119,15 @@ class AppointmentService {
     return AppointmentDto.fromJson(res.data ?? const {});
   }
 
+  // --- NUEVA FUNCIÓN DE CANCELAR ---
+  Future<void> cancelAppointment({
+    required String appointmentId,
+  }) async {
+    await _api.dio.post(
+      ApiEndpoints.appointmentDoctorCancel(appointmentId),
+    );
+  }
+
   // --- 3. ACCIONES DEL PACIENTE ---
 
   Future<AppointmentDto> patientRequestAppointment({

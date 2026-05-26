@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
+import '../../services/doctor_service.dart';
 
 class DoctorCalendarTab extends StatefulWidget {
   const DoctorCalendarTab({super.key});
@@ -62,15 +63,15 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   String _hour(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  
+  String _two(int v) => v.toString().padLeft(2, '0');
 
   // --- FILTROS DE CITAS ---
 
-  // 1. Citas que NO tienen fecha (Solicitudes iniciales del paciente)
   List<AppointmentDto> get _pendingRows => _appointments
       .where((a) => a.status == 'pending_doctor_proposal' || a.appointmentDate == null)
       .toList();
 
-  // 2. Citas del día seleccionado en el calendario
   List<AppointmentDto> get _selectedDayRows => _appointments.where((a) {
         if (a.appointmentDate == null) return false;
         if (a.status == 'pending_doctor_proposal') return false; 
@@ -130,13 +131,248 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fecha asignada y enviada al paciente.'))
+          const SnackBar(content: Text('Fecha asignada y enviada al paciente.'), backgroundColor: KeepiColors.green)
         );
       }
     } catch (e) {
       if (mounted) Navigator.pop(context); // Cerrar loading
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppointmentService.messageFromDio(e))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppointmentService.messageFromDio(e)), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  // --- NUEVO: CANCELAR CITA ---
+  Future<void> _cancelAppointment(AppointmentDto a) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Cancelar cita', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text('¿Estás seguro de que deseas cancelar esta cita? Esta acción no se puede deshacer.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Volver', style: TextStyle(color: KeepiColors.slateLight)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Sí, Cancelar', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true || !mounted) return;
+
+    showDialog(
+      context: context, 
+      barrierDismissible: false, 
+      builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
+    );
+
+    try {
+      final svc = AppointmentService(context.read<ApiClient>());
+      await svc.cancelAppointment(appointmentId: a.id); 
+      
+      if (mounted) Navigator.pop(context); // Cerrar loading
+      _load(); // Recargar agenda
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cita cancelada correctamente'), backgroundColor: KeepiColors.slate)
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cancelar: ${AppointmentService.messageFromDio(e)}'), backgroundColor: Colors.red)
+        );
+      }
+    }
+  }
+
+  // --- NUEVO: AGENDAR DESDE CERO (GLOBAL) ---
+  Future<void> _scheduleGlobalAppointment() async {
+    showDialog(
+      context: context, 
+      barrierDismissible: false, 
+      builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
+    );
+
+    List<PatientListItem> patients = [];
+    try {
+      patients = await DoctorService(context.read<ApiClient>()).fetchMyPatients();
+      if (mounted) Navigator.pop(context); 
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al cargar la lista de pacientes')));
+      return;
+    }
+
+    if (patients.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aún no tienes pacientes registrados para agendar.')));
+      return;
+    }
+
+    if (!mounted) return;
+    final selectedPatient = await showModalBottomSheet<PatientListItem>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.only(top: 16),
+          child: Column(
+            children: [
+              const Text('Selecciona un paciente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: patients.length,
+                  itemBuilder: (context, index) {
+                    final p = patients[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: KeepiColors.skyBlueSoft,
+                        child: Text(p.name[0].toUpperCase(), style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.bold)),
+                      ),
+                      title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(p.email),
+                      onTap: () => Navigator.pop(ctx, p),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    );
+
+    if (selectedPatient == null || !mounted) return;
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
+        child: child!,
+      ),
+    );
+    if (pickedDate == null || !mounted) return;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (pickedTime == null || !mounted) return;
+
+    final finalDateTime = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+
+    // ─── DIÁLOGO DE CONFIRMACIÓN AÑADIDO AQUÍ ─────────────────────────────
+    if (!mounted) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        final dateStr = '${_two(pickedDate.day)}/${_two(pickedDate.month)}/${pickedDate.year}';
+        final timeStr = pickedTime.format(context);
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: KeepiColors.cardBorder),
+          ),
+          backgroundColor: Colors.white,
+          title: const Text(
+            'Confirmar cita',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: KeepiColors.slate,
+              letterSpacing: -0.3,
+            ),
+          ),
+          content: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 14.5,
+                color: KeepiColors.slate,
+                height: 1.4,
+              ),
+              children: [
+                const TextSpan(text: '¿Estás seguro de asignar la cita a '),
+                TextSpan(
+                  text: selectedPatient.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.skyBlue),
+                ),
+                const TextSpan(text: ' para el día '),
+                TextSpan(
+                  text: dateStr,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: ' a las '),
+                TextSpan(
+                  text: timeStr,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: '?'),
+              ],
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w700),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: KeepiColors.orange,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Confirmar', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true || !mounted) return;
+    // ──────────────────────────────────────────────────────────────────────
+
+    showDialog(
+      context: context, 
+      barrierDismissible: false, 
+      builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
+    );
+
+    try {
+      await DoctorService(context.read<ApiClient>()).scheduleAppointment(
+        patientId: selectedPatient.id,
+        date: finalDateTime,
+        reason: 'Consulta médica',
+      );
+      if (mounted) Navigator.pop(context); 
+      _load(); 
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cita agendada correctamente'), backgroundColor: KeepiColors.green));
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${DoctorService.messageFromDio(e)}'), backgroundColor: Colors.red));
       }
     }
   }
@@ -196,6 +432,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
           const SizedBox(height: 16),
           _buildCalendarHeader(),
           const SizedBox(height: 32),
+          
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -203,13 +440,22 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 'Agenda de Hoy',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: KeepiColors.slate),
               ),
-              Text(
-                '${dayRows.length} citas',
-                style: const TextStyle(color: KeepiColors.orange, fontWeight: FontWeight.w600),
-              ),
+              ElevatedButton.icon(
+                onPressed: _scheduleGlobalAppointment,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: KeepiColors.orangeSoft,
+                  foregroundColor: KeepiColors.orange,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nueva Cita', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              )
             ],
           ),
           const SizedBox(height: 16),
+          
           if (_loading)
             const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
           else if (_error != null)
@@ -221,17 +467,24 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
               (a) {
                 final timeString = a.appointmentDate != null ? _hour(a.appointmentDate!.toLocal()) : '--:--';
                 
-                // LÓGICA DE ESTADOS CORREGIDA
                 String statusLabel = 'CONFIRMADA';
                 Color statusColor = Colors.green;
+                bool isCanceled = false;
                 
                 if (a.status == 'pending_patient_approval') {
                   statusLabel = 'ESPERANDO RESPUESTA';
                   statusColor = Colors.orange;
                 } else if (a.status == 'canceled') {
-                  statusLabel = 'RECHAZADA';
+                  statusLabel = 'CANCELADA/RECHAZADA';
                   statusColor = Colors.red;
+                  isCanceled = true;
+                } else if (a.status == 'pending_doctor_proposal') {
+                  statusLabel = 'POR ASIGNAR';
+                  statusColor = KeepiColors.slate;
                 }
+                
+                // Mientras NO esté cancelada, el doctor puede eliminarla
+                bool canCancel = !isCanceled;
                 
                 return _buildAppointmentItem(
                   time: timeString,
@@ -239,8 +492,9 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                   type: statusLabel,
                   description: a.reason,
                   typeColor: statusColor,
-                  isCanceled: a.status == 'canceled',
-                  onReassign: a.status == 'canceled' ? () => _assignDate(a) : null,
+                  isCanceled: isCanceled,
+                  onReassign: isCanceled ? () => _assignDate(a) : null,
+                  onCancel: canCancel ? () => _cancelAppointment(a) : null,
                 );
               },
             ),
@@ -380,6 +634,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     required Color typeColor,
     bool isCanceled = false,
     VoidCallback? onReassign,
+    VoidCallback? onCancel,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -428,10 +683,17 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                   ],
                 ),
               ),
+              
+              // ¡Aquí está la basurita roja! Se mostrará si la cita NO está cancelada
+              if (onCancel != null) 
+                IconButton(
+                  onPressed: onCancel,
+                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                  tooltip: 'Cancelar Cita',
+                )
             ],
           ),
           
-          // BOTÓN DE REASIGNAR (Solo aparece si la cita está cancelada)
           if (onReassign != null) ...[
             const SizedBox(height: 14),
             Align(

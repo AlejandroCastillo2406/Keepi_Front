@@ -339,6 +339,92 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       pickedTime.minute,
     );
 
+    // ─── NUEVO: DIÁLOGO DE CONFIRMACIÓN ─────────────────────────────
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        // Formateamos fecha y hora para que se lea amigable
+        final dateStr = '${_two(pickedDate.day)}/${_two(pickedDate.month)}/${pickedDate.year}';
+        final timeStr = pickedTime.format(context);
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: KeepiColors.cardBorder),
+          ),
+          backgroundColor: Colors.white,
+          title: const Text(
+            'Confirmar cita',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: KeepiColors.slate,
+              letterSpacing: -0.3,
+            ),
+          ),
+          content: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 14.5,
+                color: KeepiColors.slate,
+                height: 1.4,
+              ),
+              children: [
+                const TextSpan(text: '¿Estás seguro de asignar la cita a '),
+                TextSpan(
+                  text: p.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.skyBlue),
+                ),
+                const TextSpan(text: ' para el día '),
+                TextSpan(
+                  text: dateStr,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: ' a las '),
+                TextSpan(
+                  text: timeStr,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: '?'),
+              ],
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false), // Cierra y devuelve 'false'
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: KeepiColors.slateLight,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: KeepiColors.orange,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: () => Navigator.of(context).pop(true), // Cierra y devuelve 'true'
+              child: const Text(
+                'Confirmar',
+                style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    // Si el usuario presiona "Cancelar" o toca fuera del diálogo, confirm será false/null
+    if (confirm != true || !mounted) return;
+    // ────────────────────────────────────────────────────────────────
+
     try {
       final svc = DoctorService(context.read<ApiClient>());
       await svc.scheduleAppointment(
