@@ -126,8 +126,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         proposedStartAt: proposed,
       );
       
-      if (mounted) Navigator.pop(context); // Cerrar loading
-      _load(); // Recargar datos
+      if (mounted) Navigator.pop(context); 
+      _load(); 
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -135,14 +135,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         );
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Cerrar loading
+      if (mounted) Navigator.pop(context); 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppointmentService.messageFromDio(e)), backgroundColor: Colors.red));
       }
     }
   }
 
-  // --- NUEVO: CANCELAR CITA ---
+  // --- CANCELAR CITA ---
   Future<void> _cancelAppointment(AppointmentDto a) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -178,8 +178,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       final svc = AppointmentService(context.read<ApiClient>());
       await svc.cancelAppointment(appointmentId: a.id); 
       
-      if (mounted) Navigator.pop(context); // Cerrar loading
-      _load(); // Recargar agenda
+      if (mounted) Navigator.pop(context); 
+      _load(); 
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -196,7 +196,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     }
   }
 
-  // --- NUEVO: AGENDAR DESDE CERO (GLOBAL) ---
+  // --- AGENDAR DESDE CERO (GLOBAL) ---
   Future<void> _scheduleGlobalAppointment() async {
     showDialog(
       context: context, 
@@ -275,7 +275,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
     final finalDateTime = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
 
-    // ─── DIÁLOGO DE CONFIRMACIÓN AÑADIDO AQUÍ ─────────────────────────────
     if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
@@ -350,7 +349,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
 
     if (confirm != true || !mounted) return;
-    // ──────────────────────────────────────────────────────────────────────
 
     showDialog(
       context: context, 
@@ -430,14 +428,17 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildCalendarHeader(),
+          
+          // AQUÍ SE MUESTRA EL NUEVO CALENDARIO COMPLETO
+          _buildFullMonthCalendar(),
+          
           const SizedBox(height: 32),
           
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Agenda de Hoy',
+                'Agenda del Día',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: KeepiColors.slate),
               ),
               ElevatedButton.icon(
@@ -483,7 +484,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                   statusColor = KeepiColors.slate;
                 }
                 
-                // Mientras NO esté cancelada, el doctor puede eliminarla
                 bool canCancel = !isCanceled;
                 
                 return _buildAppointmentItem(
@@ -542,9 +542,19 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
   }
 
-  Widget _buildCalendarHeader() {
-    final start = DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day - 3);
-    final days = List.generate(7, (index) => DateTime(start.year, start.month, start.day + index));
+  // --- NUEVO WIDGET: CALENDARIO MENSUAL ---
+  Widget _buildFullMonthCalendar() {
+    // Calculamos el primer día del mes y cuántos días tiene
+    final firstDayOfMonth = DateTime(_selectedDay.year, _selectedDay.month, 1);
+    final lastDayOfMonth = DateTime(_selectedDay.year, _selectedDay.month + 1, 0);
+    final daysInMonth = lastDayOfMonth.day;
+    
+    // weekday va de 1 (Lunes) a 7 (Domingo)
+    final startingWeekday = firstDayOfMonth.weekday; 
+    
+    // Total de celdas en la cuadrícula (espacios vacíos + días del mes)
+    final totalCells = (startingWeekday - 1) + daysInMonth;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -554,29 +564,51 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       ),
       child: Column(
         children: [
+          // Días de la semana
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: const ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
-                .map((d) => Text(d, style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)))
+                .map((d) => Expanded(
+                      child: Center(
+                        child: Text(d, style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                      ),
+                    ))
                 .toList(),
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: days
-                .map(
-                  (d) => _dateItem(
-                    d,
-                    isCurrentMonth: d.month == _selectedDay.month,
-                    isSelected: d.year == _selectedDay.year && d.month == _selectedDay.month && d.day == _selectedDay.day,
-                    hasDot: _appointments.any((a) {
-                      if (a.appointmentDate == null) return false;
-                      final ad = a.appointmentDate!.toLocal();
-                      return ad.year == d.year && ad.month == d.month && ad.day == d.day;
-                    }),
-                  ),
-                )
-                .toList(),
+          
+          // Cuadrícula de días
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(), // Evita scroll interno
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7, // 7 columnas para los 7 días
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1, // Hace que las celdas sean cuadradas perfectas
+            ),
+            itemCount: totalCells,
+            itemBuilder: (context, index) {
+              // Espacios en blanco al inicio del mes
+              if (index < startingWeekday - 1) {
+                return const SizedBox(); 
+              }
+              
+              // Número del día real
+              final dayNumber = index - (startingWeekday - 1) + 1;
+              final date = DateTime(_selectedDay.year, _selectedDay.month, dayNumber);
+              
+              return _dateItem(
+                date,
+                isCurrentMonth: true,
+                isSelected: date.year == _selectedDay.year && date.month == _selectedDay.month && date.day == _selectedDay.day,
+                hasDot: _appointments.any((a) {
+                  if (a.appointmentDate == null) return false;
+                  final ad = a.appointmentDate!.toLocal();
+                  return ad.year == date.year && ad.month == date.month && ad.day == date.day;
+                }),
+              );
+            },
           ),
         ],
       ),
@@ -592,36 +624,42 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }) {
     return InkWell(
       onTap: () => setState(() => _selectedDay = day),
-      borderRadius: BorderRadius.circular(10),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isSelected ? KeepiColors.orange.withValues(alpha: 0.1) : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
+      borderRadius: BorderRadius.circular(12), // Bordes redondeados para el toque
+      child: Container(
+        decoration: BoxDecoration(
+          // Si está seleccionado, pintamos el fondo completamente de naranja
+          color: isSelected ? KeepiColors.orange : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
               '${day.day}',
               style: TextStyle(
                 fontSize: 15,
-                fontWeight: FontWeight.bold,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                // Texto blanco si está seleccionado para que contraste
                 color: isSelected
-                    ? KeepiColors.orange
+                    ? Colors.white
                     : isCurrentMonth
                         ? KeepiColors.slate
                         : Colors.grey.shade300,
               ),
             ),
-          ),
-          if (hasDot)
+            const SizedBox(height: 2),
+            // El puntito indicador
             Container(
-              margin: const EdgeInsets.only(top: 4),
               height: 4,
               width: 4,
-              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                // Si está seleccionado, el punto se vuelve blanco
+                color: hasDot ? (isSelected ? Colors.white : dotColor) : Colors.transparent, 
+                shape: BoxShape.circle
+              ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -684,7 +722,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 ),
               ),
               
-              // ¡Aquí está la basurita roja! Se mostrará si la cita NO está cancelada
               if (onCancel != null) 
                 IconButton(
                   onPressed: onCancel,
