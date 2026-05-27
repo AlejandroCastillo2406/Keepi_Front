@@ -38,4 +38,6 @@ class TimelineEvent {
       visualState: json['visual_state']?.toString() ?? 'completed',
     );
   }
+
+  String? get s3Url => null;
 }
