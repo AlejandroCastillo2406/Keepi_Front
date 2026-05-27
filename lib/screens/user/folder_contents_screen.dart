@@ -14,6 +14,8 @@ import '../../services/cloud_storage_service.dart';
 import '../../services/document_file_opener.dart';
 import '../../services/drive_structure_service.dart';
 import '../../widgets/document_metadata_edit_sheet.dart';
+import '../../widgets/ios_export_fab.dart';
+import '../../widgets/patient_folders_export_sheet.dart';
 import '../../widgets/document_replacement_banner.dart';
 
 class FolderContentsScreen extends StatefulWidget {
@@ -37,8 +39,9 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
   /// True cuando falla 401 en una carpeta de Google Drive (token vencido o revocado).
   bool _needsDriveReauth = false;
   bool _reconnecting = false;
-
   bool get _isS3Folder => widget.folderId.startsWith('users/');
+
+  bool get _showExportFab => _isS3Folder && !_loading && _error == null;
 
   @override
   void initState() {
@@ -147,7 +150,9 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: DecorativeBackground(
+      body: Stack(
+        children: [
+          DecorativeBackground(
         blobOpacity: 0.2,
         child: RefreshIndicator(
         onRefresh: _load,
@@ -221,6 +226,17 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
                 : _buildContent(theme, colorScheme),
         ),
       ),
+          if (_showExportFab)
+            Positioned(
+              left: 20,
+              bottom: 20,
+              child: SafeArea(
+                top: false,
+                child: IosExportFab(onPressed: _openExportModal),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -258,7 +274,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
       children: [
         if (folders.isNotEmpty) ...[
           _sectionLabel(theme, 'Carpetas', Icons.folder_rounded),
@@ -341,6 +357,23 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
         ),
       ),
     );
+  }
+
+  Future<void> _openExportModal() async {
+    try {
+      final api = context.read<ApiClient>();
+      final root = await DriveStructureService(api).getKeepiCloudRoot();
+      if (!mounted) return;
+      await showPatientFoldersExportSheet(context, rootFolders: root.folders);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo abrir exportación: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _openFilePreview(DriveFile file) async {

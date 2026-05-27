@@ -197,6 +197,7 @@ class QuestionnaireService {
     required String patientId,
     List<String> templateIds = const [],
     List<String> questionIds = const [],
+    bool collectPriorDocuments = false,
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.questionnaireInvitations,
@@ -204,6 +205,7 @@ class QuestionnaireService {
         'patient_id': patientId,
         'template_ids': templateIds,
         'question_ids': questionIds,
+        'collect_prior_documents': collectPriorDocuments,
       },
     );
     return InvitationSendResult.fromJson(res.data!);

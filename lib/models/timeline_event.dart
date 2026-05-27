@@ -10,6 +10,8 @@ class TimelineEvent {
   final String description;
   final String occurredAt;
   final String visualState;
+  final String? actionPatientId;
+  final int? priorDocumentsCount;
 
   TimelineEvent({
     required this.id,
@@ -22,7 +24,11 @@ class TimelineEvent {
     required this.description,
     required this.occurredAt,
     required this.visualState,
+    this.actionPatientId,
+    this.priorDocumentsCount,
   });
+
+  bool get isPriorDocuments => eventType == 'prior_documents';
 
   factory TimelineEvent.fromJson(Map<String, dynamic> json) {
     return TimelineEvent(
@@ -36,6 +42,8 @@ class TimelineEvent {
       description: json['description']?.toString() ?? '',
       occurredAt: json['occurred_at']?.toString() ?? '',
       visualState: json['visual_state']?.toString() ?? 'completed',
+      actionPatientId: json['action_patient_id'] as String?,
+      priorDocumentsCount: (json['prior_documents_count'] as num?)?.toInt(),
     );
   }
 }

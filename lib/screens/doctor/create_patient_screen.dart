@@ -84,6 +84,7 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
           patientId: created.id,
           templateIds: _selectedTemplateIds.toList(),
           questionIds: _selectedQuestionIds.toList(),
+          collectPriorDocuments: true,
         );
       }
 
@@ -147,7 +148,8 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Opcionalmente puedes enviar cuestionarios iniciales por link público.',
+                  'Opcionalmente puedes enviar un cuestionario inicial por correo. '
+                  'Al terminarlo, el paciente podrá subir estudios o documentos médicos previos.',
                   style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slateLight),
                 ),
                 const SizedBox(height: 20),
@@ -178,10 +180,47 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                   },
                 ),
                 const SizedBox(height: 22),
+                if (_selectedTemplateIds.isNotEmpty ||
+                    _selectedQuestionIds.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: KeepiColors.skyBlueSoft,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: KeepiColors.skyBlue.withOpacity(0.35),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.upload_file_rounded,
+                          color: KeepiColors.skyBlue,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Al final del cuestionario verá un paso opcional para subir '
+                            'análisis, laboratorios o informes médicos anteriores. '
+                            'Se guardarán en su expediente en Keepi Cloud.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: KeepiColors.slate,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 QuestionnaireInvitePickerBlock(
                   title: 'Cuestionarios iniciales',
                   description:
-                      'Selecciona plantillas y/o preguntas globales para enviar por link al paciente.',
+                      'Selecciona plantillas y/o preguntas globales. Solo en este flujo '
+                      'de alta se habilita la subida de documentos previos al final.',
                   loading: _loadingQuestionnaires,
                   error: _questionnaireError,
                   templates: _templates,

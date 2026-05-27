@@ -7,6 +7,7 @@ import '../../models/timeline_event.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../widgets/patient_care_timeline.dart';
+import '../common/prior_documents_screen.dart';
 
 class DoctorPatientTimelineScreen extends StatefulWidget {
   final String patientId;
@@ -55,6 +56,19 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
         _isLoading = false;
       });
     }
+  }
+
+  void _onTimelineEventTap(TimelineEvent event) {
+    if (!event.isPriorDocuments) return;
+    final patientId = event.actionPatientId ?? widget.patientId;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PriorDocumentsScreen(
+          patientId: patientId,
+          patientName: widget.patientName,
+        ),
+      ),
+    );
   }
 
   @override
@@ -129,6 +143,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
         events: _events,
         title: 'Línea de tiempo clínica',
         subtitle: '${_events.length} eventos registrados para ${widget.patientName}',
+        onEventTap: _onTimelineEventTap,
       ),
     );
   }

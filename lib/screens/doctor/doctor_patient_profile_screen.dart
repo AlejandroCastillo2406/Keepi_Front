@@ -9,6 +9,7 @@ import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../services/questionnaire_service.dart';
 import '../../widgets/patient_care_timeline.dart';
+import '../common/prior_documents_screen.dart';
 import 'analysis_document_viewer_screen.dart';
 import 'doctor_upload_analysis_for_patient_screen.dart';
 
@@ -126,6 +127,19 @@ class _DoctorPatientProfileScreenState
         _loading = false;
       });
     }
+  }
+
+  void _onTimelineEventTap(TimelineEvent event) {
+    if (!event.isPriorDocuments) return;
+    final patientId = event.actionPatientId ?? widget.patientId;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PriorDocumentsScreen(
+          patientId: patientId,
+          patientName: widget.patientName,
+        ),
+      ),
+    );
   }
 
   @override
@@ -263,6 +277,7 @@ class _DoctorPatientProfileScreenState
                           child: PatientCareTimeline(
                             events: _timeline.take(6).toList(),
                             showSectionHeader: false,
+                            onEventTap: _onTimelineEventTap,
                           ),
                         ),
                       const SizedBox(height: 18),

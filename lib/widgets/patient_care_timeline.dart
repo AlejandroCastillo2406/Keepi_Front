@@ -20,12 +20,14 @@ class PatientCareTimeline extends StatelessWidget {
     this.showSectionHeader = true,
     this.title = 'Historial y próximos pasos',
     this.subtitle,
+    this.onEventTap,
   });
 
   final List<TimelineEvent> events;
   final bool showSectionHeader;
   final String title;
   final String? subtitle;
+  final void Function(TimelineEvent event)? onEventTap;
 
   static const _green = Color(0xFF15803D);
   static const _orange = Color(0xFFC2410C);
@@ -60,6 +62,8 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis':
       case 'analysis_request':
         return const Color(0xFF2563EB);
+      case 'prior_documents':
+        return const Color(0xFF0D9488);
       default:
         return KeepiColors.slate;
     }
@@ -78,6 +82,8 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis':
       case 'analysis_request':
         return Icons.biotech_outlined;
+      case 'prior_documents':
+        return Icons.folder_shared_outlined;
       default:
         return Icons.flag_outlined;
     }
@@ -96,6 +102,8 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis':
       case 'analysis_request':
         return 'ANÁLISIS';
+      case 'prior_documents':
+        return 'EXPEDIENTE';
       default:
         return 'EVENTO';
     }
@@ -145,6 +153,9 @@ class PatientCareTimeline extends StatelessWidget {
         icon: _eventIcon(e.eventType),
         typeLabel: _typeLabel(e.eventType),
         stateLabel: _stateLabel(e.visualState),
+        onTap: e.isPriorDocuments && onEventTap != null
+            ? () => onEventTap!(e)
+            : null,
       ));
     }
 
@@ -310,6 +321,7 @@ class _Entry extends StatelessWidget {
     required this.icon,
     required this.typeLabel,
     required this.stateLabel,
+    this.onTap,
   });
 
   final TimelineEvent event;
@@ -322,6 +334,7 @@ class _Entry extends StatelessWidget {
   final IconData icon;
   final String typeLabel;
   final String stateLabel;
+  final VoidCallback? onTap;
 
   String get _detail {
     final s = (event.subtitle ?? '').trim();
@@ -335,7 +348,7 @@ class _Entry extends StatelessWidget {
     final detail = _detail;
     final isCurrent = event.visualState == 'current';
 
-    return IntrinsicHeight(
+    final content = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -518,11 +531,43 @@ class _Entry extends StatelessWidget {
                       ],
                     ),
                   ],
+                  if (onTap != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(
+                          'Ver archivos',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: eventColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: eventColor,
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: content,
       ),
     );
   }

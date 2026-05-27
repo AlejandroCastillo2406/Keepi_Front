@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../core/api_endpoints.dart';
+import '../models/prior_document_item.dart';
 import '../models/timeline_event.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
@@ -120,6 +121,30 @@ class DoctorService {
   }
 
   /// [PACIENTE] Historial y próximos pasos (misma fuente que ve el médico en el timeline).
+  Future<List<PriorDocumentItem>> fetchPatientPriorDocuments(
+    String patientId,
+  ) async {
+    final res = await _api.dio.get<dynamic>(
+      '/api/v1/doctors/patients/$patientId/prior-documents',
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .map((e) =>
+            PriorDocumentItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<List<PriorDocumentItem>> fetchMyPriorDocuments() async {
+    final res = await _api.dio.get<dynamic>('/api/v1/patient/prior-documents');
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .map((e) =>
+            PriorDocumentItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<List<TimelineEvent>> fetchMyCareTimeline() async {
     final response = await _api.dio.get<dynamic>('/api/v1/patient/timeline');
     final data = response.data;

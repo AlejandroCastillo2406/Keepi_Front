@@ -16,6 +16,7 @@ import '../../services/doctor_service.dart';
 import '../../services/prescription_service.dart';
 import '../../widgets/patient_care_timeline.dart';
 import '../common/notifications_screen.dart';
+import '../common/prior_documents_screen.dart';
 import '../common/storage_choice_flow.dart';
 import 'patient_upload_analysis_screen.dart';
 
@@ -109,6 +110,20 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         _loadingTimeline = false;
       });
     }
+  }
+
+  void _onTimelineEventTap(TimelineEvent event) {
+    if (!event.isPriorDocuments) return;
+    final name = context.read<AuthProvider>().name ?? 'Paciente';
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PriorDocumentsScreen(
+          patientId: event.actionPatientId ?? '',
+          patientName: name,
+          forPatientView: true,
+        ),
+      ),
+    );
   }
 
   Future<void> _loadPendingAnalysisRequests() async {
@@ -601,7 +616,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         icon: Icons.timeline_outlined,
       );
     }
-    return PatientCareTimeline(events: _timelineEvents);
+    return PatientCareTimeline(
+      events: _timelineEvents,
+      onEventTap: _onTimelineEventTap,
+    );
   }
 
   // ── Recetas tab ──────────────────────────────────────────────
