@@ -367,7 +367,7 @@ class _DoctorPatientProfileScreenState
     );
   }
 
-  // --- NUEVO MODAL DE DETALLES INTEGRADO ---
+  // --- MODAL DE DETALLES INTEGRADO ---
   void _showEventDetail(BuildContext context, TimelineEvent event) {
     Color eventColor;
     IconData eventIcon;
@@ -1312,7 +1312,14 @@ class _QuestionAnswerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final question = (data['question_text'] ?? 'Pregunta').toString();
-    final answer = (data['answer_value'] ?? 'Sin respuesta').toString();
+    
+    // --- LÓGICA DE LIMPIEZA AGREGADA AQUÍ ---
+    String answer = (data['answer_value'] ?? 'Sin respuesta').toString();
+    if (answer.contains('value:')) {
+      answer = answer.replaceAll(RegExp(r'[{}]'), '').replaceAll('value:', '').trim();
+    }
+    // ----------------------------------------
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(10),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 // Rutas de tu proyecto
 import '../../core/app_theme.dart';
@@ -8,6 +9,7 @@ import '../../models/timeline_event.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../services/prescription_service.dart';
+import '../../services/questionnaire_service.dart';
 import '../../widgets/patient_care_timeline.dart';
 
 class DoctorPatientTimelineScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   List<TimelineEvent> _events = [];
   bool _isLoading = true;
   String? _errorMessage;
+  String? _openingDocumentId; // <-- Para el spinner de carga en análisis
 
   @override
   void initState() {
@@ -59,6 +62,47 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     }
   }
 
+  // ==========================================
+  // VISOR INTERNO (SOLO PARA ANÁLISIS)
+  // ==========================================
+  void _openDocumentView(String url, String title) {
+    if (url.isEmpty) return;
+    
+    // Obtenemos el token para autorizar la descarga del backend
+    final api = context.read<ApiClient>();
+    final token = api.accessToken;
+    final headers = <String, String>{
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      'Accept': '*/*',
+    };
+
+    bool isPdf = url.toLowerCase().contains('.pdf');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: KeepiColors.surfaceBg,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 1,
+            title: Text(title, style: const TextStyle(color: KeepiColors.slate, fontSize: 16), overflow: TextOverflow.ellipsis),
+            iconTheme: const IconThemeData(color: KeepiColors.slate),
+          ),
+          body: isPdf 
+              ? SfPdfViewer.network(url, headers: headers)
+              : InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  child: Center(child: Image.network(url, headers: headers)),
+                ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // APERTURA EXTERNA (PARA RECETAS EN S3)
+  // ==========================================
   Future<void> _openScanFromTimeline(String rawId) async {
     if (rawId.isEmpty) return;
     final svc = PrescriptionService(context.read<ApiClient>());
@@ -69,6 +113,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       if (url.isNotEmpty) {
         final uri = Uri.parse(url);
         if (await canLaunchUrl(uri)) {
+          // RESTAURADO A SU VERSIÓN ORIGINAL
           await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
         } else {
           if (!mounted) return;
@@ -92,6 +137,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       case 'analysis': return 'Análisis Clínico';
       case 'analysis_request': return 'Solicitud de Análisis';
       case 'analysis_upload': return 'Estudio Subido';
+      case 'questionnaire': return 'Cuestionario';
       default: return eventType;
     }
   }
@@ -175,6 +221,8 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
 
   void _showEventDetail(BuildContext context, TimelineEvent event) {
     bool isAppointment = event.eventType.toLowerCase() == 'appointment';
+    bool isQuestionnaire = event.eventType.toLowerCase() == 'questionnaire';
+    bool isAnalysis = event.eventType.toLowerCase().contains('analysis');
     
     Color eventColor;
     IconData eventIcon;
@@ -197,6 +245,10 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
         eventColor = const Color(0xFF7C3AED);
         eventIcon = Icons.receipt_long_outlined;
         break;
+      case 'questionnaire':
+        eventColor = KeepiColors.orange;
+        eventIcon = Icons.quiz_outlined;
+        break;
       default:
         eventColor = KeepiColors.slate;
         eventIcon = Icons.flag_outlined;
@@ -208,13 +260,13 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       backgroundColor: Colors.transparent,
       builder: (context) {
         return DraggableScrollableSheet(
-          initialChildSize: isAppointment ? 0.85 : 0.65, // El calendario necesita más espacio
+          initialChildSize: isAppointment ? 0.85 : 0.65,
           minChildSize: 0.4,
           maxChildSize: 0.95,
           expand: false,
           builder: (_, controller) => Container(
             decoration: const BoxDecoration(
-              color: KeepiColors.surfaceBg, // Fondo gris claro para resaltar tarjetas blancas
+              color: KeepiColors.surfaceBg,
               borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
             ),
             child: ListView(
@@ -223,11 +275,9 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
               children: [
                 Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
                 
-                // CONDICIONAL: CITA MÉDICA VS OTROS EVENTOS
                 if (isAppointment)
                   _buildAppointmentDetailCard(event)
                 else ...[
-                  // HEADER GENÉRICO PARA LOS DEMÁS EVENTOS
                   Row(
                     children: [
                       Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: eventColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)), child: Icon(eventIcon, color: eventColor, size: 28)),
@@ -252,37 +302,43 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
                     _buildRow(Icons.info_outline_rounded, "Estado:", "Registrado en el historial"),
                   ]),
                   
-                  if (event.s3Url != null && event.s3Url!.isNotEmpty && event.eventType.toLowerCase() != 'prescription') ...[
+                  // Botón S3 genérico para eventos distintos
+                  if (event.s3Url != null && event.s3Url!.isNotEmpty && event.eventType.toLowerCase() != 'prescription' && !isAnalysis) ...[
                     const SizedBox(height: 16),
                     _buildS3DownloadButton(event.s3Url!),
                   ],
                   
                   const SizedBox(height: 24),
                   
-                  event.eventType.toLowerCase() == 'prescription' 
-                    ? _buildPremiumPrescriptionCard(event) 
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text("Detalles:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16), 
-                              border: Border.all(color: Colors.grey.shade200)
-                            ),
-                            child: Text(
-                              (event.description == null || event.description!.isEmpty) 
-                                  ? "Sin contenido registrado." 
-                                  : event.description!, 
-                              style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)
-                            ),
+                  if (event.eventType.toLowerCase() == 'prescription')
+                    _buildPremiumPrescriptionCard(event) 
+                  else if (isQuestionnaire)
+                    _buildQuestionnaireDetailCard(event) 
+                  else if (isAnalysis)
+                    _buildAnalysisDetailCard(event) // <-- TARJETA INTELIGENTE DE ANÁLISIS AGREGADA AQUÍ
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Detalles:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16), 
+                            border: Border.all(color: Colors.grey.shade200)
                           ),
-                        ],
-                      ),
+                          child: Text(
+                            (event.description == null || event.description!.isEmpty) 
+                                ? "Sin contenido registrado." 
+                                : event.description!, 
+                            style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)
+                          ),
+                        ),
+                      ],
+                    ),
                 ]
               ],
             ),
@@ -293,7 +349,334 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   }
 
   // =======================================================================
-  // NUEVO DISEÑO PARA LA CITA (IDÉNTICO A TU IMAGEN)
+  // DISEÑO INTELIGENTE PARA ANÁLISIS
+  // =======================================================================
+  Widget _buildAnalysisDetailCard(TimelineEvent event) {
+    return FutureBuilder<List<dynamic>>(
+      future: DoctorService(context.read<ApiClient>()).fetchPatientAnalysisRequests(widget.patientId).catchError((e) => []),
+      builder: (context, snapshot) {
+        
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
+          );
+        }
+
+        dynamic matchedRequest;
+        final targetId = (event.id ?? '').replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+        final eventDesc = (event.description ?? '').trim().toLowerCase();
+
+        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+          for (var r in snapshot.data!) {
+            String rId = '';
+            try { rId = r.id.toString().replaceAll(RegExp(r'^(ana_|req_)'), '').trim(); } catch(e){}
+            
+            if (rId == targetId && targetId.isNotEmpty) {
+              matchedRequest = r;
+              break;
+            }
+            
+            String rDesc = '';
+            try { rDesc = (r.description ?? '').toString().trim().toLowerCase(); } catch(e){}
+            if (rDesc.isNotEmpty && rDesc == eventDesc) {
+              matchedRequest = r;
+            }
+          }
+        }
+
+        bool isCompleted = false;
+        bool hasDocument = false;
+        String docId = '';
+        String completedAtStr = '';
+        String description = event.description ?? event.title;
+
+        if (matchedRequest != null) {
+           try { isCompleted = matchedRequest.status.toString().toLowerCase() == 'completed'; } catch(e) {}
+           try { docId = matchedRequest.documentId?.toString() ?? ''; } catch(e) {}
+           try { hasDocument = docId.isNotEmpty; } catch(e) {}
+           try { completedAtStr = matchedRequest.completedAt?.toString() ?? ''; } catch(e) {}
+           try { description = matchedRequest.description?.toString() ?? description; } catch(e) {}
+        }
+
+        bool eventHasFile = event.s3Url != null && event.s3Url!.isNotEmpty;
+
+        // LEYENDA SI NO ESTÁ COMPLETADO Y NO TIENE ARCHIVO
+        if (!isCompleted && !hasDocument && !eventHasFile) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Detalles del análisis:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: KeepiColors.slate.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: KeepiColors.slate.withValues(alpha: 0.1)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: KeepiColors.slateLight, size: 20),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        "Aún no hay resultados de análisis subidos para mostrar.",
+                        style: TextStyle(color: KeepiColors.slateLight, fontSize: 13.5, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (completedAtStr.isEmpty) {
+           DateTime dt = DateTime.tryParse(event.occurredAt) ?? DateTime.now();
+           completedAtStr = "${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}T${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}:00Z";
+        }
+        final fallbackUrl = event.s3Url;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Documento adjunto:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () async {
+                setState(() => _openingDocumentId = event.id);
+                try {
+                  String urlToOpen = fallbackUrl ?? '';
+                  if (docId.isNotEmpty) {
+                     final svc = DoctorService(context.read<ApiClient>());
+                     urlToOpen = svc.getMobileDocumentUrl(docId);
+                  }
+                  if (urlToOpen.isNotEmpty) {
+                     _openDocumentView(urlToOpen, "Archivo de análisis");
+                  } else {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se encontró el archivo adjunto.')));
+                  }
+                } catch(e) {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al abrir el documento.')));
+                } finally {
+                   if (mounted) setState(() => _openingDocumentId = null);
+                }
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: KeepiColors.cardBorder),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: KeepiColors.skyBlueSoft,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: KeepiColors.skyBlue, width: 1.4),
+                      ),
+                      child: const Icon(
+                        Icons.biotech_outlined,
+                        size: 18,
+                        color: KeepiColors.skyBlue,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'ANÁLISIS COMPLETADO',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.3,
+                              color: KeepiColors.skyBlue,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            description,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: KeepiColors.slate,
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Completado: $completedAtStr',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: KeepiColors.slateLight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _openingDocumentId == event.id
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: KeepiColors.orange,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.open_in_new_rounded,
+                            size: 18,
+                            color: KeepiColors.slateLight,
+                          ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+    );
+  }
+
+  // =======================================================================
+  // DISEÑO PARA CUESTIONARIOS
+  // =======================================================================
+  Widget _buildQuestionnaireDetailCard(TimelineEvent event) {
+    return FutureBuilder<List<dynamic>>(
+      future: QuestionnaireService(context.read<ApiClient>()).fetchPatientResponses(widget.patientId).catchError((e) => []),
+      builder: (context, snapshot) {
+        
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
+          );
+        }
+
+        List<Map<String, dynamic>> matchingResponses = [];
+        
+        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+          final eventDate = DateTime.tryParse(event.occurredAt)?.toLocal();
+          
+          if (eventDate != null) {
+            for (var r in snapshot.data!) {
+              if (r is Map) {
+                final answeredAt = DateTime.tryParse((r['answered_at'] ?? '').toString())?.toLocal();
+                if (answeredAt != null && answeredAt.difference(eventDate).abs() < const Duration(minutes: 15)) {
+                  matchingResponses.add(Map<String, dynamic>.from(r));
+                }
+              }
+            }
+          }
+        }
+
+        if (matchingResponses.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Detalles del cuestionario:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16), 
+                  border: Border.all(color: Colors.grey.shade200)
+                ),
+                child: Text(
+                  (event.description == null || event.description!.isEmpty) 
+                      ? "Sin contenido registrado o respuestas no encontradas." 
+                      : event.description!, 
+                  style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
+            ]
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(color: KeepiColors.orange.withOpacity(0.1), shape: BoxShape.circle),
+                    child: const Icon(Icons.quiz_outlined, color: KeepiColors.orange, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("RESPUESTAS GUARDADAS", style: TextStyle(color: KeepiColors.orange, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                        const SizedBox(height: 4),
+                        Text("${matchingResponses.length} preguntas respondidas", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
+                      ],
+                    ),
+                  )
+                ],
+              ),
+              const SizedBox(height: 24),
+              ...matchingResponses.map((data) {
+                final question = (data['question_text'] ?? 'Pregunta').toString();
+                
+                String answer = (data['answer_value'] ?? 'Sin respuesta').toString();
+                if (answer.contains('value:')) {
+                  answer = answer.replaceAll(RegExp(r'[{}]'), '').replaceAll('value:', '').trim();
+                }
+
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: KeepiColors.surfaceBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(question, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: KeepiColors.slate)),
+                      const SizedBox(height: 6),
+                      Text(answer, style: const TextStyle(fontSize: 13.5, color: KeepiColors.slateLight, height: 1.4)),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  // =======================================================================
+  // DISEÑO PARA CITA
   // =======================================================================
   Widget _buildAppointmentDetailCard(TimelineEvent event) {
     DateTime dt = DateTime.now();
@@ -301,7 +684,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       dt = DateTime.parse(event.occurredAt);
     } catch (e) {}
 
-    // Formatear la fecha
     String day = dt.day.toString().padLeft(2, '0');
     String monthStr = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][dt.month - 1];
     int hour = dt.hour;
@@ -315,7 +697,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. TARJETA HEADER (APPOINTMENT)
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -329,10 +710,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
             children: [
               Container(
                 width: 56, height: 56,
-                decoration: BoxDecoration(
-                  color: KeepiColors.orange.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: KeepiColors.orange.withOpacity(0.1), shape: BoxShape.circle),
                 child: const Icon(Icons.event_available_rounded, color: KeepiColors.orange, size: 28),
               ),
               const SizedBox(width: 16),
@@ -340,8 +718,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    
-                    const SizedBox(height: 4),
                     Text(event.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
                     const SizedBox(height: 4),
                     Text(formattedDate, style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w600)),
@@ -351,10 +727,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
             ],
           ),
         ),
-
         const SizedBox(height: 28),
-
-        // 2. CALENDARIO
         const Text("Fecha agendada:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
         const SizedBox(height: 12),
         Container(
@@ -366,7 +739,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
               BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))
             ]
           ),
-          // IgnorePointer bloquea los toques para que sea solo de lectura
           child: IgnorePointer(
             child: Theme(
               data: ThemeData.light().copyWith(
@@ -385,10 +757,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
             ),
           ),
         ),
-
         const SizedBox(height: 24),
-
-        // 3. MOTIVO DE CONSULTA
         const Text("Motivo de consulta:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
         const SizedBox(height: 12),
         Container(
@@ -411,7 +780,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   }
 
   // =======================================================================
-  // DISEÑO PREMIUM DE LA RECETA (MANTIENE SU LÓGICA ANTERIOR)
+  // DISEÑO PREMIUM DE LA RECETA
   // =======================================================================
   Widget _buildPremiumPrescriptionCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
@@ -572,28 +941,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     );
   }
 
-  Widget _buildS3DownloadButton(String fileUrl) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () async {
-          final Uri url = Uri.parse(fileUrl);
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.inAppBrowserView);
-          }
-        },
-        icon: const Icon(Icons.cloud_download_rounded),
-        label: const Text("Ver documento original"),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF0F766E),
-          side: const BorderSide(color: Color(0xFF0F766E)),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
-    );
-  }
-
   Widget _buildProfessionalCalendarCard(String dateStr, Color color) {
     String day = "??";
     String monthYear = "---";
@@ -634,6 +981,28 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(children: [Icon(icon, size: 16, color: KeepiColors.slateLight), const SizedBox(width: 8), Text("$label ", style: const TextStyle(fontWeight: FontWeight.w600, color: KeepiColors.slateLight)), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, color: KeepiColors.slate)))]),
+    );
+  }
+
+  Widget _buildS3DownloadButton(String fileUrl) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          final Uri url = Uri.parse(fileUrl);
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
+          }
+        },
+        icon: const Icon(Icons.cloud_download_rounded),
+        label: const Text("Ver documento original"),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF0F766E),
+          side: const BorderSide(color: Color(0xFF0F766E)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
     );
   }
 }
