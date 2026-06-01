@@ -12,6 +12,8 @@ class TimelineEvent {
   final String visualState;
   final String? actionPatientId;
   final int? priorDocumentsCount;
+  final bool hasDoctorNote;
+  final String? doctorNotePreview;
 
   TimelineEvent({
     required this.id,
@@ -26,6 +28,8 @@ class TimelineEvent {
     required this.visualState,
     this.actionPatientId,
     this.priorDocumentsCount,
+    this.hasDoctorNote = false,
+    this.doctorNotePreview,
   });
 
   bool get isPriorDocuments => eventType == 'prior_documents';
@@ -44,6 +48,10 @@ class TimelineEvent {
       visualState: json['visual_state']?.toString() ?? 'completed',
       actionPatientId: json['action_patient_id'] as String?,
       priorDocumentsCount: (json['prior_documents_count'] as num?)?.toInt(),
+      hasDoctorNote: json['has_doctor_note'] == true,
+      doctorNotePreview: json['doctor_note_preview']?.toString(),
     );
   }
+
+  String? get s3Url => null;
 }

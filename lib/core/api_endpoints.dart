@@ -128,8 +128,13 @@ class ApiEndpoints {
       _path('/questionnaire/extract-ocr');
   static String questionnairePatientResponses(String patientId) =>
       _path('/questionnaire/patients/$patientId/responses');
+
+  static String doctorTimelineEventNote(String patientId, String eventId) =>
+      _path('/doctors/patients/$patientId/timeline/events/$eventId/doctor-note');
   static String questionnairePublicByToken(String token) =>
       _path('/questionnaire/public/$token');
   static String questionnairePublicSubmitByToken(String token) =>
       _path('/questionnaire/public/$token/submit');
+  static String questionnairePublicDynamicAnswerByToken(String token) =>
+      _path('/questionnaire/public/$token/dynamic/answer');
 }

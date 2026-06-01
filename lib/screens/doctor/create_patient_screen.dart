@@ -27,6 +27,13 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
   List<Question> _globalQuestions = [];
   final Set<String> _selectedTemplateIds = <String>{};
   final Set<String> _selectedQuestionIds = <String>{};
+  bool _useDynamicQuestionnaire = false;
+  bool _collectPriorDocuments = false;
+
+  bool get _willSendQuestionnaire =>
+      _useDynamicQuestionnaire ||
+      _selectedTemplateIds.isNotEmpty ||
+      _selectedQuestionIds.isNotEmpty;
 
   @override
   void initState() {
@@ -60,6 +67,23 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
     }
   }
 
+  void _setDynamicQuestionnaire(bool value) {
+    setState(() {
+      _useDynamicQuestionnaire = value;
+      if (value) {
+        _selectedTemplateIds.clear();
+        _selectedQuestionIds.clear();
+      }
+      _syncPriorDocumentsSwitch();
+    });
+  }
+
+  void _syncPriorDocumentsSwitch() {
+    if (!_willSendQuestionnaire) {
+      _collectPriorDocuments = false;
+    }
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -79,12 +103,19 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
       );
 
       InvitationSendResult? invite;
-      if (_selectedTemplateIds.isNotEmpty || _selectedQuestionIds.isNotEmpty) {
+      if (_useDynamicQuestionnaire) {
+        invite = await questionnaireSvc.sendInvitationBatch(
+          patientId: created.id,
+          useDynamicQuestionnaire: true,
+          collectPriorDocuments: _collectPriorDocuments,
+        );
+      } else if (_selectedTemplateIds.isNotEmpty ||
+          _selectedQuestionIds.isNotEmpty) {
         invite = await questionnaireSvc.sendInvitationBatch(
           patientId: created.id,
           templateIds: _selectedTemplateIds.toList(),
           questionIds: _selectedQuestionIds.toList(),
-          collectPriorDocuments: true,
+          collectPriorDocuments: _collectPriorDocuments,
         );
       }
 
@@ -96,6 +127,9 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
         snackMsg =
             'Paciente creado. El correo del cuestionario no se envió: ${invite.emailError ?? "revisa SES en el servidor"}. '
             'Puedes copiar el link desde la respuesta de la API o reintentar.';
+      } else if (_useDynamicQuestionnaire) {
+        snackMsg =
+            'Paciente creado y cuestionario dinámico (IA) enviado por correo.';
       } else {
         snackMsg = 'Paciente creado y cuestionario enviado por correo.';
       }
@@ -103,7 +137,9 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
         SnackBar(
           content: Text(snackMsg),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: invite != null && !invite.emailSent ? Colors.orange.shade900 : null,
+          backgroundColor: invite != null && !invite.emailSent
+              ? Colors.orange.shade900
+              : null,
         ),
       );
       Navigator.of(context).pop(true);
@@ -123,6 +159,9 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final showPriorDocsHint =
+        _willSendQuestionnaire && _collectPriorDocuments;
+
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       appBar: AppBar(
@@ -148,9 +187,10 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Opcionalmente puedes enviar un cuestionario inicial por correo. '
-                  'Al terminarlo, el paciente podrá subir estudios o documentos médicos previos.',
-                  style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slateLight),
+                  'Opcionalmente puedes enviar un cuestionario inicial por correo.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: KeepiColors.slateLight,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
@@ -161,7 +201,8 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                     labelText: 'Nombre completo',
                     hintText: 'Como aparecerá en la app',
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Requerido' : null,
                 ),
                 const SizedBox(height: 14),
                 TextFormField(
@@ -180,15 +221,88 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                   },
                 ),
                 const SizedBox(height: 22),
-                if (_selectedTemplateIds.isNotEmpty ||
-                    _selectedQuestionIds.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _useDynamicQuestionnaire
+                          ? KeepiColors.orange.withValues(alpha: 0.45)
+                          : KeepiColors.cardBorder,
+                    ),
+                  ),
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Cuestionario dinámico con IA',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: KeepiColors.slate,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'AWS Bedrock adapta cada pregunta según la respuesta anterior. '
+                      'Máximo 10 preguntas. Al activarlo, las plantillas quedan deshabilitadas.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: KeepiColors.slateLight,
+                        height: 1.4,
+                      ),
+                    ),
+                    value: _useDynamicQuestionnaire,
+                    activeColor: KeepiColors.orange,
+                    onChanged: _submitting ? null : _setDynamicQuestionnaire,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _collectPriorDocuments && _willSendQuestionnaire
+                          ? KeepiColors.skyBlue.withValues(alpha: 0.45)
+                          : KeepiColors.cardBorder,
+                    ),
+                  ),
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Documentos médicos previos',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: KeepiColors.slate,
+                      ),
+                    ),
+                    subtitle: Text(
+                      _willSendQuestionnaire
+                          ? 'Si está activo, al terminar el cuestionario el paciente verá un paso '
+                              'opcional para subir análisis, laboratorios o informes anteriores.'
+                          : 'Activa un cuestionario (dinámico o plantillas) para habilitar esta opción.',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: KeepiColors.slateLight,
+                        height: 1.4,
+                      ),
+                    ),
+                    value: _collectPriorDocuments,
+                    activeColor: KeepiColors.skyBlue,
+                    onChanged: _submitting || !_willSendQuestionnaire
+                        ? null
+                        : (v) => setState(() => _collectPriorDocuments = v),
+                  ),
+                ),
+                if (showPriorDocsHint) ...[
+                  const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: KeepiColors.skyBlueSoft,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: KeepiColors.skyBlue.withOpacity(0.35),
+                        color: KeepiColors.skyBlue.withValues(alpha: 0.35),
                       ),
                     ),
                     child: Row(
@@ -202,9 +316,7 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Al final del cuestionario verá un paso opcional para subir '
-                            'análisis, laboratorios o informes médicos anteriores. '
-                            'Se guardarán en su expediente en Keepi Cloud.',
+                            'Los archivos se guardarán en el expediente del paciente en Keepi Cloud.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: KeepiColors.slate,
                               height: 1.45,
@@ -214,19 +326,20 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
                 ],
+                const SizedBox(height: 14),
                 QuestionnaireInvitePickerBlock(
-                  title: 'Cuestionarios iniciales',
+                  title: 'Cuestionarios iniciales (plantillas)',
                   description:
-                      'Selecciona plantillas y/o preguntas globales. Solo en este flujo '
-                      'de alta se habilita la subida de documentos previos al final.',
+                      'Selecciona plantillas y/o preguntas globales. No disponible '
+                      'si activas el cuestionario dinámico.',
                   loading: _loadingQuestionnaires,
                   error: _questionnaireError,
                   templates: _templates,
                   globalQuestions: _globalQuestions,
                   selectedTemplateIds: _selectedTemplateIds,
                   selectedQuestionIds: _selectedQuestionIds,
+                  enabled: !_useDynamicQuestionnaire,
                   onRetry: _loadQuestionnaires,
                   onToggleTemplate: (id, value) {
                     setState(() {
@@ -235,6 +348,7 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                       } else {
                         _selectedTemplateIds.remove(id);
                       }
+                      _syncPriorDocumentsSwitch();
                     });
                   },
                   onToggleQuestion: (id, value) {
@@ -244,6 +358,7 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                       } else {
                         _selectedQuestionIds.remove(id);
                       }
+                      _syncPriorDocumentsSwitch();
                     });
                   },
                 ),

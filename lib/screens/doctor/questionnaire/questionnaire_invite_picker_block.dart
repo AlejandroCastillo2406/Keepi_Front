@@ -16,6 +16,7 @@ class QuestionnaireInvitePickerBlock extends StatelessWidget {
     required this.onRetry,
     required this.onToggleTemplate,
     required this.onToggleQuestion,
+    this.enabled = true,
     this.title = 'Cuestionario por link',
     this.description =
         'Selecciona plantillas y/o preguntas globales para incluir en el link que recibirá el paciente por correo.',
@@ -30,6 +31,7 @@ class QuestionnaireInvitePickerBlock extends StatelessWidget {
   final VoidCallback onRetry;
   final void Function(String id, bool value) onToggleTemplate;
   final void Function(String id, bool value) onToggleQuestion;
+  final bool enabled;
   final String title;
   final String description;
 
@@ -70,6 +72,18 @@ class QuestionnaireInvitePickerBlock extends StatelessWidget {
               ],
             )
           else ...[
+            if (!enabled)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'Desactivado mientras usas el cuestionario dinámico con IA.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: KeepiColors.slateLight.withValues(alpha: 0.95),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
             const Text('Plantillas', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
             for (final t in templates)
@@ -79,7 +93,9 @@ class QuestionnaireInvitePickerBlock extends StatelessWidget {
                 title: Text(t.name),
                 subtitle: Text('${t.totalQuestions} preguntas'),
                 value: selectedTemplateIds.contains(t.id),
-                onChanged: (v) => onToggleTemplate(t.id, v ?? false),
+                onChanged: enabled
+                    ? (v) => onToggleTemplate(t.id, v ?? false)
+                    : null,
               ),
             const SizedBox(height: 8),
             const Text('Preguntas adicionales', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -90,7 +106,9 @@ class QuestionnaireInvitePickerBlock extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(q.text, maxLines: 2, overflow: TextOverflow.ellipsis),
                 value: selectedQuestionIds.contains(q.id),
-                onChanged: (v) => onToggleQuestion(q.id, v ?? false),
+                onChanged: enabled
+                    ? (v) => onToggleQuestion(q.id, v ?? false)
+                    : null,
               ),
             const SizedBox(height: 10),
             Text(

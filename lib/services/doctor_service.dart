@@ -45,10 +45,21 @@ class DoctorService {
   // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
 
   /// [DOCTOR] Crea una nueva solicitud para un paciente.
+  Future<Map<String, dynamic>> fetchTimelineDoctorNote({
+    required String patientId,
+    required String eventId,
+  }) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.doctorTimelineEventNote(patientId, eventId),
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
   Future<void> createAnalysisRequest({
     required String patientId,
     required String description,
     DateTime? expiresAt,
+    String? doctorNote,
   }) async {
     // 1. RASTREADOR ANTES DE ENVIAR
     print("🛑 [DEBUG] INICIANDO POST A ANALYSIS-REQUESTS...");
@@ -70,6 +81,10 @@ class DoctorService {
           59,
         );
         payload['expires_at'] = endOfDay.toUtc().toIso8601String();
+      }
+      final note = doctorNote?.trim();
+      if (note != null && note.isNotEmpty) {
+        payload['doctor_note'] = note;
       }
       final response = await _api.dio.post(
         '/api/v1/analysis-requests/',
@@ -192,11 +207,13 @@ class DoctorService {
     required String patientId,
     required DateTime date,
     required String reason,
+    String? doctorNote,
   }) async {
     final d = await AppointmentService(_api).createDoctorAppointment(
       patientId: patientId,
       startAt: date,
       reason: reason,
+      notes: doctorNote,
     );
     return ScheduleAppointmentResult(
       id: d.id,

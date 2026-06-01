@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
+import '../../widgets/doctor_note_field.dart';
 
 class DoctorRequestAnalysisScreen extends StatefulWidget {
   final String patientId;
@@ -21,6 +22,7 @@ class DoctorRequestAnalysisScreen extends StatefulWidget {
 
 class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScreen> {
   final _controller = TextEditingController();
+  final _noteCtrl = TextEditingController();
   bool _isSending = false;
   DateTime? _deadline;
 
@@ -71,6 +73,7 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
         patientId: widget.patientId,
         description: message,
         expiresAt: _deadline!,
+        doctorNote: _noteCtrl.text.trim(),
       );
 
       if (!mounted) return;
@@ -229,9 +232,9 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
-              
-              // Botón de acción enviar
+              const SizedBox(height: 16),
+              DoctorNoteField(controller: _noteCtrl, enabled: !_isSending),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -265,6 +268,7 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
   @override
   void dispose() {
     _controller.dispose();
+    _noteCtrl.dispose();
     super.dispose();
   }
 }

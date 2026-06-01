@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/prescription_service.dart';
+import '../../widgets/doctor_note_field.dart';
 
 class DoctorAssignPrescriptionScreen extends StatefulWidget {
   const DoctorAssignPrescriptionScreen({
@@ -28,11 +29,13 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
   bool _saving = false;
   String? _draftId;
   final _textCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
   List<_ItemEditor> _items = [];
 
   @override
   void dispose() {
     _textCtrl.dispose();
+    _noteCtrl.dispose();
     for (final e in _items) {
       e.dispose();
     }
@@ -96,6 +99,7 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
         prescriptionId: draftId,
         extractedText: _textCtrl.text.trim(),
         items: _items.map((e) => e.toDto()).toList(),
+        doctorNote: _noteCtrl.text.trim(),
       );
       if (!mounted) return;
       setState(() => _saving = false);
@@ -146,6 +150,8 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
             const Text('Sin medicamentos detectados aún.')
           else
             ..._items.map((i) => i.build()),
+          const SizedBox(height: 18),
+          DoctorNoteField(controller: _noteCtrl, enabled: !_saving),
           const SizedBox(height: 18),
           FilledButton(
             onPressed: (_saving || _draftId == null) ? null : _confirmAndAssign,

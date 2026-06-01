@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui' show FontFeature;
 
 import '../core/app_theme.dart';
 import '../models/timeline_event.dart';
@@ -27,7 +26,7 @@ class PatientCareTimeline extends StatelessWidget {
   final bool showSectionHeader;
   final String title;
   final String? subtitle;
-  final void Function(TimelineEvent event)? onEventTap;
+  final void Function(TimelineEvent)? onEventTap;
 
   static const _green = Color(0xFF15803D);
   static const _orange = Color(0xFFC2410C);
@@ -153,9 +152,8 @@ class PatientCareTimeline extends StatelessWidget {
         icon: _eventIcon(e.eventType),
         typeLabel: _typeLabel(e.eventType),
         stateLabel: _stateLabel(e.visualState),
-        onTap: e.isPriorDocuments && onEventTap != null
-            ? () => onEventTap!(e)
-            : null,
+        onTap: onEventTap != null ? () => onEventTap!(e) : null,
+        hasDoctorNote: e.hasDoctorNote,
       ));
     }
 
@@ -322,6 +320,7 @@ class _Entry extends StatelessWidget {
     required this.typeLabel,
     required this.stateLabel,
     this.onTap,
+    this.hasDoctorNote = false,
   });
 
   final TimelineEvent event;
@@ -335,6 +334,7 @@ class _Entry extends StatelessWidget {
   final String typeLabel;
   final String stateLabel;
   final VoidCallback? onTap;
+  final bool hasDoctorNote;
 
   String get _detail {
     final s = (event.subtitle ?? '').trim();
@@ -352,211 +352,238 @@ class _Entry extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Sello de fecha (DAY / MES / HORA) ──
-          SizedBox(
-            width: 52,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    day.toString().padLeft(2, '0'),
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: KeepiColors.slate,
-                      height: 1,
-                      letterSpacing: -1.0,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    monthAbbr,
-                    style: const TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                      color: KeepiColors.slateLight,
-                      letterSpacing: 1.8,
-                    ),
-                  ),
-                  if (event.time.trim().isNotEmpty) ...[
-                    const SizedBox(height: 6),
+            // ── Sello de fecha (DAY / MES / HORA) ──
+            SizedBox(
+              width: 52,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     Text(
-                      event.time.trim(),
+                      day.toString().padLeft(2, '0'),
                       style: const TextStyle(
-                        fontSize: 10,
-                        color: KeepiColors.slateLight,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: KeepiColors.slate,
+                        height: 1,
+                        letterSpacing: -1.0,
                         fontFeatures: [FontFeature.tabularFigures()],
-                        letterSpacing: 0.3,
                       ),
                     ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-
-          // ── Rail con marcador ──
-          SizedBox(
-            width: 34,
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _RailPainter(
-                      color: stateColor.withValues(alpha: 0.45),
-                      skipTop: isFirstInMonth,
-                      skipBottom: isLastInMonth,
+                    const SizedBox(height: 2),
+                    Text(
+                      monthAbbr,
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: KeepiColors.slateLight,
+                        letterSpacing: 1.8,
+                      ),
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: _Marker(
-                    icon: icon,
-                    ringColor: stateColor,
-                    iconColor: eventColor,
-                    isCurrent: isCurrent,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // ── Contenido ──
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(top: 2, bottom: isLastInMonth ? 18 : 22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Meta line: ● TIPO / ESTADO
-                  Row(
-                    children: [
-                      Container(
-                        width: 5,
-                        height: 5,
-                        decoration: BoxDecoration(color: stateColor, shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: 7),
+                    if (event.time.trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
                       Text(
-                        typeLabel,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
-                          color: eventColor,
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      Container(
-                        width: 2,
-                        height: 2,
-                        decoration: BoxDecoration(
-                          color: KeepiColors.slateLight.withValues(alpha: 0.6),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        stateLabel,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
+                        event.time.trim(),
+                        style: const TextStyle(
+                          fontSize: 10,
                           color: KeepiColors.slateLight,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    height: 2,
-                    width: 20,
-                    decoration: BoxDecoration(
-                      color: eventColor,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    event.title,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: KeepiColors.slate,
-                      height: 1.25,
-                      letterSpacing: -0.25,
-                    ),
-                  ),
-                  if (detail.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      detail,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: KeepiColors.slateLight,
-                        height: 1.4,
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // ── Rail con marcador ──
+            SizedBox(
+              width: 34,
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _RailPainter(
+                        color: stateColor.withValues(alpha: 0.45),
+                        skipTop: isFirstInMonth,
+                        skipBottom: isLastInMonth,
                       ),
                     ),
-                  ],
-                  if (event.actor.trim().isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 1,
-                          color: KeepiColors.slate.withValues(alpha: 0.55),
-                        ),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            event.actor.trim(),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: KeepiColors.slate.withValues(alpha: 0.85),
-                              fontStyle: FontStyle.italic,
-                              fontWeight: FontWeight.w500,
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
-                      ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: _Marker(
+                      icon: icon,
+                      ringColor: stateColor,
+                      iconColor: eventColor,
+                      isCurrent: isCurrent,
                     ),
-                  ],
-                  if (onTap != null) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Text(
-                          'Ver archivos',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: eventColor,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 20,
-                          color: eventColor,
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 14),
+
+            // ── Contenido ──
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(top: 2, bottom: isLastInMonth ? 18 : 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Meta line: ● TIPO / ESTADO
+                    Row(
+                      children: [
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(color: stateColor, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          typeLabel,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.4,
+                            color: eventColor,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Container(
+                          width: 2,
+                          height: 2,
+                          decoration: BoxDecoration(
+                            color: KeepiColors.slateLight.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          stateLabel,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                            color: KeepiColors.slateLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      height: 2,
+                      width: 20,
+                      decoration: BoxDecoration(
+                        color: eventColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      event.title,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
+                        color: KeepiColors.slate,
+                        height: 1.25,
+                        letterSpacing: -0.25,
+                      ),
+                    ),
+                    if (detail.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        detail,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: KeepiColors.slateLight,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                    if (event.actor.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 1,
+                            color: KeepiColors.slate.withValues(alpha: 0.55),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              event.actor.trim(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: KeepiColors.slate.withValues(alpha: 0.85),
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w500,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (onTap != null && event.isPriorDocuments) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Text(
+                            'Ver archivos',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: eventColor,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: eventColor,
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (onTap != null && hasDoctorNote && !event.isPriorDocuments) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Text(
+                            'Ver nota del médico',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: eventColor,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.sticky_note_2_outlined,
+                            size: 18,
+                            color: eventColor,
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: eventColor,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
       ),
     );
 
@@ -574,7 +601,7 @@ class _Entry extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────
-// MARCADOR CIRCULAR (dot con icono + anillo de estado)
+// MARCADOR CIRCULAR
 
 class _Marker extends StatelessWidget {
   const _Marker({
@@ -614,7 +641,7 @@ class _Marker extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────
-// PAINTER DEL RAIL (línea continua fina, se interrumpe en inicio/fin de mes)
+// PAINTER DEL RAIL
 
 class _RailPainter extends CustomPainter {
   _RailPainter({
@@ -627,11 +654,10 @@ class _RailPainter extends CustomPainter {
   final bool skipTop;
   final bool skipBottom;
 
-  // Debe coincidir con la geometría del Marker
   static const _markerTop = 2.0;
   static const _markerSize = 32.0;
-  static const _centerY = _markerTop + _markerSize / 2; // 18
-  static const _half = _markerSize / 2; // 16
+  static const _centerY = _markerTop + _markerSize / 2;
+  static const _half = _markerSize / 2;
 
   @override
   void paint(Canvas canvas, Size size) {
