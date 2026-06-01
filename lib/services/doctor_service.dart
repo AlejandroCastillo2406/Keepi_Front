@@ -55,6 +55,22 @@ class DoctorService {
     return Map<String, dynamic>.from(res.data ?? const {});
   }
 
+  Future<Map<String, dynamic>> upsertTimelineDoctorNote({
+    required String patientId,
+    required String eventId,
+    required String eventType,
+    required String doctorNote,
+  }) async {
+    final res = await _api.dio.put<Map<String, dynamic>>(
+      ApiEndpoints.doctorTimelineEventNote(patientId, eventId),
+      data: {
+        'doctor_note': doctorNote.trim(),
+        'event_type': eventType,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
   Future<void> createAnalysisRequest({
     required String patientId,
     required String description,

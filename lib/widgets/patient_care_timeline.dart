@@ -552,33 +552,6 @@ class _Entry extends StatelessWidget {
                         ],
                       ),
                     ],
-                    if (onTap != null && hasDoctorNote && !event.isPriorDocuments) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Text(
-                            'Ver nota del médico',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: eventColor,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.sticky_note_2_outlined,
-                            size: 18,
-                            color: eventColor,
-                          ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 20,
-                            color: eventColor,
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),

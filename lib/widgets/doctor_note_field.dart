@@ -28,8 +28,9 @@ class DoctorNoteField extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Se guardan en el expediente del paciente (carpeta Notas) y se vinculan '
-          'al evento del timeline. El paciente no las ve.',
+          'Se guardan en el S3 del médico, en la carpeta del paciente '
+          '(NombrePaciente/Notas), vinculadas al evento del timeline. '
+          'El paciente no las ve.',
           style: TextStyle(
             fontSize: 12,
             color: KeepiColors.slateLight.withValues(alpha: 0.95),

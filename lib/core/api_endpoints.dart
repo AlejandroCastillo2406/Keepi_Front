@@ -122,6 +122,8 @@ class ApiEndpoints {
       _path('/questionnaire/templates/$templateId/questions');
   static String get questionnaireInvitations =>
       _path('/questionnaire/invitations');
+  static String get questionnaireInvitationsDynamic =>
+      _path('/questionnaire/invitations/dynamic');
   static String questionnaireInvitationById(String invitationId) =>
       _path('/questionnaire/invitations/$invitationId');
   static String get questionnaireExtractOcr =>

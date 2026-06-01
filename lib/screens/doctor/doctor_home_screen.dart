@@ -23,7 +23,7 @@ import 'doctor_request_analysis_screen.dart';
 import 'documentos_screen.dart';
 import 'questionnaire/questionnaire_settings_screen.dart';
 import 'questionnaire/send_questionnaire_screen.dart';
-import '../../services/search_result_navigation.dart';
+import '../../services/timeline_event_opener.dart';
 import '../../services/search_service.dart';
 import '../../widgets/home_added_search_section.dart';
 
@@ -468,20 +468,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _openAgendaAppointment(AppointmentDto a) async {
-    final date = a.appointmentDate ?? a.createdAt;
-    await SearchResultNavigation.open(
+    await TimelineEventOpener.openAppointment(
       context,
-      GlobalSearchItem(
-        id: a.id,
-        type: 'appointment',
-        title: a.reason.isNotEmpty ? a.reason : 'Cita médica',
-        subtitle: 'Estado: ${a.status}',
-        patientId: a.patientId,
-        date: date,
-        status: a.status,
-      ),
-      patients: _patients,
-      onDoctorOpenAgenda: () => setState(() => _currentIndex = 2),
+      appointment: a,
+      onNoteSaved: _loadAgenda,
     );
   }
 
