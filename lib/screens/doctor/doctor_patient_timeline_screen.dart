@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 // Rutas de tu proyecto
 import '../../core/app_theme.dart';
@@ -11,6 +10,7 @@ import '../../services/doctor_service.dart';
 import '../../services/prescription_service.dart';
 import '../../services/questionnaire_service.dart';
 import '../../widgets/patient_care_timeline.dart';
+import 'analysis_document_viewer_screen.dart'; // Tu visor inteligente original
 
 class DoctorPatientTimelineScreen extends StatefulWidget {
   final String patientId;
@@ -30,7 +30,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   List<TimelineEvent> _events = [];
   bool _isLoading = true;
   String? _errorMessage;
-  String? _openingDocumentId; // <-- Para el spinner de carga en análisis
+  String? _openingDocumentId; 
 
   @override
   void initState() {
@@ -50,7 +50,8 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       
       if (!mounted) return;
       setState(() {
-        _events = events;
+        // FILTRAMOS LOS EVENTOS PARA ELIMINAR LOS ESTUDIOS SUBIDOS
+        _events = events.where((e) => e.eventType.toLowerCase() != 'analysis_upload').toList();
         _isLoading = false;
       });
     } catch (e) {
@@ -63,12 +64,11 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   }
 
   // ==========================================
-  // VISOR INTERNO (SOLO PARA ANÁLISIS)
+  // APERTURA DE ANÁLISIS (USA TU PROPIA PANTALLA)
   // ==========================================
-  void _openDocumentView(String url, String title) {
+  void _openBackendDocument(String url, String title) {
     if (url.isEmpty) return;
-    
-    // Obtenemos el token para autorizar la descarga del backend
+
     final api = context.read<ApiClient>();
     final token = api.accessToken;
     final headers = <String, String>{
@@ -76,25 +76,13 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       'Accept': '*/*',
     };
 
-    bool isPdf = url.toLowerCase().contains('.pdf');
-    Navigator.push(
-      context,
+    // Usamos tu pantalla AnalysisDocumentViewerScreen (tal cual lo haces en el Perfil)
+    Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: KeepiColors.surfaceBg,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 1,
-            title: Text(title, style: const TextStyle(color: KeepiColors.slate, fontSize: 16), overflow: TextOverflow.ellipsis),
-            iconTheme: const IconThemeData(color: KeepiColors.slate),
-          ),
-          body: isPdf 
-              ? SfPdfViewer.network(url, headers: headers)
-              : InteractiveViewer(
-                  minScale: 1.0,
-                  maxScale: 4.0,
-                  child: Center(child: Image.network(url, headers: headers)),
-                ),
+        builder: (_) => AnalysisDocumentViewerScreen(
+          url: url,
+          title: title,
+          headers: headers,
         ),
       ),
     );
@@ -103,6 +91,22 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   // ==========================================
   // APERTURA EXTERNA (PARA RECETAS EN S3)
   // ==========================================
+  Future<void> _launchExternalUrl(String url) async {
+    if (url.isEmpty) return;
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se puede abrir el archivo en el navegador.')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ocurrió un error al intentar abrir el enlace.')));
+    }
+  }
+
   Future<void> _openScanFromTimeline(String rawId) async {
     if (rawId.isEmpty) return;
     final svc = PrescriptionService(context.read<ApiClient>());
@@ -111,14 +115,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       final url = await svc.getScanUrl(cleanId);
       
       if (url.isNotEmpty) {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          // RESTAURADO A SU VERSIÓN ORIGINAL
-          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se puede abrir el archivo.')));
-        }
+        await _launchExternalUrl(url);
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Esta receta no tiene un archivo adjunto.')));
@@ -136,7 +133,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       case 'prescription': return 'Receta Médica';
       case 'analysis': return 'Análisis Clínico';
       case 'analysis_request': return 'Solicitud de Análisis';
-      case 'analysis_upload': return 'Estudio Subido';
       case 'questionnaire': return 'Cuestionario';
       default: return eventType;
     }
@@ -222,7 +218,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   void _showEventDetail(BuildContext context, TimelineEvent event) {
     bool isAppointment = event.eventType.toLowerCase() == 'appointment';
     bool isQuestionnaire = event.eventType.toLowerCase() == 'questionnaire';
-    bool isAnalysis = event.eventType.toLowerCase().contains('analysis');
+    bool isAnalysisRequest = event.eventType.toLowerCase() == 'analysis_request' || event.eventType.toLowerCase() == 'analysis';
     
     Color eventColor;
     IconData eventIcon;
@@ -236,10 +232,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
       case 'analysis_request':
         eventColor = const Color(0xFF2563EB);
         eventIcon = Icons.biotech_outlined;
-        break;
-      case 'analysis_upload':
-        eventColor = const Color(0xFF0F766E);
-        eventIcon = Icons.file_present_rounded;
         break;
       case 'prescription':
         eventColor = const Color(0xFF7C3AED);
@@ -302,20 +294,36 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
                     _buildRow(Icons.info_outline_rounded, "Estado:", "Registrado en el historial"),
                   ]),
                   
-                  // Botón S3 genérico para eventos distintos
-                  if (event.s3Url != null && event.s3Url!.isNotEmpty && event.eventType.toLowerCase() != 'prescription' && !isAnalysis) ...[
+                  // Botón S3 genérico (se oculta si el evento tiene su propia tarjeta visual)
+                  if (event.s3Url != null && event.s3Url!.isNotEmpty && event.eventType.toLowerCase() != 'prescription' && !isAnalysisRequest) ...[
                     const SizedBox(height: 16),
-                    _buildS3DownloadButton(event.s3Url!),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _launchExternalUrl(event.s3Url!),
+                        icon: const Icon(Icons.cloud_download_rounded),
+                        label: const Text("Ver documento original"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0F766E),
+                          side: const BorderSide(color: Color(0xFF0F766E)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
                   ],
                   
                   const SizedBox(height: 24),
                   
+                  // ==========================================
+                  // CONTENIDO CONDICIONAL POR EVENTO
+                  // ==========================================
                   if (event.eventType.toLowerCase() == 'prescription')
                     _buildPremiumPrescriptionCard(event) 
                   else if (isQuestionnaire)
                     _buildQuestionnaireDetailCard(event) 
-                  else if (isAnalysis)
-                    _buildAnalysisDetailCard(event) // <-- TARJETA INTELIGENTE DE ANÁLISIS AGREGADA AQUÍ
+                  else if (isAnalysisRequest)
+                    _buildAnalysisDetailCard(event) 
                   else
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,7 +357,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
   }
 
   // =======================================================================
-  // DISEÑO INTELIGENTE PARA ANÁLISIS
+  // DISEÑO INTELIGENTE PARA ANÁLISIS (BUSCADOR EXTREMADAMENTE ROBUSTO)
   // =======================================================================
   Widget _buildAnalysisDetailCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
@@ -363,45 +371,63 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
           );
         }
 
-        dynamic matchedRequest;
-        final targetId = (event.id ?? '').replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
-        final eventDesc = (event.description ?? '').trim().toLowerCase();
-
-        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-          for (var r in snapshot.data!) {
-            String rId = '';
-            try { rId = r.id.toString().replaceAll(RegExp(r'^(ana_|req_)'), '').trim(); } catch(e){}
-            
-            if (rId == targetId && targetId.isNotEmpty) {
-              matchedRequest = r;
-              break;
-            }
-            
-            String rDesc = '';
-            try { rDesc = (r.description ?? '').toString().trim().toLowerCase(); } catch(e){}
-            if (rDesc.isNotEmpty && rDesc == eventDesc) {
-              matchedRequest = r;
-            }
-          }
-        }
-
         bool isCompleted = false;
         bool hasDocument = false;
         String docId = '';
         String completedAtStr = '';
         String description = event.description ?? event.title;
 
-        if (matchedRequest != null) {
-           try { isCompleted = matchedRequest.status.toString().toLowerCase() == 'completed'; } catch(e) {}
-           try { docId = matchedRequest.documentId?.toString() ?? ''; } catch(e) {}
-           try { hasDocument = docId.isNotEmpty; } catch(e) {}
-           try { completedAtStr = matchedRequest.completedAt?.toString() ?? ''; } catch(e) {}
-           try { description = matchedRequest.description?.toString() ?? description; } catch(e) {}
+        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+          final targetId = (event.id ?? '').replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+          final eventDesc = (event.description ?? '').trim().toLowerCase();
+
+          for (var r in snapshot.data!) {
+            String rId = '';
+            String rDesc = '';
+            String rStatus = '';
+            String rDocId = '';
+            String rCompleted = '';
+
+            // Procesar información sin importar si el Backend mandó un Map (JSON) o un Objeto
+            if (r is Map) {
+              rId = (r['id'] ?? '').toString();
+              rDesc = (r['description'] ?? '').toString();
+              rStatus = (r['status'] ?? '').toString();
+              rDocId = (r['document_id'] ?? r['documentId'] ?? '').toString();
+              rCompleted = (r['completed_at'] ?? r['completedAt'] ?? '').toString();
+            } else {
+              try { rId = r.id?.toString() ?? ''; } catch(_) {}
+              try { rDesc = r.description?.toString() ?? ''; } catch(_) {}
+              try { rStatus = r.status?.toString() ?? ''; } catch(_) {}
+              try { rDocId = r.documentId?.toString() ?? ''; } catch(_) {}
+              try { rCompleted = r.completedAt?.toString() ?? ''; } catch(_) {}
+            }
+
+            rId = rId.replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+            String cleanRDesc = rDesc.trim().toLowerCase();
+
+            // Match por ID exacto, o por coincidencias en la descripción (muy útil si hiciste pruebas duplicadas)
+            bool matchById = targetId.isNotEmpty && rId == targetId;
+            bool matchByDesc = eventDesc.isNotEmpty && (cleanRDesc == eventDesc || cleanRDesc.contains(eventDesc) || eventDesc.contains(cleanRDesc));
+
+            if (matchById || matchByDesc) {
+              isCompleted = rStatus.toLowerCase() == 'completed' || rDocId.isNotEmpty;
+              docId = rDocId;
+              completedAtStr = rCompleted;
+              if (rDesc.isNotEmpty) description = rDesc;
+              hasDocument = docId.isNotEmpty;
+
+              // ¡LA CLAVE! Si encontramos una solicitud que SÍ tiene documento, nos detenemos.
+              // Si encontramos una repetida sin documento, no nos rendimos, seguimos buscando la correcta.
+              if (hasDocument) {
+                break;
+              }
+            }
+          }
         }
 
         bool eventHasFile = event.s3Url != null && event.s3Url!.isNotEmpty;
 
-        // LEYENDA SI NO ESTÁ COMPLETADO Y NO TIENE ARCHIVO
         if (!isCompleted && !hasDocument && !eventHasFile) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -437,6 +463,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
            DateTime dt = DateTime.tryParse(event.occurredAt) ?? DateTime.now();
            completedAtStr = "${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}T${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}:00Z";
         }
+        
         final fallbackUrl = event.s3Url;
 
         return Column(
@@ -448,13 +475,15 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
               onTap: () async {
                 setState(() => _openingDocumentId = event.id);
                 try {
-                  String urlToOpen = fallbackUrl ?? '';
                   if (docId.isNotEmpty) {
-                     final svc = DoctorService(context.read<ApiClient>());
-                     urlToOpen = svc.getMobileDocumentUrl(docId);
-                  }
-                  if (urlToOpen.isNotEmpty) {
-                     _openDocumentView(urlToOpen, "Archivo de análisis");
+                     final api = context.read<ApiClient>();
+                     final svc = DoctorService(api);
+                     String backendUrl = svc.getMobileDocumentUrl(docId);
+                     
+                     if (!mounted) return;
+                     _openBackendDocument(backendUrl, "Archivo de análisis");
+                  } else if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+                     await _launchExternalUrl(fallbackUrl);
                   } else {
                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se encontró el archivo adjunto.')));
                   }
@@ -981,28 +1010,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(children: [Icon(icon, size: 16, color: KeepiColors.slateLight), const SizedBox(width: 8), Text("$label ", style: const TextStyle(fontWeight: FontWeight.w600, color: KeepiColors.slateLight)), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, color: KeepiColors.slate)))]),
-    );
-  }
-
-  Widget _buildS3DownloadButton(String fileUrl) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () async {
-          final Uri url = Uri.parse(fileUrl);
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-          }
-        },
-        icon: const Icon(Icons.cloud_download_rounded),
-        label: const Text("Ver documento original"),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF0F766E),
-          side: const BorderSide(color: Color(0xFF0F766E)),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
     );
   }
 }
