@@ -53,13 +53,19 @@ class PrescriptionService {
     required String prescriptionId,
     required String extractedText,
     required List<PrescriptionItemDto> items,
+    String? doctorNote,
   }) async {
+    final data = <String, dynamic>{
+      'extracted_text': extractedText,
+      'items': items.map((e) => e.toJson()).toList(),
+    };
+    final note = doctorNote?.trim();
+    if (note != null && note.isNotEmpty) {
+      data['doctor_note'] = note;
+    }
     final res = await _api.dio.put<Map<String, dynamic>>(
       ApiEndpoints.prescriptionsConfirm(prescriptionId),
-      data: {
-        'extracted_text': extractedText,
-        'items': items.map((e) => e.toJson()).toList(),
-      },
+      data: data,
     );
     return PrescriptionDto.fromJson(res.data!);
   }

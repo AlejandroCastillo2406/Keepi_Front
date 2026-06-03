@@ -15,7 +15,9 @@ import '../../widgets/document_alert_tile.dart';
 import '../../widgets/document_analyze_flow.dart';
 import '../../widgets/document_metadata_edit_sheet.dart';
 import '../../widgets/document_replacement_banner.dart';
+import '../../widgets/ios_export_fab.dart';
 import '../../widgets/ios_fab.dart';
+import '../../widgets/patient_folders_export_sheet.dart';
 import '../common/storage_choice_flow.dart';
 import '../user/folder_contents_screen.dart';
 
@@ -40,6 +42,11 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
   String? _error;
   bool _requiresDriveAuth = false;
   String? _authorizationUrl;
+  bool get _showExportFab {
+    if (_loading || _error != null) return false;
+    if (_config?.isNotConfigured ?? true) return false;
+    return _config?.isKeepiCloud ?? false;
+  }
 
   @override
   void initState() {
@@ -195,6 +202,13 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     );
   }
 
+  Future<void> _openExportModal() async {
+    await showPatientFoldersExportSheet(
+      context,
+      rootFolders: _folders,
+    );
+  }
+
   Future<void> _openFile(DriveFile file) async {
     await DocumentFileOpener.open(context, file: file);
   }
@@ -267,25 +281,18 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
 
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
-      floatingActionButton: canAnalyze
-          ? IosFab(
-              onPressed: () => runDocumentAnalyzeFlow(
-                context,
-                onSaved: _load,
-                saveButtonLabel: isKeepi ? 'Guardar en Keepi Cloud' : 'Guardar en Drive',
-              ),
-            )
-          : null,
       body: SafeArea(
         bottom: false,
-        child: DecorativeBackground(
-          blobOpacity: 0.2,
-          child: RefreshIndicator(
-            color: KeepiColors.orange,
-            onRefresh: _load,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
+        child: Stack(
+          children: [
+            DecorativeBackground(
+              blobOpacity: 0.2,
+              child: RefreshIndicator(
+                color: KeepiColors.orange,
+                onRefresh: _load,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
                 SliverToBoxAdapter(
                   child: _DocTopBar(onBack: () => Navigator.of(context).maybePop()),
                 ),
@@ -301,7 +308,12 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   ),
                 ),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(22, 4, 22, 40),
+                  padding: EdgeInsets.fromLTRB(
+                    22,
+                    4,
+                    22,
+                    _showExportFab ? 100 : 40,
+                  ),
                   sliver: SliverToBoxAdapter(
                     child: _buildBody(
                       notConfigured: notConfigured,
@@ -310,9 +322,31 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                     ),
                   ),
                 ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
+            if (_showExportFab)
+              Positioned(
+                left: 20,
+                bottom: 20,
+                child: IosExportFab(onPressed: _openExportModal),
+              ),
+            if (canAnalyze)
+              Positioned(
+                right: 20,
+                bottom: 20,
+                child: IosFab(
+                  onPressed: () => runDocumentAnalyzeFlow(
+                    context,
+                    onSaved: _load,
+                    saveButtonLabel: isKeepi
+                        ? 'Guardar en Keepi Cloud'
+                        : 'Guardar en Drive',
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

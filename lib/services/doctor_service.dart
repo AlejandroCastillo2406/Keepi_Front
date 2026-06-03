@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../core/api_endpoints.dart';
+import '../models/prior_document_item.dart';
 import '../models/timeline_event.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
@@ -44,10 +45,37 @@ class DoctorService {
   // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
 
   /// [DOCTOR] Crea una nueva solicitud para un paciente.
+  Future<Map<String, dynamic>> fetchTimelineDoctorNote({
+    required String patientId,
+    required String eventId,
+  }) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.doctorTimelineEventNote(patientId, eventId),
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  Future<Map<String, dynamic>> upsertTimelineDoctorNote({
+    required String patientId,
+    required String eventId,
+    required String eventType,
+    required String doctorNote,
+  }) async {
+    final res = await _api.dio.put<Map<String, dynamic>>(
+      ApiEndpoints.doctorTimelineEventNote(patientId, eventId),
+      data: {
+        'doctor_note': doctorNote.trim(),
+        'event_type': eventType,
+      },
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
   Future<void> createAnalysisRequest({
     required String patientId,
     required String description,
     DateTime? expiresAt,
+    String? doctorNote,
   }) async {
     // 1. RASTREADOR ANTES DE ENVIAR
     print("🛑 [DEBUG] INICIANDO POST A ANALYSIS-REQUESTS...");
@@ -69,6 +97,10 @@ class DoctorService {
           59,
         );
         payload['expires_at'] = endOfDay.toUtc().toIso8601String();
+      }
+      final note = doctorNote?.trim();
+      if (note != null && note.isNotEmpty) {
+        payload['doctor_note'] = note;
       }
       final response = await _api.dio.post(
         '/api/v1/analysis-requests/',
@@ -120,6 +152,30 @@ class DoctorService {
   }
 
   /// [PACIENTE] Historial y próximos pasos (misma fuente que ve el médico en el timeline).
+  Future<List<PriorDocumentItem>> fetchPatientPriorDocuments(
+    String patientId,
+  ) async {
+    final res = await _api.dio.get<dynamic>(
+      '/api/v1/doctors/patients/$patientId/prior-documents',
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .map((e) =>
+            PriorDocumentItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<List<PriorDocumentItem>> fetchMyPriorDocuments() async {
+    final res = await _api.dio.get<dynamic>('/api/v1/patient/prior-documents');
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .map((e) =>
+            PriorDocumentItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<List<TimelineEvent>> fetchMyCareTimeline() async {
     final response = await _api.dio.get<dynamic>('/api/v1/patient/timeline');
     final data = response.data;
@@ -167,11 +223,13 @@ class DoctorService {
     required String patientId,
     required DateTime date,
     required String reason,
+    String? doctorNote,
   }) async {
     final d = await AppointmentService(_api).createDoctorAppointment(
       patientId: patientId,
       startAt: date,
       reason: reason,
+      notes: doctorNote,
     );
     return ScheduleAppointmentResult(
       id: d.id,

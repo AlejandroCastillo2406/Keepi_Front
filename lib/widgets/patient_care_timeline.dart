@@ -1,4 +1,3 @@
-import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
@@ -27,7 +26,7 @@ class PatientCareTimeline extends StatelessWidget {
   final bool showSectionHeader;
   final String title;
   final String? subtitle;
-  final Function(TimelineEvent)? onEventTap;
+  final void Function(TimelineEvent)? onEventTap;
 
   static const _green = Color(0xFF15803D);
   static const _orange = Color(0xFFC2410C);
@@ -62,6 +61,8 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis':
       case 'analysis_request':
         return const Color(0xFF2563EB);
+      case 'prior_documents':
+        return const Color(0xFF0D9488);
       default:
         return KeepiColors.slate;
     }
@@ -80,6 +81,8 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis':
       case 'analysis_request':
         return Icons.biotech_outlined;
+      case 'prior_documents':
+        return Icons.folder_shared_outlined;
       default:
         return Icons.flag_outlined;
     }
@@ -98,6 +101,8 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis':
       case 'analysis_request':
         return 'ANÁLISIS';
+      case 'prior_documents':
+        return 'EXPEDIENTE';
       default:
         return 'EVENTO';
     }
@@ -138,7 +143,6 @@ class PatientCareTimeline extends StatelessWidget {
 
       widgets.add(_Entry(
         event: e,
-        onTap: () => onEventTap?.call(e),
         day: dt.day,
         monthAbbr: _monthsEs[dt.month - 1],
         isFirstInMonth: isFirstInMonth,
@@ -148,6 +152,8 @@ class PatientCareTimeline extends StatelessWidget {
         icon: _eventIcon(e.eventType),
         typeLabel: _typeLabel(e.eventType),
         stateLabel: _stateLabel(e.visualState),
+        onTap: onEventTap != null ? () => onEventTap!(e) : null,
+        hasDoctorNote: e.hasDoctorNote,
       ));
     }
 
@@ -304,7 +310,6 @@ class _MonthDivider extends StatelessWidget {
 class _Entry extends StatelessWidget {
   const _Entry({
     required this.event,
-    required this.onTap,
     required this.day,
     required this.monthAbbr,
     required this.isFirstInMonth,
@@ -314,10 +319,11 @@ class _Entry extends StatelessWidget {
     required this.icon,
     required this.typeLabel,
     required this.stateLabel,
+    this.onTap,
+    this.hasDoctorNote = false,
   });
 
   final TimelineEvent event;
-  final VoidCallback onTap;
   final int day;
   final String monthAbbr;
   final bool isFirstInMonth;
@@ -327,6 +333,8 @@ class _Entry extends StatelessWidget {
   final IconData icon;
   final String typeLabel;
   final String stateLabel;
+  final VoidCallback? onTap;
+  final bool hasDoctorNote;
 
   String get _detail {
     final s = (event.subtitle ?? '').trim();
@@ -340,12 +348,10 @@ class _Entry extends StatelessWidget {
     final detail = _detail;
     final isCurrent = event.visualState == 'current';
 
-    return InkWell(
-      onTap: onTap,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+    final content = IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
             // ── Sello de fecha (DAY / MES / HORA) ──
             SizedBox(
               width: 52,
@@ -525,12 +531,43 @@ class _Entry extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (onTap != null && event.isPriorDocuments) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Text(
+                            'Ver archivos',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: eventColor,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: eventColor,
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
           ],
-        ),
+      ),
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: content,
       ),
     );
   }

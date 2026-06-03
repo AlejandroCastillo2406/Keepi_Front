@@ -197,13 +197,37 @@ class QuestionnaireService {
     required String patientId,
     List<String> templateIds = const [],
     List<String> questionIds = const [],
+    bool collectPriorDocuments = false,
+    bool useDynamicQuestionnaire = false,
   }) async {
+    if (useDynamicQuestionnaire) {
+      return sendDynamicInvitationBatch(
+        patientId: patientId,
+        collectPriorDocuments: collectPriorDocuments,
+      );
+    }
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.questionnaireInvitations,
       data: {
         'patient_id': patientId,
         'template_ids': templateIds,
         'question_ids': questionIds,
+        'collect_prior_documents': collectPriorDocuments,
+        'use_dynamic_questionnaire': false,
+      },
+    );
+    return InvitationSendResult.fromJson(res.data!);
+  }
+
+  Future<InvitationSendResult> sendDynamicInvitationBatch({
+    required String patientId,
+    bool collectPriorDocuments = false,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.questionnaireInvitationsDynamic,
+      data: {
+        'patient_id': patientId,
+        'collect_prior_documents': collectPriorDocuments,
       },
     );
     return InvitationSendResult.fromJson(res.data!);

@@ -5,6 +5,7 @@ import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
+import '../../widgets/doctor_note_field.dart';
 
 class DoctorCalendarTab extends StatefulWidget {
   const DoctorCalendarTab({super.key});
@@ -276,12 +277,15 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     final finalDateTime = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
 
     if (!mounted) return;
+
+    final noteCtrl = TextEditingController();
+    final dateStr =
+        '${_two(pickedDate.day)}/${_two(pickedDate.month)}/${pickedDate.year}';
+    final timeStr = pickedTime.format(context);
+
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) {
-        final dateStr = '${_two(pickedDate.day)}/${_two(pickedDate.month)}/${pickedDate.year}';
-        final timeStr = pickedTime.format(context);
-
+      builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -296,37 +300,50 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
               letterSpacing: -0.3,
             ),
           ),
-          content: RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 14.5,
-                color: KeepiColors.slate,
-                height: 1.4,
-              ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const TextSpan(text: '¿Estás seguro de asignar la cita a '),
-                TextSpan(
-                  text: selectedPatient.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.skyBlue),
+                RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      color: KeepiColors.slate,
+                      height: 1.4,
+                    ),
+                    children: [
+                      const TextSpan(text: '¿Asignar la cita a '),
+                      TextSpan(
+                        text: selectedPatient.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: KeepiColors.skyBlue,
+                        ),
+                      ),
+                      const TextSpan(text: ' el '),
+                      TextSpan(
+                        text: dateStr,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const TextSpan(text: ' a las '),
+                      TextSpan(
+                        text: timeStr,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const TextSpan(text: '?'),
+                    ],
+                  ),
                 ),
-                const TextSpan(text: ' para el día '),
-                TextSpan(
-                  text: dateStr,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const TextSpan(text: ' a las '),
-                TextSpan(
-                  text: timeStr,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const TextSpan(text: '?'),
+                const SizedBox(height: 16),
+                DoctorNoteField(controller: noteCtrl),
               ],
             ),
           ),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text(
                 'Cancelar',
                 style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w700),
@@ -340,7 +357,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
-              onPressed: () => Navigator.of(context).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Confirmar', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
             ),
           ],
@@ -348,12 +365,15 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       },
     );
 
+    final doctorNote = noteCtrl.text.trim();
+    noteCtrl.dispose();
+
     if (confirm != true || !mounted) return;
 
     showDialog(
-      context: context, 
-      barrierDismissible: false, 
-      builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
     );
 
     try {
@@ -361,6 +381,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         patientId: selectedPatient.id,
         date: finalDateTime,
         reason: 'Consulta médica',
+        doctorNote: doctorNote.isEmpty ? null : doctorNote,
       );
       if (mounted) Navigator.pop(context); 
       _load(); 

@@ -13,6 +13,7 @@ import '../services/doctor_service.dart';
 import '../services/drive_structure_service.dart';
 import '../services/document_file_opener.dart';
 import 'search_service.dart';
+import 'timeline_event_opener.dart';
 
 /// Abre el elemento correspondiente al pulsar un resultado de búsqueda global.
 class SearchResultNavigation {
@@ -27,10 +28,13 @@ class SearchResultNavigation {
         await _openDocument(context, item);
         break;
       case 'appointment':
-        await _openAppointment(context, item, patients: patients);
-        break;
       case 'analysis':
-        await _openAnalysis(context, item, patients: patients);
+        await TimelineEventOpener.openSearchItem(
+          context,
+          item,
+          patients: patients,
+          onDoctorOpenAgenda: onDoctorOpenAgenda,
+        );
         break;
       default:
         if (!context.mounted) return;
