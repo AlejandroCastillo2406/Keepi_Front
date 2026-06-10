@@ -4,23 +4,29 @@ import 'package:url_launcher/url_launcher.dart';
 
 // Rutas de tu proyecto
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../models/timeline_event.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../services/prescription_service.dart';
 import '../../services/questionnaire_service.dart';
+import '../../services/timeline_event_opener.dart';
 import '../../widgets/patient_care_timeline.dart';
 import 'analysis_document_viewer_screen.dart'; // Tu visor inteligente original
 
 class DoctorPatientTimelineScreen extends StatefulWidget {
-  final String patientId;
-  final String patientName;
-
   const DoctorPatientTimelineScreen({
     super.key,
     required this.patientId,
     required this.patientName,
+    this.embedded = false,
+    this.onBack,
   });
+
+  final String patientId;
+  final String patientName;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<DoctorPatientTimelineScreen> createState() => _DoctorPatientTimelineScreenState();
@@ -140,6 +146,14 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Historial: ${widget.patientName}',
+        onBack: widget.onBack,
+        child: _buildBody(),
+      );
+    }
+
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       appBar: AppBar(
@@ -210,7 +224,12 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
         events: _events,
         title: 'Línea de tiempo clínica',
         subtitle: '${_events.length} eventos registrados para ${widget.patientName}',
-        onEventTap: (event) => _showEventDetail(context, event),
+        onEventTap: (event) => TimelineEventOpener.openTimelineEvent(
+          context,
+          patientId: widget.patientId,
+          patientName: widget.patientName,
+          event: event,
+        ),
       ),
     );
   }

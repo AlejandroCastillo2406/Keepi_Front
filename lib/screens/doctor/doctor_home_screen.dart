@@ -5,6 +5,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
+import '../../core/doctor_web_shell_scope.dart';
+import '../../core/web_layout.dart';
+import '../../screens/common/prior_documents_screen.dart';
+import '../../widgets/web_app_shell.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
@@ -17,14 +21,14 @@ import 'create_patient_screen.dart';
 import '../../widgets/doctor_note_field.dart';
 import 'doctor_assign_prescription_screen.dart';
 import 'doctor_calendar_tab.dart';
+import 'doctor_consultation_screen.dart';
 import 'doctor_patient_profile_screen.dart';
 import 'doctor_patient_timeline_screen.dart';
 import 'doctor_request_analysis_screen.dart';
+import 'doctor_upload_analysis_for_patient_screen.dart';
 import 'documentos_screen.dart';
 import 'questionnaire/questionnaire_settings_screen.dart';
 import 'questionnaire/send_questionnaire_screen.dart';
-import '../../services/timeline_event_opener.dart';
-import '../../services/search_service.dart';
 import '../../widgets/home_added_search_section.dart';
 
 // ────────────────────────────────────────────────────────────────
@@ -85,6 +89,8 @@ class DoctorHomeScreen extends StatefulWidget {
 
 class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   int _currentIndex = 0;
+  final List<DoctorWebRoute> _webOverlayStack = [];
+  late final _DoctorWebNavDelegate _webNav = _DoctorWebNavDelegate(this);
 
   // Patients state
   List<PatientListItem> _patients = [];
@@ -252,6 +258,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   void _openNotifications() {
+    if (isWebWide(context)) {
+      _webNav.push(const DoctorWebRoute(kind: DoctorWebOverlayKind.notifications));
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const NotificationsScreen()),
     );
@@ -263,13 +273,33 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
-  void _openDocumentos() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const DocumentosScreen()),
-    );
+  void _openExpedientes() {
+    setState(() {
+      _currentIndex = 3;
+      _webOverlayStack.clear();
+    });
+  }
+
+  void _pushWebRoute(DoctorWebRoute route) {
+    if (!isWebWide(context)) return;
+    setState(() => _webOverlayStack.add(route));
+  }
+
+  void _popWebRoute() {
+    if (_webOverlayStack.isEmpty) return;
+    setState(() => _webOverlayStack.removeLast());
+  }
+
+  void _clearWebRoutes() {
+    if (_webOverlayStack.isEmpty) return;
+    setState(() => _webOverlayStack.clear());
   }
 
   Future<void> _openCreatePatient() async {
+    if (isWebWide(context)) {
+      _webNav.push(const DoctorWebRoute(kind: DoctorWebOverlayKind.createPatient));
+      return;
+    }
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => CreatePatientScreen(api: context.read<ApiClient>()),
@@ -279,6 +309,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _openRequestAnalysis(PatientListItem p) async {
+    if (isWebWide(context)) {
+      _webNav.push(
+        DoctorWebRoute(
+          kind: DoctorWebOverlayKind.requestAnalysis,
+          patient: p,
+        ),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DoctorRequestAnalysisScreen(
@@ -290,6 +329,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _openAssignPrescription(PatientListItem p) async {
+    if (isWebWide(context)) {
+      _webNav.push(
+        DoctorWebRoute(
+          kind: DoctorWebOverlayKind.assignPrescription,
+          patient: p,
+        ),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DoctorAssignPrescriptionScreen(
@@ -301,6 +349,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _openTimeline(PatientListItem p) async {
+    if (isWebWide(context)) {
+      _webNav.push(
+        DoctorWebRoute(kind: DoctorWebOverlayKind.timeline, patient: p),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DoctorPatientTimelineScreen(
@@ -467,15 +521,76 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     }
   }
 
-  Future<void> _openAgendaAppointment(AppointmentDto a) async {
-    await TimelineEventOpener.openAppointment(
-      context,
-      appointment: a,
-      onNoteSaved: _loadAgenda,
+  PatientListItem? _patientForAppointment(AppointmentDto a) {
+    final match =
+        _patients.where((p) => p.id == a.patientId).toList(growable: false);
+    if (match.isEmpty) return null;
+    return match.first;
+  }
+
+  PatientListItem _patientStubForAppointment(
+    AppointmentDto a, {
+    String? name,
+    String? email,
+  }) {
+    return _patientForAppointment(a) ??
+        PatientListItem(
+          id: a.patientId,
+          email: email ?? '',
+          name: name ?? 'Paciente',
+          mustChangePassword: false,
+        );
+  }
+
+  Future<void> _openConsultation(AppointmentDto a) async {
+    final patient = _patientForAppointment(a);
+    final name = patient?.name ?? 'Paciente';
+    final email = patient?.email;
+
+    if (isWebWide(context)) {
+      _webNav.openConsultation(
+        a,
+        patientName: name,
+        patientEmail: email,
+      );
+      return;
+    }
+
+    final p = _patientStubForAppointment(a, name: name, email: email);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DoctorConsultationScreen(
+          appointment: a,
+          patientName: name,
+          patientEmail: email,
+          onSaved: _loadAgenda,
+          onOpenTimeline: () => _openTimeline(p),
+          onOpenRequestAnalysis: () => _openRequestAnalysis(p),
+          onOpenAssignPrescription: () => _openAssignPrescription(p),
+          onOpenSchedule: () => _scheduleAppointment(p),
+          onOpenQuestionnaire: () => _openSendQuestionnaire(p),
+          onTabSelected: (index) {
+            _openPatientProfileDialog(p, initialTabIndex: index);
+          },
+        ),
+      ),
     );
   }
 
+  Future<void> _openAgendaAppointment(AppointmentDto a) async {
+    await _openConsultation(a);
+  }
+
   Future<void> _openSendQuestionnaire(PatientListItem p) async {
+    if (isWebWide(context)) {
+      _webNav.push(
+        DoctorWebRoute(
+          kind: DoctorWebOverlayKind.sendQuestionnaire,
+          patient: p,
+        ),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SendQuestionnaireScreen(
@@ -519,7 +634,54 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
   }
 
-  Future<void> _openPatientProfileDialog(PatientListItem p) async {
+  AppointmentDto? _appointmentForConsultation(PatientListItem p) {
+    final forPatient =
+        _agenda.where((a) => a.patientId == p.id).toList(growable: false);
+    if (forPatient.isEmpty) return null;
+    final today = _todaysAppointments
+        .where((a) => a.patientId == p.id)
+        .toList(growable: false);
+    if (today.isNotEmpty) return today.first;
+    final upcoming = _upcomingAppointments
+        .where((a) => a.patientId == p.id)
+        .toList(growable: false);
+    if (upcoming.isNotEmpty) return upcoming.first;
+    return forPatient.last;
+  }
+
+  Future<void> _openConsultationForPatient(PatientListItem p) async {
+    final appt = _appointmentForConsultation(p);
+    if (appt == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay citas agendadas para abrir la consulta.'),
+        ),
+      );
+      return;
+    }
+    if (isWebWide(context)) {
+      _webNav.openConsultation(
+        appt,
+        patientName: p.name,
+        patientEmail: p.email,
+      );
+      return;
+    }
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    await _openConsultation(appt);
+  }
+
+  Future<void> _openPatientProfileDialog(
+    PatientListItem p, {
+    int initialTabIndex = 0,
+  }) async {
+    if (isWebWide(context)) {
+      _webNav.openPatientProfile(p, tabIndex: initialTabIndex);
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DoctorPatientProfileScreen(
@@ -527,34 +689,209 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           patientName: p.name,
           patientEmail: p.email,
           mustChangePassword: p.mustChangePassword,
+          initialTabIndex: initialTabIndex,
           onOpenTimeline: () => _openTimeline(p),
           onOpenRequestAnalysis: () => _openRequestAnalysis(p),
           onOpenAssignPrescription: () => _openAssignPrescription(p),
           onOpenSchedule: () => _scheduleAppointment(p),
           onOpenQuestionnaire: () => _openSendQuestionnaire(p),
+          onOpenConsultation: () => _openConsultationForPatient(p),
         ),
       ),
     );
   }
 
+  Widget _buildWebOverlay(DoctorWebRoute route) {
+    final api = context.read<ApiClient>();
+
+    switch (route.kind) {
+      case DoctorWebOverlayKind.settings:
+        return const SettingsScreen(embedded: true);
+      case DoctorWebOverlayKind.notifications:
+        return NotificationsScreen(
+          embedded: true,
+          onBack: _popWebRoute,
+        );
+      case DoctorWebOverlayKind.createPatient:
+        return CreatePatientScreen(
+          api: api,
+          embedded: true,
+          onBack: _popWebRoute,
+          onCreated: () async {
+            _popWebRoute();
+            await _refreshAll();
+          },
+        );
+      case DoctorWebOverlayKind.consultation:
+        final appt = route.appointment!;
+        final p = _patientStubForAppointment(
+          appt,
+          name: route.consultationPatientName,
+          email: route.consultationPatientEmail,
+        );
+        return DoctorConsultationScreen(
+          embedded: true,
+          appointment: appt,
+          patientName: route.consultationPatientName ?? p.name,
+          patientEmail: route.consultationPatientEmail ?? p.email,
+          onBack: _popWebRoute,
+          onSaved: _loadAgenda,
+          onOpenTimeline: () => _openTimeline(p),
+          onOpenRequestAnalysis: () => _openRequestAnalysis(p),
+          onOpenAssignPrescription: () => _openAssignPrescription(p),
+          onOpenSchedule: () => _scheduleAppointment(p),
+          onOpenQuestionnaire: () => _openSendQuestionnaire(p),
+          onTabSelected: (index) =>
+              _webNav.openPatientProfile(p, tabIndex: index),
+        );
+      case DoctorWebOverlayKind.patientProfile:
+        final p = route.patient!;
+        return DoctorPatientProfileScreen(
+          embedded: true,
+          patientId: p.id,
+          patientName: p.name,
+          patientEmail: p.email,
+          mustChangePassword: p.mustChangePassword,
+          initialTabIndex: route.profileTabIndex,
+          onBack: _popWebRoute,
+          onOpenTimeline: () => _openTimeline(p),
+          onOpenRequestAnalysis: () => _openRequestAnalysis(p),
+          onOpenAssignPrescription: () => _openAssignPrescription(p),
+          onOpenSchedule: () => _scheduleAppointment(p),
+          onOpenQuestionnaire: () => _openSendQuestionnaire(p),
+          onOpenConsultation: () => _openConsultationForPatient(p),
+        );
+      case DoctorWebOverlayKind.timeline:
+        final p = route.patient!;
+        return DoctorPatientTimelineScreen(
+          embedded: true,
+          patientId: p.id,
+          patientName: p.name,
+          onBack: _popWebRoute,
+        );
+      case DoctorWebOverlayKind.requestAnalysis:
+        final p = route.patient!;
+        return DoctorRequestAnalysisScreen(
+          embedded: true,
+          patientId: p.id,
+          patientName: p.name,
+          onBack: _popWebRoute,
+        );
+      case DoctorWebOverlayKind.assignPrescription:
+        final p = route.patient!;
+        return DoctorAssignPrescriptionScreen(
+          embedded: true,
+          patientId: p.id,
+          patientName: p.name,
+          onBack: _popWebRoute,
+        );
+      case DoctorWebOverlayKind.sendQuestionnaire:
+        final p = route.patient!;
+        return SendQuestionnaireScreen(
+          embedded: true,
+          api: api,
+          patientId: p.id,
+          patientName: p.name,
+          patientEmail: p.email,
+          onBack: _popWebRoute,
+        );
+      case DoctorWebOverlayKind.priorDocuments:
+        return PriorDocumentsScreen(
+          embedded: true,
+          patientId: route.priorDocumentsPatientId!,
+          patientName: route.priorDocumentsPatientName ?? 'Paciente',
+          onBack: _popWebRoute,
+        );
+      case DoctorWebOverlayKind.uploadAnalysis:
+        return DoctorUploadAnalysisForPatientScreen(
+          embedded: true,
+          requestId: route.uploadRequestId!,
+          description: route.uploadDescription ?? '',
+          patientName: route.patient?.name ?? 'Paciente',
+          onBack: _popWebRoute,
+        );
+    }
+  }
+
   // ── Build ───────────────────────────────────────────────────
+  void _onDoctorNavTap(int i) {
+    setState(() {
+      _currentIndex = i;
+      _webOverlayStack.clear();
+    });
+    if (i == 0 || i == 1) _loadPatients();
+    if (i == 0 || i == 2) _loadAgenda();
+  }
+
+  void _openSettings() {
+    if (isWebWide(context)) {
+      setState(() {
+        _webOverlayStack.clear();
+        _webOverlayStack.add(
+          const DoctorWebRoute(kind: DoctorWebOverlayKind.settings),
+        );
+      });
+      return;
+    }
+    _navigateToSettings();
+  }
+
+  static const _doctorWebNav = <WebNavItem>[
+    WebNavItem(icon: Icons.space_dashboard_outlined, label: 'Inicio'),
+    WebNavItem(icon: Icons.people_alt_outlined, label: 'Pacientes'),
+    WebNavItem(icon: Icons.calendar_month_outlined, label: 'Agenda'),
+    WebNavItem(icon: Icons.folder_copy_outlined, label: 'Expedientes'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final mainBody = IndexedStack(
+      index: _currentIndex,
+      children: [
+        _buildHomeTab(auth),
+        _buildPatientsTab(auth),
+        _buildAgendaTab(auth),
+        _buildExpedientesTab(auth),
+      ],
+    );
+    final webBody = _webOverlayStack.isNotEmpty
+        ? _buildWebOverlay(_webOverlayStack.last)
+        : mainBody;
+
+    if (isWebWide(context)) {
+      return DoctorWebShellScope(
+        navigator: _webNav,
+        child: WebAppShell(
+          brandTitle: auth.name ?? 'Doctor',
+          brandSubtitle: 'KEEPI',
+          navItems: _doctorWebNav,
+          currentIndex: _currentIndex,
+          onNavTap: _onDoctorNavTap,
+          onNotifications: _openNotifications,
+          onSettings: _openSettings,
+          onLogout: auth.logout,
+          userLabel: auth.name ?? 'Doctor',
+          userSubtitle: 'MÉDICO',
+          primaryAction: (_currentIndex == 0 || _currentIndex == 1)
+              ? WebSidebarButton(
+                  label: 'Nuevo paciente',
+                  icon: Icons.person_add_alt_1_rounded,
+                  onPressed: _openCreatePatient,
+                )
+              : null,
+          body: webBody,
+        ),
+      );
+    }
+
+    final body = mainBody;
 
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: [
-            _buildHomeTab(auth),
-            _buildPatientsTab(auth),
-            _buildAgendaTab(auth),
-            _buildProfileTab(auth),
-          ],
-        ),
+        child: body,
       ),
       floatingActionButton: (_currentIndex == 0 || _currentIndex == 1)
           ? FloatingActionButton.extended(
@@ -573,11 +910,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           : null,
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
-        onTap: (i) {
-          setState(() => _currentIndex = i);
-          if (i == 0 || i == 1) _loadPatients();
-          if (i == 0 || i == 2) _loadAgenda();
-        },
+        onTap: _onDoctorNavTap,
       ),
     );
   }
@@ -658,7 +991,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                 const SizedBox(height: 14),
                 _ShortcutsStrip(
                   onPatients: () => setState(() => _currentIndex = 1),
-                  onDocuments: _openDocumentos,
+                  onDocuments: _openExpedientes,
                   onQuestionnaires: _openQuestionnaireSettings,
                   onAgenda: () => setState(() => _currentIndex = 2),
                 ),
@@ -769,68 +1102,20 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     return Column(
       children: [
         _TopBar(onNotifs: _openNotifications, onLogout: auth.logout),
-        const Expanded(child: DoctorCalendarTab()),
+        Expanded(
+          child: DoctorCalendarTab(onOpenConsultation: _openConsultation),
+        ),
       ],
     );
   }
 
-  // ── Profile tab ─────────────────────────────────────────────
-  Widget _buildProfileTab(AuthProvider auth) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: _TopBar(
-            onNotifs: _openNotifications,
-            onLogout: auth.logout,
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: _ProfileHero(
-            name: auth.name ?? 'Doctor',
-            email: auth.email ?? '',
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(22, 4, 22, 120),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate.fixed([
-              const _SectionDivider(tag: 'CONFIGURACIÓN', count: 3),
-              const SizedBox(height: 14),
-              _ProfileRow(
-                icon: Icons.quiz_outlined,
-                accent: KeepiColors.skyBlue,
-                title: 'Cuestionarios de salud',
-                subtitle: 'Gestiona plantillas y preguntas por especialidad.',
-                onTap: _openQuestionnaireSettings,
-              ),
-              const SizedBox(height: 10),
-              _ProfileRow(
-                icon: Icons.description_outlined,
-                accent: const Color(0xFF7C3AED),
-                title: 'Documentos',
-                subtitle: 'Todos los archivos subidos por tus pacientes.',
-                onTap: _openDocumentos,
-              ),
-              const SizedBox(height: 10),
-              _ProfileRow(
-                icon: Icons.settings_outlined,
-                accent: KeepiColors.slate,
-                title: 'Ajustes de la cuenta',
-                subtitle: 'Almacenamiento, suscripción y preferencias.',
-                onTap: _navigateToSettings,
-              ),
-              const SizedBox(height: 26),
-              const _SectionDivider(tag: 'SESIÓN', count: 1),
-              const SizedBox(height: 14),
-              _ProfileRow(
-                icon: Icons.logout_rounded,
-                accent: Colors.red,
-                title: 'Cerrar sesión',
-                subtitle: 'Salir de Keepi en este dispositivo.',
-                onTap: auth.logout,
-              ),
-            ]),
-          ),
+  // ── Expedientes tab ─────────────────────────────────────────
+  Widget _buildExpedientesTab(AuthProvider auth) {
+    return Column(
+      children: [
+        _TopBar(onNotifs: _openNotifications, onLogout: auth.logout),
+        const Expanded(
+          child: DocumentosScreen(embedded: true),
         ),
       ],
     );
@@ -849,6 +1134,9 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isWebWide(context)) {
+      return const SizedBox(height: 8);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 12, 14, 6),
       child: Row(
@@ -1047,98 +1335,6 @@ class _PatientsHero extends StatelessWidget {
                   label: 'MOSTRANDO',
                   accent: filtered != total && total > 0),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileHero extends StatelessWidget {
-  const _ProfileHero({required this.name, required this.email});
-  final String name;
-  final String email;
-
-  @override
-  Widget build(BuildContext context) {
-    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(width: 22, height: 2, color: KeepiColors.slate),
-              const SizedBox(width: 8),
-              const Text(
-                'CUENTA',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2.0,
-                  color: KeepiColors.slate,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: KeepiColors.cardBorder),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: KeepiColors.orangeSoft,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: KeepiColors.orange, width: 1.6),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    initial,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: KeepiColors.orange,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Dr. $name',
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: KeepiColors.slate,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        email.isEmpty ? 'Correo no disponible' : email,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: KeepiColors.slateLight,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -1950,8 +2146,8 @@ class _ShortcutsStrip extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _ShortcutTile(
-            icon: Icons.description_outlined,
-            label: 'Documentos',
+            icon: Icons.folder_copy_outlined,
+            label: 'Expedientes',
             accent: const Color(0xFF7C3AED),
             onTap: onDocuments,
           ),
@@ -2045,87 +2241,6 @@ class _ShortcutTile extends StatelessWidget {
                 Icon(Icons.arrow_forward_rounded,
                     size: 11, color: KeepiColors.slateLight),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ────────────────────────────────────────────────────────────────
-//   PROFILE ROW
-// ────────────────────────────────────────────────────────────────
-
-class _ProfileRow extends StatelessWidget {
-  const _ProfileRow({
-    required this.icon,
-    required this.accent,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color accent;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: KeepiColors.cardBorder),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: accent, width: 1.6),
-              ),
-              child: Icon(icon, color: accent, size: 19),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: KeepiColors.slate,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: KeepiColors.slateLight,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_rounded,
-              color: KeepiColors.slate,
-              size: 18,
             ),
           ],
         ),
@@ -2416,7 +2531,7 @@ class _BottomNav extends StatelessWidget {
     _NavItemData(icon: Icons.space_dashboard_outlined, label: 'Inicio'),
     _NavItemData(icon: Icons.people_alt_outlined, label: 'Pacientes'),
     _NavItemData(icon: Icons.calendar_month_outlined, label: 'Agenda'),
-    _NavItemData(icon: Icons.person_outline_rounded, label: 'Perfil'),
+    _NavItemData(icon: Icons.folder_copy_outlined, label: 'Expedientes'),
   ];
 
   @override
@@ -2495,6 +2610,48 @@ class _NavItem extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DoctorWebNavDelegate implements DoctorWebNavigator {
+  _DoctorWebNavDelegate(this._host);
+
+  final _DoctorHomeScreenState _host;
+
+  @override
+  void push(DoctorWebRoute route) => _host._pushWebRoute(route);
+
+  @override
+  void pop() => _host._popWebRoute();
+
+  @override
+  void clear() => _host._clearWebRoutes();
+
+  @override
+  void openConsultation(
+    AppointmentDto appointment, {
+    String? patientName,
+    String? patientEmail,
+  }) {
+    push(
+      DoctorWebRoute(
+        kind: DoctorWebOverlayKind.consultation,
+        appointment: appointment,
+        consultationPatientName: patientName,
+        consultationPatientEmail: patientEmail,
+      ),
+    );
+  }
+
+  @override
+  void openPatientProfile(PatientListItem patient, {int tabIndex = 0}) {
+    push(
+      DoctorWebRoute(
+        kind: DoctorWebOverlayKind.patientProfile,
+        patient: patient,
+        profileTabIndex: tabIndex,
       ),
     );
   }

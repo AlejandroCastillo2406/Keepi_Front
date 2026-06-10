@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 
@@ -14,11 +15,15 @@ class DoctorUploadAnalysisForPatientScreen extends StatefulWidget {
     required this.requestId,
     required this.description,
     required this.patientName,
+    this.embedded = false,
+    this.onBack,
   });
 
   final String requestId;
   final String description;
   final String patientName;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<DoctorUploadAnalysisForPatientScreen> createState() =>
@@ -75,7 +80,11 @@ class _DoctorUploadAnalysisForPatientScreenState
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.of(context).pop(true);
+      if (widget.onBack != null) {
+        widget.onBack!();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,26 +107,11 @@ class _DoctorUploadAnalysisForPatientScreenState
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildForm() {
     final filename = _selectedFile?.name;
-    return Scaffold(
-      backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        title: const Text(
-          'Subir reporte físico',
-          style: TextStyle(
-            color: KeepiColors.slate,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: KeepiColors.slate),
-      ),
-      body: SafeArea(
+    return SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: EdgeInsets.all(widget.embedded ? 28 : 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -241,7 +235,34 @@ class _DoctorUploadAnalysisForPatientScreenState
             ],
           ),
         ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Subir reporte físico',
+        onBack: widget.onBack,
+        child: _buildForm(),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: KeepiColors.surfaceBg,
+      appBar: AppBar(
+        title: const Text(
+          'Subir reporte físico',
+          style: TextStyle(
+            color: KeepiColors.slate,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: KeepiColors.slate),
       ),
+      body: _buildForm(),
     );
   }
 }

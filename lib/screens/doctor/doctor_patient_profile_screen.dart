@@ -5,13 +5,16 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/doctor_web_shell_scope.dart';
+import '../../core/web_layout.dart';
 import '../../models/timeline_event.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
+import '../../services/timeline_event_opener.dart';
 import '../../services/questionnaire_service.dart';
+import '../../widgets/doctor_patient_web_blocks.dart';
 import '../../widgets/timeline_event_detail_sheet.dart';
 import '../../widgets/patient_care_timeline.dart';
-import '../common/prior_documents_screen.dart';
 import 'analysis_document_viewer_screen.dart';
 import 'doctor_upload_analysis_for_patient_screen.dart';
 
@@ -27,6 +30,10 @@ class DoctorPatientProfileScreen extends StatefulWidget {
     required this.onOpenAssignPrescription,
     required this.onOpenSchedule,
     required this.onOpenQuestionnaire,
+    this.initialTabIndex = 0,
+    this.onOpenConsultation,
+    this.embedded = false,
+    this.onBack,
   });
 
   final String patientId;
@@ -39,6 +46,10 @@ class DoctorPatientProfileScreen extends StatefulWidget {
   final VoidCallback onOpenAssignPrescription;
   final VoidCallback onOpenSchedule;
   final VoidCallback onOpenQuestionnaire;
+  final int initialTabIndex;
+  final VoidCallback? onOpenConsultation;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<DoctorPatientProfileScreen> createState() =>
@@ -54,6 +65,7 @@ class _DoctorPatientProfileScreenState
   List<TimelineEvent> _timeline = [];
   List<Map<String, dynamic>> _questionnaireResponses = [];
   String? _openingDocumentId;
+  late int _webTabIndex;
 
   List<_QuestionnaireGroup> _buildQuestionnaireGroups(
       List<Map<String, dynamic>> rows) {
@@ -94,6 +106,7 @@ class _DoctorPatientProfileScreenState
   @override
   void initState() {
     super.initState();
+    _webTabIndex = widget.initialTabIndex.clamp(0, 3);
     _loadData();
   }
 
@@ -132,22 +145,305 @@ class _DoctorPatientProfileScreenState
   }
 
   void _handleTimelineEventTap(TimelineEvent event) {
-    if (event.isPriorDocuments) {
-      _openPriorDocuments(event);
-      return;
-    }
-    _showEventDetail(context, event);
+    TimelineEventOpener.openTimelineEvent(
+      context,
+      patientId: widget.patientId,
+      patientName: widget.patientName,
+      event: event,
+      onNoteSaved: _loadData,
+    );
   }
 
-  void _openPriorDocuments(TimelineEvent event) {
-    final patientId = event.actionPatientId ?? widget.patientId;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PriorDocumentsScreen(
-          patientId: patientId,
-          patientName: widget.patientName,
+  Widget _buildWebLayout({
+    required List<AnalysisRequestDto> pendingList,
+    required List<AnalysisRequestDto> completed,
+    required List<_QuestionnaireGroup> questionnaireGroups,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(28, 20, 28, 36),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: _PatientHeaderCard(
+                        name: widget.patientName,
+                        email: widget.patientEmail,
+                        mustChangePassword: widget.mustChangePassword,
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      flex: 6,
+                      child: _PatientStats(
+                        totalAnalysis: _analysisRequests.length,
+                        uploadedAnalysis: completed.length,
+                        pendingAnalysis: pendingList.length,
+                        timelineEvents: _timeline.length,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const _SectionTitle(tag: 'ACCIONES RÁPIDAS', count: 6),
+                const SizedBox(height: 12),
+                DoctorWebQuickActionsRow(
+                  hasPendingUpload: pendingList.isNotEmpty,
+                  onOpenTimeline: widget.onOpenTimeline,
+                  onOpenRequestAnalysis: widget.onOpenRequestAnalysis,
+                  onOpenUpload: pendingList.isNotEmpty
+                      ? () => _openDoctorUploadPending(pendingList.first)
+                      : null,
+                  onOpenAssignPrescription: widget.onOpenAssignPrescription,
+                  onOpenSchedule: widget.onOpenSchedule,
+                  onOpenQuestionnaire: widget.onOpenQuestionnaire,
+                ),
+                const SizedBox(height: 26),
+                DoctorPatientTabBar(
+                  selectedIndex: _webTabIndex,
+                  onSelected: (index) {
+                    if (index == 4) {
+                      widget.onOpenConsultation?.call();
+                      return;
+                    }
+                    setState(() => _webTabIndex = index);
+                  },
+                ),
+                const SizedBox(height: 22),
+                _buildWebTabBody(
+                  pendingList: pendingList,
+                  completed: completed,
+                  questionnaireGroups: questionnaireGroups,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWebTabBody({
+    required List<AnalysisRequestDto> pendingList,
+    required List<AnalysisRequestDto> completed,
+    required List<_QuestionnaireGroup> questionnaireGroups,
+  }) {
+    switch (_webTabIndex) {
+      case 1:
+        return _buildAnalysisPanel(
+          pendingList: pendingList,
+          completed: completed,
+          sectionTag: 'ANÁLISIS',
+        );
+      case 2:
+        return _buildQuestionnairePanel(questionnaireGroups);
+      case 3:
+        return _buildHistorialPanel();
+      case 0:
+      default:
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _buildAnalysisPanel(
+                pendingList: pendingList,
+                completed: completed,
+                sectionTag: 'TAREAS PENDIENTES',
+                compact: true,
+              ),
+            ),
+            const SizedBox(width: 22),
+            Expanded(
+              child: _buildTimelinePanel(compact: true),
+            ),
+          ],
+        );
+    }
+  }
+
+  Widget _buildAnalysisPanel({
+    required List<AnalysisRequestDto> pendingList,
+    required List<AnalysisRequestDto> completed,
+    required String sectionTag,
+    bool compact = false,
+  }) {
+    final limit = compact ? 6 : 12;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(
+          tag: sectionTag,
+          count: pendingList.length + completed.length,
         ),
-      ),
+        const SizedBox(height: 12),
+        if (pendingList.isEmpty && completed.isEmpty)
+          const _InlineEmpty(
+            icon: Icons.biotech_outlined,
+            message: 'Aún no hay análisis solicitados para este paciente.',
+          )
+        else ...[
+          if (pendingList.isNotEmpty) ...[
+            const _AnalysisSubsectionLabel(
+              label: 'PENDIENTES DE SUBIR',
+              hint:
+                  'El paciente puede traer el reporte en físico; tú puedes subirlo aquí.',
+            ),
+            const SizedBox(height: 8),
+            ...pendingList.take(limit).map(
+                  (r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _AnalysisCard(
+                      item: r,
+                      isPending: true,
+                      onTap: () => _openDoctorUploadPending(r),
+                    ),
+                  ),
+                ),
+            if (pendingList.length > limit)
+              _AnalysisListFootnote(
+                text: 'Mostrando $limit de ${pendingList.length} pendientes.',
+              ),
+            const SizedBox(height: 14),
+          ],
+          if (completed.isNotEmpty) ...[
+            if (pendingList.isNotEmpty)
+              const _AnalysisSubsectionLabel(label: 'SUBIDOS / COMPLETADOS'),
+            if (pendingList.isNotEmpty) const SizedBox(height: 8),
+            ...completed.take(limit).map(
+                  (r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _AnalysisCard(
+                      item: r,
+                      isPending: false,
+                      isOpening: _openingDocumentId == r.id,
+                      onTap: () => _openAnalysisDocument(r),
+                    ),
+                  ),
+                ),
+            if (completed.length > limit)
+              const _AnalysisListFootnote(
+                text: 'Mostrando los completados más recientes.',
+              ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTimelinePanel({bool compact = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(
+          tag: compact ? 'LÍNEA DE TIEMPO' : 'TIMELINE CLÍNICO',
+          count: _timeline.length,
+        ),
+        const SizedBox(height: 12),
+        if (_timeline.isEmpty)
+          const _InlineEmpty(
+            icon: Icons.timeline_rounded,
+            message: 'Todavía no hay eventos clínicos en la línea de tiempo.',
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: KeepiColors.cardBorder),
+            ),
+            child: PatientCareTimeline(
+              events: _timeline.take(compact ? 6 : 10).toList(),
+              showSectionHeader: false,
+              onEventTap: _handleTimelineEventTap,
+            ),
+          ),
+        if (compact) ...[
+          const SizedBox(height: 14),
+          OutlinedButton(
+            onPressed: widget.onOpenTimeline,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: KeepiColors.slate,
+              side: const BorderSide(color: KeepiColors.cardBorder),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Ver historial completo',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildQuestionnairePanel(List<_QuestionnaireGroup> questionnaireGroups) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(
+          tag: 'RESPUESTAS CUESTIONARIO',
+          count: _questionnaireResponses.length,
+        ),
+        const SizedBox(height: 12),
+        if (_questionnaireResponses.isEmpty)
+          const _InlineEmpty(
+            icon: Icons.quiz_outlined,
+            message:
+                'Este paciente todavía no tiene respuestas de cuestionarios.',
+          )
+        else ...[
+          ...questionnaireGroups.take(8).toList().asMap().entries.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _QuestionnaireGroupCard(
+                    index: entry.key,
+                    group: entry.value,
+                  ),
+                ),
+              ),
+          if (questionnaireGroups.length > 8)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 6),
+              child: Text(
+                'Mostrando los 8 cuestionarios más recientes.',
+                style: TextStyle(
+                  color: KeepiColors.slateLight.withValues(alpha: 0.9),
+                  fontSize: 12.5,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHistorialPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildTimelinePanel(compact: false),
+        const SizedBox(height: 16),
+        _ActionButton(
+          icon: Icons.timeline_rounded,
+          accent: KeepiColors.slate,
+          title: 'Ver historial completo',
+          subtitle: 'Abrir toda la línea de tiempo del paciente.',
+          onTap: widget.onOpenTimeline,
+        ),
+      ],
     );
   }
 
@@ -166,28 +462,22 @@ class _DoctorPatientProfileScreenState
     final questionnaireGroups =
         _buildQuestionnaireGroups(_questionnaireResponses);
 
-    return Scaffold(
-      backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: const Text(
-          'Perfil del paciente',
-          style: TextStyle(
-            color: KeepiColors.slate,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-      body: RefreshIndicator(
-        color: KeepiColors.orange,
-        onRefresh: _loadData,
-        child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(color: KeepiColors.orange),
-              )
-            : _error != null
-                ? _ErrorState(message: _error!, onRetry: _loadData)
-                : ListView(
+    final body = RefreshIndicator(
+      color: KeepiColors.orange,
+      onRefresh: _loadData,
+      child: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: KeepiColors.orange),
+            )
+          : _error != null
+              ? _ErrorState(message: _error!, onRetry: _loadData)
+              : isWebWide(context) || widget.embedded
+                  ? _buildWebLayout(
+                      pendingList: pendingList,
+                      completed: completed,
+                      questionnaireGroups: questionnaireGroups,
+                    )
+                  : ListView(
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                     children: [
                       _PatientHeaderCard(
@@ -385,7 +675,29 @@ class _DoctorPatientProfileScreenState
                       ),
                     ],
                   ),
+    );
+
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Perfil del paciente',
+        onBack: widget.onBack,
+        child: body,
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: KeepiColors.surfaceBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        title: const Text(
+          'Perfil del paciente',
+          style: TextStyle(
+            color: KeepiColors.slate,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
+      body: body,
     );
   }
 
@@ -400,6 +712,24 @@ class _DoctorPatientProfileScreenState
 
 
   Future<void> _openDoctorUploadPending(AnalysisRequestDto item) async {
+    final webNav = DoctorWebShellScope.maybeOf(context);
+    if (webNav != null && (widget.embedded || isWebWide(context))) {
+      webNav.push(
+        DoctorWebRoute(
+          kind: DoctorWebOverlayKind.uploadAnalysis,
+          uploadRequestId: item.id,
+          uploadDescription: item.description,
+          patient: PatientListItem(
+            id: widget.patientId,
+            email: widget.patientEmail,
+            name: widget.patientName,
+            mustChangePassword: widget.mustChangePassword,
+          ),
+        ),
+      );
+      return;
+    }
+
     final ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => DoctorUploadAnalysisForPatientScreen(

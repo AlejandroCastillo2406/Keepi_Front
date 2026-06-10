@@ -2,19 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../widgets/doctor_note_field.dart';
 
 class DoctorRequestAnalysisScreen extends StatefulWidget {
-  final String patientId;
-  final String patientName;
-
   const DoctorRequestAnalysisScreen({
     super.key,
     required this.patientId,
     required this.patientName,
+    this.embedded = false,
+    this.onBack,
   });
+
+  final String patientId;
+  final String patientName;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<DoctorRequestAnalysisScreen> createState() => _DoctorRequestAnalysisScreenState();
@@ -86,7 +91,7 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
         ),
       );
       
-      Navigator.pop(context);
+      _closeAfterSuccess();
 
     } catch (e) {
       if (mounted) {
@@ -102,23 +107,17 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        title: const Text(
-          'Solicitar Análisis',
-          style: TextStyle(color: KeepiColors.slate, fontWeight: FontWeight.w800),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: KeepiColors.slate),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+  void _closeAfterSuccess() {
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  Widget _buildForm() {
+    return Padding(
+          padding: EdgeInsets.all(widget.embedded ? 28.0 : 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -260,8 +259,32 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
               ),
             ],
           ),
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Solicitar Análisis',
+        onBack: widget.onBack,
+        child: SafeArea(child: _buildForm()),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: KeepiColors.surfaceBg,
+      appBar: AppBar(
+        title: const Text(
+          'Solicitar Análisis',
+          style: TextStyle(color: KeepiColors.slate, fontWeight: FontWeight.w800),
         ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        iconTheme: const IconThemeData(color: KeepiColors.slate),
       ),
+      body: SafeArea(child: _buildForm()),
     );
   }
 

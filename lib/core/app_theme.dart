@@ -13,6 +13,10 @@ class KeepiColors {
   static const Color skyBlueLight = Color(0xFF9DD4F5);
   static const Color skyBlueSoft = Color(0xFFE8F4FC);
 
+  /// Acento rosa para pacientes femeninas en ficha de consulta.
+  static const Color patientPink = Color(0xFFE878A0);
+  static const Color patientPinkSoft = Color(0xFFFCE8F0);
+
   static const Color slate = Color(0xFF46555F);
   static const Color slateLight = Color(0xFF6B7C87);
   static const Color slateSoft = Color(0xFFF0F2F4);

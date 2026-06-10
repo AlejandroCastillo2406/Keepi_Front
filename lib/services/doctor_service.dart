@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import '../core/api_endpoints.dart';
+import '../models/consultation_context.dart';
 import '../models/prior_document_item.dart';
+import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
@@ -141,6 +143,40 @@ class DoctorService {
         .toList();
   }
 
+  Future<ConsultationContext> fetchConsultationContext(String patientId) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/api/v1/doctors/patients/$patientId/consultation-context',
+    );
+    return ConsultationContext.fromJson(res.data ?? const {});
+  }
+
+  Future<ConsultationContext> upsertClinicalProfile({
+    required String patientId,
+    String? name,
+    String? email,
+    String? phone,
+    String? sex,
+    int? ageYears,
+    String? bloodType,
+    double? weightKg,
+    String? allergies,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (name != null) payload['name'] = name;
+    if (email != null) payload['email'] = email;
+    if (phone != null) payload['phone'] = phone;
+    if (sex != null) payload['sex'] = sex;
+    if (ageYears != null) payload['age_years'] = ageYears;
+    if (bloodType != null) payload['blood_type'] = bloodType;
+    if (weightKg != null) payload['weight_kg'] = weightKg;
+    if (allergies != null) payload['allergies'] = allergies;
+    final res = await _api.dio.put<Map<String, dynamic>>(
+      '/api/v1/doctors/patients/$patientId/clinical-profile',
+      data: payload,
+    );
+    return ConsultationContext.fromJson(res.data ?? const {});
+  }
+
   Future<List<TimelineEvent>> fetchPatientTimeline(String patientId) async {
     final response =
         await _api.dio.get('/api/v1/doctors/patients/$patientId/timeline');
@@ -152,6 +188,16 @@ class DoctorService {
   }
 
   /// [PACIENTE] Historial y próximos pasos (misma fuente que ve el médico en el timeline).
+  Future<ClinicalIntakeDetail> fetchClinicalIntakeDetail({
+    required String patientId,
+    required String invitationId,
+  }) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/api/v1/doctors/patients/$patientId/clinical-intake/$invitationId',
+    );
+    return ClinicalIntakeDetail.fromJson(res.data ?? const {});
+  }
+
   Future<List<PriorDocumentItem>> fetchPatientPriorDocuments(
     String patientId,
   ) async {

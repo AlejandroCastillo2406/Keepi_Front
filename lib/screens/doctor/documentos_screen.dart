@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
+import '../../core/web_layout.dart';
 import '../../core/file_type_style.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -22,7 +23,13 @@ import '../common/storage_choice_flow.dart';
 import '../user/folder_contents_screen.dart';
 
 class DocumentosScreen extends StatefulWidget {
-  const DocumentosScreen({super.key});
+  const DocumentosScreen({
+    super.key,
+    this.embedded = false,
+  });
+
+  /// Dentro del shell web / tab Expedientes (sin Scaffold ni botón atrás).
+  final bool embedded;
 
   @override
   State<DocumentosScreen> createState() => _DocumentosScreenState();
@@ -279,75 +286,107 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
 
     final canAnalyze = !notConfigured && (isKeepi || isDrive);
 
+    final scrollContent = RefreshIndicator(
+      color: KeepiColors.orange,
+      onRefresh: _load,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (!widget.embedded)
+            SliverToBoxAdapter(
+              child: _DocTopBar(
+                onBack: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+          if (widget.embedded && isWebWide(context))
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(28, 8, 28, 4),
+                child: Text(
+                  'Expedientes',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: KeepiColors.slate,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+              ),
+            ),
+          SliverToBoxAdapter(
+            child: _DocHero(
+              storageLabel: notConfigured
+                  ? 'Sin configurar'
+                  : (isKeepi ? 'Keepi Cloud' : 'Google Drive'),
+              isKeepi: isKeepi,
+              totalKeepi: _totalKeepi,
+              alertsCount: _alertsCount,
+              alertsExpiredCount: _alertsExpiredCount,
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              widget.embedded && isWebWide(context) ? 28 : 22,
+              4,
+              widget.embedded && isWebWide(context) ? 28 : 22,
+              _showExportFab ? 100 : 40,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: _buildBody(
+                notConfigured: notConfigured,
+                isKeepi: isKeepi,
+                isDrive: isDrive,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final bodyStack = Stack(
+      children: [
+        if (widget.embedded)
+          scrollContent
+        else
+          DecorativeBackground(
+            blobOpacity: 0.2,
+            child: scrollContent,
+          ),
+        if (_showExportFab)
+          Positioned(
+            left: 20,
+            bottom: 20,
+            child: IosExportFab(onPressed: _openExportModal),
+          ),
+        if (canAnalyze)
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: IosFab(
+              onPressed: () => runDocumentAnalyzeFlow(
+                context,
+                onSaved: _load,
+                saveButtonLabel: isKeepi
+                    ? 'Guardar en Keepi Cloud'
+                    : 'Guardar en Drive',
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return ColoredBox(
+        color: KeepiColors.surfaceBg,
+        child: bodyStack,
+      );
+    }
+
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       body: SafeArea(
         bottom: false,
-        child: Stack(
-          children: [
-            DecorativeBackground(
-              blobOpacity: 0.2,
-              child: RefreshIndicator(
-                color: KeepiColors.orange,
-                onRefresh: _load,
-                child: CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                SliverToBoxAdapter(
-                  child: _DocTopBar(onBack: () => Navigator.of(context).maybePop()),
-                ),
-                SliverToBoxAdapter(
-                  child: _DocHero(
-                    storageLabel: notConfigured
-                        ? 'Sin configurar'
-                        : (isKeepi ? 'Keepi Cloud' : 'Google Drive'),
-                    isKeepi: isKeepi,
-                    totalKeepi: _totalKeepi,
-                    alertsCount: _alertsCount,
-                    alertsExpiredCount: _alertsExpiredCount,
-                  ),
-                ),
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    22,
-                    4,
-                    22,
-                    _showExportFab ? 100 : 40,
-                  ),
-                  sliver: SliverToBoxAdapter(
-                    child: _buildBody(
-                      notConfigured: notConfigured,
-                      isKeepi: isKeepi,
-                      isDrive: isDrive,
-                    ),
-                  ),
-                ),
-                  ],
-                ),
-              ),
-            ),
-            if (_showExportFab)
-              Positioned(
-                left: 20,
-                bottom: 20,
-                child: IosExportFab(onPressed: _openExportModal),
-              ),
-            if (canAnalyze)
-              Positioned(
-                right: 20,
-                bottom: 20,
-                child: IosFab(
-                  onPressed: () => runDocumentAnalyzeFlow(
-                    context,
-                    onSaved: _load,
-                    saveButtonLabel: isKeepi
-                        ? 'Guardar en Keepi Cloud'
-                        : 'Guardar en Drive',
-                  ),
-                ),
-              ),
-          ],
-        ),
+        child: bodyStack,
       ),
     );
   }

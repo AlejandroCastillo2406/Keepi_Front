@@ -5,24 +5,37 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../core/roles.dart';
+import '../../core/web_layout.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/config_service.dart' as config_dto;
+import '../../widgets/profile_settings_widgets.dart';
+import '../doctor/doctor_scheduling_settings_screen.dart';
 import '../doctor/questionnaire/questionnaire_settings_screen.dart';
 
+enum _SettingsSubPage { main, scheduling }
+
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.embedded = false,
+  });
+
+  /// En web shell: sin AppBar, ocupa el panel principal.
+  final bool embedded;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   config_dto.UserConfigResponse? _config;
   bool _loading = true;
   String? _error;
   bool _switching = false;
+  _SettingsSubPage _subPage = _SettingsSubPage.main;
 
   @override
   void initState() {
@@ -79,7 +92,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       final cloudService = CloudStorageService(api);
       final res = await cloudService.setupStorage('google_drive');
       if (!mounted) return;
-      if (res.authorizationRequired && res.authorizationUrl != null && res.authorizationUrl!.isNotEmpty) {
+      if (res.authorizationRequired &&
+          res.authorizationUrl != null &&
+          res.authorizationUrl!.isNotEmpty) {
         final uri = Uri.parse(res.authorizationUrl!);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -87,7 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Completa la autorización en el navegador y vuelve a la app.'),
+              content: Text(
+                'Completa la autorización en el navegador y vuelve a la app.',
+              ),
               behavior: SnackBarBehavior.floating,
               duration: Duration(seconds: 4),
             ),
@@ -182,13 +199,311 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     }
   }
 
+  void _openQuestionnaireSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const QuestionnaireSettingsScreen()),
+    );
+  }
+
+  void _openSchedulingSettings() {
+    if (widget.embedded || isWebWide(context)) {
+      setState(() => _subPage = _SettingsSubPage.scheduling);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const DoctorSchedulingSettingsScreen(),
+      ),
+    );
+  }
+
+  void _backToSettingsMain() {
+    setState(() => _subPage = _SettingsSubPage.main);
+  }
+
+  String _storageSubtitle() {
+    final config = _config;
+    if (config == null) return 'Elige dónde guardar tus documentos.';
+    if (config.isKeepiCloud) {
+      return 'Keepi Cloud · Almacenamiento seguro en la nube (S3).';
+    }
+    if (config.isGoogleDrive) {
+      return 'Google Drive · Usa tus carpetas de Google Drive.';
+    }
+    return 'Sin configurar · Elige Keepi Cloud o Google Drive.';
+  }
+
+  Future<void> _openStoragePicker() async {
+    if (_config == null || _switching) return;
+
+    final config = _config!;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: KeepiColors.cardBorder,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Almacenamiento',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: KeepiColors.slate,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Elige dónde se guardarán tus documentos.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: KeepiColors.slateLight,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ProfileSettingsRow(
+                  icon: Icons.cloud_rounded,
+                  accent: KeepiColors.orange,
+                  title: 'Keepi Cloud',
+                  subtitle: 'Almacenamiento seguro en la nube de Keepi (S3).',
+                  isActive: config.isKeepiCloud,
+                  onTap: config.isKeepiCloud
+                      ? null
+                      : () async {
+                          Navigator.pop(sheetContext);
+                          await _switchToKeepiCloud();
+                        },
+                ),
+                const SizedBox(height: 10),
+                ProfileSettingsRow(
+                  icon: Icons.folder_rounded,
+                  accent: KeepiColors.slate,
+                  title: 'Google Drive',
+                  subtitle: 'Usa tus carpetas de Google Drive.',
+                  isActive: config.isGoogleDrive,
+                  onTap: config.isGoogleDrive
+                      ? null
+                      : () async {
+                          Navigator.pop(sheetContext);
+                          await _switchToGoogleDrive();
+                        },
+                ),
+                if (!config.isNotConfigured) ...[
+                  const SizedBox(height: 14),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(sheetContext);
+                        await _setNotConfigured();
+                      },
+                      icon: const Icon(
+                        Icons.restore_rounded,
+                        size: 20,
+                        color: KeepiColors.slateLight,
+                      ),
+                      label: const Text(
+                        'Restablecer a sin configurar',
+                        style: TextStyle(color: KeepiColors.slateLight),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildContent(AuthProvider auth) {
+    if (_subPage == _SettingsSubPage.scheduling) {
+      return DoctorSchedulingSettingsScreen(
+        embedded: true,
+        onBack: _backToSettingsMain,
+      );
+    }
+
+    final isDoctor = auth.roleName == AppRole.doctor;
+    final configCount = isDoctor ? 3 : 1;
+
+    return RefreshIndicator(
+      onRefresh: _loadConfig,
+      color: KeepiColors.orange,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          isWebWide(context) ? 28 : 22,
+          widget.embedded ? 8 : 8,
+          isWebWide(context) ? 28 : 22,
+          32,
+        ),
+        child: WebContentFrame(
+          maxWidth: kWebContentMaxWidth,
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ProfileHeroCard(
+                name: auth.name ?? 'Usuario',
+                email: auth.email ?? '',
+                namePrefix: isDoctor ? 'Dr.' : '',
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: KeepiColors.orangeSoft,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: KeepiColors.orange.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: KeepiColors.orange,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: KeepiColors.slate),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (isDoctor) ...[
+                const SizedBox(height: 26),
+                ProfileSectionDivider(
+                  tag: 'CONFIGURACIÓN',
+                  count: configCount,
+                ),
+                const SizedBox(height: 14),
+                ProfileSettingsRow(
+                  icon: Icons.quiz_outlined,
+                  accent: KeepiColors.skyBlue,
+                  title: 'Cuestionarios de salud',
+                  subtitle:
+                      'Gestiona plantillas y preguntas por especialidad.',
+                  onTap: _openQuestionnaireSettings,
+                ),
+                const SizedBox(height: 10),
+                ProfileSettingsRow(
+                  icon: Icons.schedule_rounded,
+                  accent: KeepiColors.orange,
+                  title: 'Horario de consulta',
+                  subtitle:
+                      'Días y horas en que los pacientes pueden agendar citas.',
+                  onTap: _openSchedulingSettings,
+                ),
+                const SizedBox(height: 10),
+                ProfileSettingsRow(
+                  icon: Icons.storage_rounded,
+                  accent: const Color(0xFF0EA5E9),
+                  title: 'Almacenamiento',
+                  subtitle: _loading ? 'Cargando…' : _storageSubtitle(),
+                  onTap: _loading || _switching ? null : _openStoragePicker,
+                ),
+              ] else ...[
+                const SizedBox(height: 26),
+                const ProfileSectionDivider(tag: 'CONFIGURACIÓN', count: 1),
+                const SizedBox(height: 14),
+                ProfileSettingsRow(
+                  icon: Icons.storage_rounded,
+                  accent: const Color(0xFF0EA5E9),
+                  title: 'Almacenamiento',
+                  subtitle: _loading ? 'Cargando…' : _storageSubtitle(),
+                  onTap: _loading || _switching ? null : _openStoragePicker,
+                ),
+              ],
+              if (_switching) ...[
+                const SizedBox(height: 14),
+                const Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: KeepiColors.orange,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 26),
+              const ProfileSectionDivider(tag: 'SESIÓN', count: 1),
+              const SizedBox(height: 14),
+              ProfileSettingsRow(
+                icon: Icons.logout_rounded,
+                accent: Colors.red,
+                title: 'Cerrar sesión',
+                subtitle: 'Salir de Keepi en este dispositivo.',
+                onTap: auth.logout,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final auth = context.watch<AuthProvider>();
+    final useEmbeddedChrome = widget.embedded || isWebWide(context);
+
+    if (useEmbeddedChrome && widget.embedded) {
+      return ColoredBox(
+        color: KeepiColors.surfaceBg,
+        child: _buildContent(auth),
+      );
+    }
+
+    if (useEmbeddedChrome) {
+      return Scaffold(
+        backgroundColor: KeepiColors.surfaceBg,
+        appBar: AppBar(
+          title: const Text('Configuración'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          automaticallyImplyLeading: Navigator.canPop(context),
+        ),
+        body: _buildContent(auth),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ajustes'),
+        title: const Text('Configuración'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
@@ -198,244 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       ),
       body: DecorativeBackground(
         blobOpacity: 0.2,
-        child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: _loadConfig,
-            color: KeepiColors.orange,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: KeepiColors.orangeSoft,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: KeepiColors.orange.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline_rounded, color: KeepiColors.orange, size: 22),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _error!,
-                              style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slate),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  if (context.watch<AuthProvider>().roleName == AppRole.doctor) ...[
-                    Text(
-                      'Consultas',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _StorageTile(
-                      icon: Icons.fact_check_outlined,
-                      title: 'Cuestionarios de salud',
-                      subtitle:
-                          'Preguntas base, personalizadas y plantillas por especialidad.',
-                      isCurrent: false,
-                      isDisabled: false,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const QuestionnaireSettingsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-                  Text(
-                    'Almacenamiento',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: KeepiColors.slate,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_loading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, color: KeepiColors.orange),
-                        ),
-                      ),
-                    )
-                  else if (_config != null) ...[
-                    if (_switching)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: KeepiColors.orange,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Cargando…',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: KeepiColors.slateLight,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      _StorageTile(
-                        icon: Icons.folder_rounded,
-                        title: 'Google Drive',
-                        subtitle: 'Usa tus carpetas de Google Drive.',
-                        isCurrent: _config!.isGoogleDrive,
-                        isDisabled: _switching,
-                        onTap: _config!.isGoogleDrive ? null : _switchToGoogleDrive,
-                      ),
-                      const SizedBox(height: 10),
-                      _StorageTile(
-                        icon: Icons.cloud_rounded,
-                        title: 'Keepi Cloud',
-                        subtitle: 'Almacenamiento seguro en la nube de Keepi (S3).',
-                        isCurrent: _config!.isKeepiCloud,
-                        isDisabled: _switching,
-                        onTap: _config!.isKeepiCloud ? null : _switchToKeepiCloud,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    if (!_config!.isNotConfigured)
-                      TextButton.icon(
-                        onPressed: _switching ? null : _setNotConfigured,
-                        icon: const Icon(Icons.restore_rounded, size: 20, color: KeepiColors.slateLight),
-                        label: Text(
-                          'Restablecer a sin configurar',
-                          style: theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slateLight),
-                        ),
-                      ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StorageTile extends StatelessWidget {
-  const _StorageTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.isCurrent,
-    required this.isDisabled,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool isCurrent;
-  final bool isDisabled;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: isDisabled || onTap == null ? null : onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: KeepiColors.cardBg,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isCurrent ? KeepiColors.orange : KeepiColors.cardBorder,
-              width: isCurrent ? 1.5 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: KeepiColors.slate.withOpacity(0.06),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: (isCurrent ? KeepiColors.orange : KeepiColors.slateLight).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 26,
-                  color: isCurrent ? KeepiColors.orange : KeepiColors.slateLight,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: KeepiColors.slateLight,
-                      ),
-                    ),
-                    if (isCurrent) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Activo',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: KeepiColors.orange,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (!isCurrent && onTap != null && !isDisabled)
-                const Icon(Icons.chevron_right_rounded, color: KeepiColors.slateLight, size: 24),
-            ],
-          ),
-        ),
+        child: SafeArea(child: _buildContent(auth)),
       ),
     );
   }

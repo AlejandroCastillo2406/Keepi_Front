@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_endpoints.dart';
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
+import '../../widgets/web_app_shell.dart';
 import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -298,8 +300,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final showUploadFab =
+        _config != null && (_config!.isGoogleDrive || _config!.isKeepiCloud);
 
-    return Scaffold(
+    final scaffold = Scaffold(
       floatingActionButton:
           _config != null && (_config!.isGoogleDrive || _config!.isKeepiCloud)
               ? IosFab(
@@ -584,6 +588,55 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+
+    if (isWebWide(context)) {
+      return WebUserShell(
+        userName: auth.name ?? 'Usuario',
+        onNotifications: () {},
+        onSettings: () async {
+          await Navigator.of(context).push(
+            CupertinoPageRoute<void>(
+              builder: (context) => const SettingsScreen(),
+            ),
+          );
+          if (context.mounted) _loadSettings();
+        },
+        onLogout: auth.logout,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showUploadFab)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: _onAddFileTap,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Subir archivo'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: KeepiColors.orange,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Scaffold(
+                backgroundColor: KeepiColors.surfaceBg,
+                body: scaffold.body,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return scaffold;
   }
 
   Future<void> _onAddFileTap() async {

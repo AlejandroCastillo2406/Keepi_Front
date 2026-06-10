@@ -17,26 +17,32 @@ class DecorativeBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sin StackFit.expand: el Stack toma el tamaño del [child] y el fondo
+    // usa Positioned.fill, así funciona tanto a pantalla completa como dentro
+    // de un SingleChildScrollView (altura no acotada).
     return Stack(
-      fit: StackFit.expand,
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                KeepiColors.surfaceBg,
-                KeepiColors.skyBlueSoft.withOpacity(0.5),
-                KeepiColors.orangeSoft.withOpacity(0.25),
-                KeepiColors.slateSoft.withOpacity(0.15),
-                KeepiColors.surfaceBg,
-              ],
-              stops: const [0.0, 0.2, 0.5, 0.75, 1.0],
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  KeepiColors.surfaceBg,
+                  KeepiColors.skyBlueSoft.withOpacity(0.5),
+                  KeepiColors.orangeSoft.withOpacity(0.25),
+                  KeepiColors.slateSoft.withOpacity(0.15),
+                  KeepiColors.surfaceBg,
+                ],
+                stops: const [0.0, 0.2, 0.5, 0.75, 1.0],
+              ),
             ),
           ),
         ),
-        CustomPaint(painter: _BlobPainter(opacity: blobOpacity)),
+        Positioned.fill(
+          child: CustomPaint(painter: _BlobPainter(opacity: blobOpacity)),
+        ),
         child,
       ],
     );

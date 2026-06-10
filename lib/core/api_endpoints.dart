@@ -93,6 +93,15 @@ class ApiEndpoints {
       _path('/appointments/$id/doctor/propose');
   static String appointmentDoctorCancel(String id) =>
       _path('/appointments/$id/cancel');
+  static String appointmentDoctorApprove(String id) =>
+      _path('/appointments/$id/doctor/approve');
+  static String appointmentDoctorReject(String id) =>
+      _path('/appointments/$id/doctor/reject');
+
+  static String get doctorSchedulingSettings =>
+      _path('/doctors/scheduling/settings');
+  static String get doctorSchedulingAvailabilityRules =>
+      _path('/doctors/scheduling/availability-rules');
 
   // Flujo del paciente
   static String get appointmentsPatientRequest =>

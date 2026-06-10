@@ -128,6 +128,24 @@ class AppointmentService {
     );
   }
 
+  Future<AppointmentDto> doctorApproveAppointment({
+    required String appointmentId,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.appointmentDoctorApprove(appointmentId),
+    );
+    return AppointmentDto.fromJson(res.data ?? const {});
+  }
+
+  Future<AppointmentDto> doctorRejectAppointment({
+    required String appointmentId,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.appointmentDoctorReject(appointmentId),
+    );
+    return AppointmentDto.fromJson(res.data ?? const {});
+  }
+
   // --- 3. ACCIONES DEL PACIENTE ---
 
   Future<AppointmentDto> patientRequestAppointment({

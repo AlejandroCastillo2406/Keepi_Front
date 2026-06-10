@@ -5,6 +5,7 @@ import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../core/roles.dart';
 import '../../providers/auth_provider.dart';
+import '../doctor/doctor_scheduling_settings_screen.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -45,7 +46,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
     if (!mounted) return;
     if (ok && context.mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (_registerAsDoctor) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const DoctorSchedulingSettingsScreen(canSkip: true),
+          ),
+        );
+      }
+      if (context.mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     }
   }
 

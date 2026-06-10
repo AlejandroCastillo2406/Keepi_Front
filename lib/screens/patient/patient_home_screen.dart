@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
+import '../../widgets/web_app_shell.dart';
 import '../../models/timeline_event.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -469,24 +471,64 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     } catch (_) {}
   }
 
+  void _onPatientNavTap(int i) {
+    setState(() => _currentIndex = i);
+    if (i == 0) _loadCareTimeline();
+    if (i == 1) _loadRecetas();
+    if (i == 2) _loadPendingAnalysisRequests();
+  }
+
+  static const _patientWebNav = <WebNavItem>[
+    WebNavItem(icon: Icons.space_dashboard_outlined, label: 'Inicio'),
+    WebNavItem(icon: Icons.receipt_long_outlined, label: 'Recetas'),
+    WebNavItem(icon: Icons.event_note_outlined, label: 'Consultas'),
+    WebNavItem(icon: Icons.person_outline_rounded, label: 'Perfil'),
+  ];
+
   // ── Build ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final body = IndexedStack(
+      index: _currentIndex,
+      children: [
+        _buildHomeTab(context, auth),
+        _buildRecetasTab(auth),
+        _buildConsultasTab(auth),
+        _buildProfilePlaceholder(auth),
+      ],
+    );
+
+    if (isWebWide(context)) {
+      return WebAppShell(
+        brandTitle: auth.name ?? 'Paciente',
+        brandSubtitle: 'KEEPI',
+        navItems: _patientWebNav,
+        currentIndex: _currentIndex,
+        onNavTap: _onPatientNavTap,
+        onNotifications: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+        ),
+        onLogout: auth.logout,
+        userLabel: auth.name ?? 'Paciente',
+        userSubtitle: 'PACIENTE',
+        primaryAction: _currentIndex == 2
+            ? WebSidebarButton(
+                label: 'Pedir cita',
+                icon: Icons.event_available_outlined,
+                color: KeepiColors.skyBlue,
+                onPressed: _openRequestDialog,
+              )
+            : null,
+        body: body,
+      );
+    }
 
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: [
-            _buildHomeTab(context, auth),
-            _buildRecetasTab(auth),
-            _buildConsultasTab(auth),
-            _buildProfilePlaceholder(auth),
-          ],
-        ),
+        child: body,
       ),
       floatingActionButton: _currentIndex == 2
           ? FloatingActionButton.extended(
@@ -505,12 +547,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           : null,
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
-        onTap: (i) {
-          setState(() => _currentIndex = i);
-          if (i == 0) _loadCareTimeline();
-          if (i == 1) _loadRecetas();
-          if (i == 2) _loadPendingAnalysisRequests();
-        },
+        onTap: _onPatientNavTap,
       ),
     );
   }
@@ -851,6 +888,9 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isWebWide(context)) {
+      return const SizedBox(height: 8);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 12, 14, 6),
       child: Row(

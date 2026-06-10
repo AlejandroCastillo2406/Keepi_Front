@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../core/app_theme.dart';
+import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
@@ -132,6 +133,8 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
       case 'analysis_request': return 'Solicitud de Análisis';
       case 'analysis_upload': return 'Estudio Subido';
       case 'questionnaire': return 'Cuestionario';
+      case 'clinical_intake': return 'Antecedentes';
+      case 'prior_documents': return 'Documentos previos';
       default: return eventType;
     }
   }
@@ -140,6 +143,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     final event = widget.event;
     bool isAppointment = event.eventType.toLowerCase() == 'appointment';
     bool isQuestionnaire = event.eventType.toLowerCase() == 'questionnaire';
+    bool isClinicalIntake = event.eventType.toLowerCase() == 'clinical_intake';
     bool isAnalysis = event.eventType.toLowerCase().contains('analysis');
     
     Color eventColor;
@@ -166,6 +170,10 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
       case 'questionnaire':
         eventColor = KeepiColors.orange;
         eventIcon = Icons.quiz_outlined;
+        break;
+      case 'clinical_intake':
+        eventColor = const Color(0xFF059669);
+        eventIcon = Icons.assignment_turned_in_outlined;
         break;
       default:
         eventColor = KeepiColors.slate;
@@ -220,10 +228,12 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
                   
                   if (event.eventType.toLowerCase() == 'prescription')
                     _buildPremiumPrescriptionCard(event) 
+                  else if (isClinicalIntake)
+                    _buildClinicalIntakeDetailCard(event)
                   else if (isQuestionnaire)
                     _buildQuestionnaireDetailCard(event) 
                   else if (isAnalysis)
-                    _buildAnalysisDetailCard(event) // <-- TARJETA INTELIGENTE DE ANÁLISIS AGREGADA AQUÍ
+                    _buildAnalysisDetailCard(event)
                   else
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -457,6 +467,139 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
           ],
         );
       }
+    );
+  }
+
+  // =======================================================================
+  // FICHA CLÍNICA (ANTECEDENTES)
+  // =======================================================================
+  Widget _buildClinicalIntakeDetailCard(TimelineEvent event) {
+    final invitationId = event.clinicalIntakeInvitationId;
+    if (invitationId == null || invitationId.isEmpty) {
+      return const Text(
+        'No se pudo cargar la ficha clínica de este evento.',
+        style: TextStyle(color: KeepiColors.slateLight),
+      );
+    }
+
+    return FutureBuilder<ClinicalIntakeDetail>(
+      future: DoctorService(context.read<ApiClient>())
+          .fetchClinicalIntakeDetail(
+            patientId: widget.patientId,
+            invitationId: invitationId,
+          )
+          .catchError((_) => ClinicalIntakeDetail(
+                invitationId: invitationId,
+                patientId: widget.patientId,
+                sections: const [],
+              )),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: CircularProgressIndicator(color: KeepiColors.orange),
+            ),
+          );
+        }
+        final detail = snapshot.data;
+        if (detail == null || detail.sections.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: const Text(
+              'Sin respuestas registradas en la ficha.',
+              style: TextStyle(color: KeepiColors.slateLight),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Respuestas de la ficha',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: KeepiColors.slate,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...detail.sections.map((section) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: KeepiColors.slate,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (section.subtitle != null &&
+                          section.subtitle!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          section.subtitle!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: KeepiColors.slateLight,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      ...section.fields.map(
+                        (f) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                f.label,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: KeepiColors.slateLight,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                f.value,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: KeepiColors.slate,
+                                  height: 1.45,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 

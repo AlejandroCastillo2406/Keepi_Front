@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/app_theme.dart';
+import '../../../core/web_layout.dart';
 import '../../../models/questionnaire_models.dart';
 import '../../../services/api_client.dart';
 import '../../../services/doctor_service.dart';
@@ -15,12 +16,16 @@ class SendQuestionnaireScreen extends StatefulWidget {
     required this.patientId,
     required this.patientName,
     this.patientEmail,
+    this.embedded = false,
+    this.onBack,
   });
 
   final ApiClient api;
   final String patientId;
   final String patientName;
   final String? patientEmail;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<SendQuestionnaireScreen> createState() => _SendQuestionnaireScreenState();
@@ -96,7 +101,7 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
           backgroundColor: !invite.emailSent ? Colors.orange.shade900 : null,
         ),
       );
-      Navigator.of(context).pop(true);
+      _closeAfterSuccess();
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -110,21 +115,31 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
-        ),
-        title: const Text('Enviar cuestionario'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+  void _closeAfterSuccess() {
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  void _handleClose() {
+    if (_submitting) return;
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.of(context).pop(false);
+    }
+  }
+
+  Widget _buildForm(ThemeData theme) {
+    return Padding(
+          padding: EdgeInsets.fromLTRB(
+            widget.embedded ? 28 : 20,
+            widget.embedded ? 8 : 16,
+            widget.embedded ? 28 : 20,
+            20,
+          ),
           child: ListView(
             children: [
               Text(
@@ -194,8 +209,31 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
               ),
             ],
           ),
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Enviar cuestionario',
+        onBack: _submitting ? null : _handleClose,
+        child: SafeArea(child: _buildForm(theme)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: KeepiColors.surfaceBg,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: _submitting ? null : _handleClose,
         ),
+        title: const Text('Enviar cuestionario'),
       ),
+      body: SafeArea(child: _buildForm(theme)),
     );
   }
 }

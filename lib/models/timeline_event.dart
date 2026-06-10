@@ -34,6 +34,15 @@ class TimelineEvent {
 
   bool get isPriorDocuments => eventType == 'prior_documents';
 
+  bool get isClinicalIntake => eventType == 'clinical_intake';
+
+  /// UUID de invitación cuando `id` es `intake_{uuid}`.
+  String? get clinicalIntakeInvitationId {
+    if (!id.startsWith('intake_')) return null;
+    final raw = id.substring('intake_'.length);
+    return raw.isEmpty ? null : raw;
+  }
+
   factory TimelineEvent.fromJson(Map<String, dynamic> json) {
     return TimelineEvent(
       id: json['id']?.toString() ?? '',

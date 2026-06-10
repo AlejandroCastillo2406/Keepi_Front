@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../services/api_client.dart';
 import '../../services/prescription_service.dart';
 import '../../widgets/doctor_note_field.dart';
@@ -15,10 +16,14 @@ class DoctorAssignPrescriptionScreen extends StatefulWidget {
     super.key,
     required this.patientId,
     required this.patientName,
+    this.embedded = false,
+    this.onBack,
   });
 
   final String patientId;
   final String patientName;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<DoctorAssignPrescriptionScreen> createState() => _DoctorAssignPrescriptionScreenState();
@@ -106,7 +111,11 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Receta asignada y paciente notificado')),
       );
-      Navigator.of(context).pop(true);
+      if (widget.onBack != null) {
+        widget.onBack!();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -114,17 +123,9 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Asignar receta a ${widget.patientName}'),
-        backgroundColor: Colors.white,
-        foregroundColor: KeepiColors.slate,
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+  Widget _buildForm() {
+    return ListView(
+        padding: EdgeInsets.all(widget.embedded ? 28 : 16),
         children: [
           FilledButton.icon(
             onPressed: _loading ? null : _pickAndAnalyze,
@@ -160,7 +161,27 @@ class _DoctorAssignPrescriptionScreenState extends State<DoctorAssignPrescriptio
                 : const Text('Confirmar y asignar'),
           ),
         ],
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Asignar receta a ${widget.patientName}',
+        onBack: widget.onBack,
+        child: _buildForm(),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Asignar receta a ${widget.patientName}'),
+        backgroundColor: Colors.white,
+        foregroundColor: KeepiColors.slate,
+        elevation: 0,
       ),
+      body: _buildForm(),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../models/prior_document_item.dart';
 import '../../services/api_client.dart';
 import '../../services/document_file_opener.dart';
@@ -15,11 +16,15 @@ class PriorDocumentsScreen extends StatefulWidget {
     required this.patientId,
     required this.patientName,
     this.forPatientView = false,
+    this.embedded = false,
+    this.onBack,
   });
 
   final String patientId;
   final String patientName;
   final bool forPatientView;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<PriorDocumentsScreen> createState() => _PriorDocumentsScreenState();
@@ -84,15 +89,21 @@ class _PriorDocumentsScreenState extends State<PriorDocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final title = widget.forPatientView
+        ? 'Mis documentos previos'
+        : 'Documentos previos';
+
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: title,
+        onBack: widget.onBack,
+        child: _buildBody(theme),
+      );
+    }
+
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        title: Text(
-          widget.forPatientView
-              ? 'Mis documentos previos'
-              : 'Documentos previos',
-        ),
-      ),
+      appBar: AppBar(title: Text(title)),
       body: _buildBody(theme),
     );
   }
@@ -138,8 +149,8 @@ class _PriorDocumentsScreenState extends State<PriorDocumentsScreen> {
       children: [
         Text(
           widget.forPatientView
-              ? 'Archivos que compartiste al completar tu cuestionario inicial.'
-              : 'Archivos que ${widget.patientName} compartió al completar el cuestionario inicial.',
+              ? 'Archivos que compartiste al completar tu ficha clínica.'
+              : 'Archivos que ${widget.patientName} compartió al completar la ficha clínica.',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: KeepiColors.slateLight,
             height: 1.45,
@@ -246,7 +257,7 @@ class _DocTile extends StatelessWidget {
                         vertical: 8,
                       ),
                     ),
-                    child: const Text('Abrir'),
+                    child: const Text('Ver'),
                   ),
               ],
             ),

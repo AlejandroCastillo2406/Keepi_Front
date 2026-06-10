@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../models/questionnaire_models.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
@@ -8,9 +9,18 @@ import '../../services/questionnaire_service.dart';
 import 'questionnaire/questionnaire_invite_picker_block.dart';
 
 class CreatePatientScreen extends StatefulWidget {
-  const CreatePatientScreen({super.key, required this.api});
+  const CreatePatientScreen({
+    super.key,
+    required this.api,
+    this.embedded = false,
+    this.onBack,
+    this.onCreated,
+  });
 
   final ApiClient api;
+  final bool embedded;
+  final VoidCallback? onBack;
+  final VoidCallback? onCreated;
 
   @override
   State<CreatePatientScreen> createState() => _CreatePatientScreenState();
@@ -28,12 +38,27 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
   final Set<String> _selectedTemplateIds = <String>{};
   final Set<String> _selectedQuestionIds = <String>{};
   bool _useDynamicQuestionnaire = false;
+  bool _enableClinicalIntake = false;
   bool _collectPriorDocuments = false;
 
   bool get _willSendQuestionnaire =>
       _useDynamicQuestionnaire ||
       _selectedTemplateIds.isNotEmpty ||
       _selectedQuestionIds.isNotEmpty;
+
+  bool get _willSendIntakeOnly =>
+      _enableClinicalIntake && !_willSendQuestionnaire;
+
+  bool get _willSendLink => _enableClinicalIntake || _willSendQuestionnaire;
+
+  String get _submitButtonLabel {
+    if (!_willSendLink) return 'Crear paciente';
+    if (_willSendIntakeOnly) return 'Crear paciente y enviar ficha';
+    if (_enableClinicalIntake && _willSendQuestionnaire) {
+      return 'Crear paciente y enviar ficha + cuestionario';
+    }
+    return 'Crear paciente y enviar cuestionario';
+  }
 
   @override
   void initState() {
@@ -74,14 +99,16 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
         _selectedTemplateIds.clear();
         _selectedQuestionIds.clear();
       }
-      _syncPriorDocumentsSwitch();
     });
   }
 
-  void _syncPriorDocumentsSwitch() {
-    if (!_willSendQuestionnaire) {
-      _collectPriorDocuments = false;
-    }
+  void _setEnableClinicalIntake(bool value) {
+    setState(() {
+      _enableClinicalIntake = value;
+      if (!value) {
+        _collectPriorDocuments = false;
+      }
+    });
   }
 
   @override
@@ -103,11 +130,20 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
       );
 
       InvitationSendResult? invite;
-      if (_useDynamicQuestionnaire) {
+      final collectPrior =
+          _enableClinicalIntake && _collectPriorDocuments;
+
+      if (_willSendIntakeOnly) {
+        invite = await questionnaireSvc.sendIntakeOnlyInvitation(
+          patientId: created.id,
+          collectPriorDocuments: collectPrior,
+        );
+      } else if (_useDynamicQuestionnaire) {
         invite = await questionnaireSvc.sendInvitationBatch(
           patientId: created.id,
           useDynamicQuestionnaire: true,
-          collectPriorDocuments: _collectPriorDocuments,
+          collectPriorDocuments: collectPrior,
+          enableClinicalIntake: _enableClinicalIntake,
         );
       } else if (_selectedTemplateIds.isNotEmpty ||
           _selectedQuestionIds.isNotEmpty) {
@@ -115,23 +151,33 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
           patientId: created.id,
           templateIds: _selectedTemplateIds.toList(),
           questionIds: _selectedQuestionIds.toList(),
-          collectPriorDocuments: _collectPriorDocuments,
+          collectPriorDocuments: collectPrior,
+          enableClinicalIntake: _enableClinicalIntake,
         );
       }
 
       if (!mounted) return;
-      final String snackMsg;
+      String snackMsg;
       if (invite == null) {
         snackMsg = 'Paciente creado: ${created.email}';
       } else if (!invite.emailSent) {
         snackMsg =
-            'Paciente creado. El correo del cuestionario no se envió: ${invite.emailError ?? "revisa SES en el servidor"}. '
+            'Paciente creado. El correo no se envió: ${invite.emailError ?? "revisa SES en el servidor"}. '
             'Puedes copiar el link desde la respuesta de la API o reintentar.';
-      } else if (_useDynamicQuestionnaire) {
+        if (invite.publicLink.isNotEmpty) {
+          snackMsg += ' Link: ${invite.publicLink}';
+        }
+      } else if (_willSendIntakeOnly) {
         snackMsg =
-            'Paciente creado y cuestionario dinámico (IA) enviado por correo.';
+            'Paciente creado. Se envió por correo el enlace para completar la ficha clínica.';
+      } else if (_useDynamicQuestionnaire) {
+        snackMsg = _enableClinicalIntake
+            ? 'Paciente creado. Se envió el enlace con ficha clínica y cuestionario IA.'
+            : 'Paciente creado. Se envió el enlace del cuestionario dinámico (IA).';
       } else {
-        snackMsg = 'Paciente creado y cuestionario enviado por correo.';
+        snackMsg = _enableClinicalIntake
+            ? 'Paciente creado. Se envió el enlace con ficha clínica y cuestionario.'
+            : 'Paciente creado. Se envió el enlace del cuestionario.';
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -142,7 +188,7 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
               : null,
         ),
       );
-      Navigator.of(context).pop(true);
+      _finishAfterCreate();
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -156,24 +202,34 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final showPriorDocsHint =
-        _willSendQuestionnaire && _collectPriorDocuments;
+  void _finishAfterCreate() {
+    if (widget.onCreated != null) {
+      widget.onCreated!();
+    } else if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.of(context).pop(true);
+    }
+  }
 
-    return Scaffold(
-      backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
-        ),
-        title: const Text('Nuevo paciente'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+  void _handleClose() {
+    if (_submitting) return;
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.of(context).pop(false);
+    }
+  }
+
+  Widget _buildForm(ThemeData theme, bool showPriorDocsHint) {
+    return WebContentFrame(
+          maxWidth: 720,
+          padding: EdgeInsets.fromLTRB(
+            widget.embedded ? 28 : 20,
+            widget.embedded ? 8 : 16,
+            widget.embedded ? 28 : 20,
+            20,
+          ),
           child: Form(
             key: _formKey,
             child: ListView(
@@ -187,7 +243,8 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Opcionalmente puedes enviar un cuestionario inicial por correo.',
+                  'Solo nombre y correo aquí. Teléfono, antecedentes y el resto '
+                  'los completa el paciente en el enlace temporal.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: KeepiColors.slateLight,
                   ),
@@ -221,6 +278,132 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                   },
                 ),
                 const SizedBox(height: 22),
+                Text(
+                  'Invitación web',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: KeepiColors.slate,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Activa ficha clínica, cuestionario o las dos. Si solo activas la ficha, '
+                  'el paciente no verá preguntas de cuestionario.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: KeepiColors.slateLight,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _enableClinicalIntake
+                          ? KeepiColors.green.withValues(alpha: 0.45)
+                          : KeepiColors.cardBorder,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Ficha clínica previa',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: KeepiColors.slate,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Datos, antecedentes, alergias y medicamentos en el enlace. '
+                          'Opcionalmente puedes pedir documentos previos y combinar con cuestionario.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: KeepiColors.slateLight,
+                            height: 1.4,
+                          ),
+                        ),
+                        value: _enableClinicalIntake,
+                        activeColor: KeepiColors.green,
+                        onChanged:
+                            _submitting ? null : _setEnableClinicalIntake,
+                      ),
+                      if (_enableClinicalIntake) ...[
+                        const Divider(height: 1),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Documentos médicos previos',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: KeepiColors.slate,
+                            ),
+                          ),
+                          subtitle: const Text(
+                            'Tras completar la ficha, el paciente podrá subir análisis, '
+                            'laboratorios o informes anteriores (opcional).',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: KeepiColors.slateLight,
+                              height: 1.4,
+                            ),
+                          ),
+                          value: _collectPriorDocuments,
+                          activeColor: KeepiColors.skyBlue,
+                          onChanged: _submitting
+                              ? null
+                              : (v) =>
+                                  setState(() => _collectPriorDocuments = v),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (showPriorDocsHint) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: KeepiColors.skyBlueSoft,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: KeepiColors.skyBlue.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.upload_file_rounded,
+                          color: KeepiColors.skyBlue,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Los documentos se piden justo después de la ficha clínica, '
+                            'antes del cuestionario (si lo envías).',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: KeepiColors.slate,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Text(
+                  'Cuestionario (opcional)',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: KeepiColors.slate,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -256,83 +439,11 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _collectPriorDocuments && _willSendQuestionnaire
-                          ? KeepiColors.skyBlue.withValues(alpha: 0.45)
-                          : KeepiColors.cardBorder,
-                    ),
-                  ),
-                  child: SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      'Documentos médicos previos',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                    subtitle: Text(
-                      _willSendQuestionnaire
-                          ? 'Si está activo, al terminar el cuestionario el paciente verá un paso '
-                              'opcional para subir análisis, laboratorios o informes anteriores.'
-                          : 'Activa un cuestionario (dinámico o plantillas) para habilitar esta opción.',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: KeepiColors.slateLight,
-                        height: 1.4,
-                      ),
-                    ),
-                    value: _collectPriorDocuments,
-                    activeColor: KeepiColors.skyBlue,
-                    onChanged: _submitting || !_willSendQuestionnaire
-                        ? null
-                        : (v) => setState(() => _collectPriorDocuments = v),
-                  ),
-                ),
-                if (showPriorDocsHint) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: KeepiColors.skyBlueSoft,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: KeepiColors.skyBlue.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.upload_file_rounded,
-                          color: KeepiColors.skyBlue,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Los archivos se guardarán en el expediente del paciente en Keepi Cloud.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: KeepiColors.slate,
-                              height: 1.45,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
                 QuestionnaireInvitePickerBlock(
-                  title: 'Cuestionarios iniciales (plantillas)',
+                  title: 'Plantillas y preguntas',
                   description:
-                      'Selecciona plantillas y/o preguntas globales. No disponible '
-                      'si activas el cuestionario dinámico.',
+                      'Selecciona plantillas y/o preguntas globales. '
+                      'No disponible si activas el cuestionario dinámico.',
                   loading: _loadingQuestionnaires,
                   error: _questionnaireError,
                   templates: _templates,
@@ -348,7 +459,6 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                       } else {
                         _selectedTemplateIds.remove(id);
                       }
-                      _syncPriorDocumentsSwitch();
                     });
                   },
                   onToggleQuestion: (id, value) {
@@ -358,7 +468,6 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                       } else {
                         _selectedQuestionIds.remove(id);
                       }
-                      _syncPriorDocumentsSwitch();
                     });
                   },
                 ),
@@ -374,13 +483,38 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Crear paciente y enviar'),
+                      : Text(_submitButtonLabel),
                 ),
               ],
             ),
           ),
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final showPriorDocsHint =
+        _enableClinicalIntake && _collectPriorDocuments;
+
+    if (widget.embedded) {
+      return EmbeddedWebPage(
+        title: 'Nuevo paciente',
+        onBack: _submitting ? null : _handleClose,
+        child: SafeArea(child: _buildForm(theme, showPriorDocsHint)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: KeepiColors.surfaceBg,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: _submitting ? null : _handleClose,
         ),
+        title: const Text('Nuevo paciente'),
       ),
+      body: SafeArea(child: _buildForm(theme, showPriorDocsHint)),
     );
   }
 }

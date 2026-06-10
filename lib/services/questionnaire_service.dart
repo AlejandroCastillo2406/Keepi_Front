@@ -199,13 +199,31 @@ class QuestionnaireService {
     List<String> questionIds = const [],
     bool collectPriorDocuments = false,
     bool useDynamicQuestionnaire = false,
+    bool enableClinicalIntake = false,
+    bool intakeOnly = false,
+    String? phone,
+    String? birthDate,
+    String? sex,
+    String? consultationReason,
+    String? specialty,
   }) async {
     if (useDynamicQuestionnaire) {
       return sendDynamicInvitationBatch(
         patientId: patientId,
         collectPriorDocuments: collectPriorDocuments,
+        enableClinicalIntake: enableClinicalIntake,
+        phone: phone,
+        birthDate: birthDate,
+        sex: sex,
+        consultationReason: consultationReason,
+        specialty: specialty,
       );
     }
+    final onlyIntake = intakeOnly ||
+        (enableClinicalIntake &&
+            !useDynamicQuestionnaire &&
+            templateIds.isEmpty &&
+            questionIds.isEmpty);
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.questionnaireInvitations,
       data: {
@@ -214,20 +232,67 @@ class QuestionnaireService {
         'question_ids': questionIds,
         'collect_prior_documents': collectPriorDocuments,
         'use_dynamic_questionnaire': false,
+        'enable_clinical_intake': enableClinicalIntake || onlyIntake,
+        'intake_only': onlyIntake,
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (birthDate != null && birthDate.trim().isNotEmpty)
+          'birth_date': birthDate.trim(),
+        if (sex != null && sex.trim().isNotEmpty) 'sex': sex.trim(),
+        if (consultationReason != null && consultationReason.trim().isNotEmpty)
+          'consultation_reason': consultationReason.trim(),
+        if (specialty != null && specialty.trim().isNotEmpty)
+          'specialty': specialty.trim(),
       },
     );
     return InvitationSendResult.fromJson(res.data!);
   }
 
+  Future<InvitationSendResult> sendIntakeOnlyInvitation({
+    required String patientId,
+    bool collectPriorDocuments = false,
+    String? phone,
+    String? birthDate,
+    String? sex,
+    String? consultationReason,
+    String? specialty,
+  }) {
+    return sendInvitationBatch(
+      patientId: patientId,
+      intakeOnly: true,
+      enableClinicalIntake: true,
+      collectPriorDocuments: collectPriorDocuments,
+      phone: phone,
+      birthDate: birthDate,
+      sex: sex,
+      consultationReason: consultationReason,
+      specialty: specialty,
+    );
+  }
+
   Future<InvitationSendResult> sendDynamicInvitationBatch({
     required String patientId,
     bool collectPriorDocuments = false,
+    bool enableClinicalIntake = true,
+    String? phone,
+    String? birthDate,
+    String? sex,
+    String? consultationReason,
+    String? specialty,
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.questionnaireInvitationsDynamic,
       data: {
         'patient_id': patientId,
         'collect_prior_documents': collectPriorDocuments,
+        'enable_clinical_intake': enableClinicalIntake,
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (birthDate != null && birthDate.trim().isNotEmpty)
+          'birth_date': birthDate.trim(),
+        if (sex != null && sex.trim().isNotEmpty) 'sex': sex.trim(),
+        if (consultationReason != null && consultationReason.trim().isNotEmpty)
+          'consultation_reason': consultationReason.trim(),
+        if (specialty != null && specialty.trim().isNotEmpty)
+          'specialty': specialty.trim(),
       },
     );
     return InvitationSendResult.fromJson(res.data!);

@@ -63,6 +63,8 @@ class PatientCareTimeline extends StatelessWidget {
         return const Color(0xFF2563EB);
       case 'prior_documents':
         return const Color(0xFF0D9488);
+      case 'clinical_intake':
+        return const Color(0xFF059669);
       default:
         return KeepiColors.slate;
     }
@@ -83,6 +85,8 @@ class PatientCareTimeline extends StatelessWidget {
         return Icons.biotech_outlined;
       case 'prior_documents':
         return Icons.folder_shared_outlined;
+      case 'clinical_intake':
+        return Icons.assignment_turned_in_outlined;
       default:
         return Icons.flag_outlined;
     }
@@ -102,7 +106,9 @@ class PatientCareTimeline extends StatelessWidget {
       case 'analysis_request':
         return 'ANÁLISIS';
       case 'prior_documents':
-        return 'EXPEDIENTE';
+        return 'DOCUMENTOS';
+      case 'clinical_intake':
+        return 'ANTECEDENTES';
       default:
         return 'EVENTO';
     }

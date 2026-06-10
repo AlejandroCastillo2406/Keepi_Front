@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +17,30 @@ import 'screens/patient/patient.dart';
 import 'screens/user/user.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// En web: controles más compactos (menos botones/FAB gigantes).
+Widget _webAwareBuilder(BuildContext context, Widget? child) {
+  if (!kIsWeb || child == null) return child ?? const SizedBox.shrink();
+  final theme = Theme.of(context);
+  return Theme(
+    data: theme.copyWith(
+      visualDensity: VisualDensity.compact,
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(64, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(64, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+      ),
+    ),
+    child: child,
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,6 +81,7 @@ class KeepiApp extends StatelessWidget {
             title: 'Keepi',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.theme,
+            builder: _webAwareBuilder,
             home: const _AuthWrapper(),
           ),
         );

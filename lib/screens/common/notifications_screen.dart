@@ -18,7 +18,14 @@ const _monthsEsUpper = <String>[
 String _two(int v) => v.toString().padLeft(2, '0');
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  const NotificationsScreen({
+    super.key,
+    this.embedded = false,
+    this.onBack,
+  });
+
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -265,29 +272,48 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  void _handleBack() {
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  Widget _buildScrollContent() {
+    final unread = _items.where((n) => !n.read).length;
+
+    return RefreshIndicator(
+      color: KeepiColors.orange,
+      onRefresh: _load,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(child: _NotifTopBar(onBack: _handleBack)),
+          SliverToBoxAdapter(child: _NotifHero(total: _items.length, unread: unread)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(22, 4, 22, 40),
+            sliver: SliverToBoxAdapter(child: _bodyBlock()),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final unread = _items.where((n) => !n.read).length;
+    if (widget.embedded) {
+      return ColoredBox(
+        color: KeepiColors.surfaceBg,
+        child: SafeArea(bottom: false, child: _buildScrollContent()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       body: SafeArea(
         bottom: false,
-        child: RefreshIndicator(
-          color: KeepiColors.orange,
-          onRefresh: _load,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(child: _NotifTopBar(onBack: () => Navigator.of(context).maybePop())),
-              SliverToBoxAdapter(child: _NotifHero(total: _items.length, unread: unread)),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(22, 4, 22, 40),
-                sliver: SliverToBoxAdapter(child: _bodyBlock()),
-              ),
-            ],
-          ),
-        ),
+        child: _buildScrollContent(),
       ),
     );
   }
