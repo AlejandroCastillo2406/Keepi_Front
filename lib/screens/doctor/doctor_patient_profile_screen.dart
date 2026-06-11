@@ -34,6 +34,8 @@ class DoctorPatientProfileScreen extends StatefulWidget {
     this.onOpenConsultation,
     this.embedded = false,
     this.onBack,
+    this.embeddedTabPanelsOnly = false,
+    this.externalTabIndex = 0,
   });
 
   final String patientId;
@@ -50,6 +52,9 @@ class DoctorPatientProfileScreen extends StatefulWidget {
   final VoidCallback? onOpenConsultation;
   final bool embedded;
   final VoidCallback? onBack;
+  /// Solo el cuerpo de pestañas (Resumen/Análisis/Cuestionarios/Historial), sin cabecera.
+  final bool embeddedTabPanelsOnly;
+  final int externalTabIndex;
 
   @override
   State<DoctorPatientProfileScreen> createState() =>
@@ -57,7 +62,7 @@ class DoctorPatientProfileScreen extends StatefulWidget {
 }
 
 class _DoctorPatientProfileScreenState
-    extends State<DoctorPatientProfileScreen> {
+    extends State<DoctorPatientProfileScreen> with AutomaticKeepAliveClientMixin {
   bool _loading = true;
   String? _error;
 
@@ -66,6 +71,13 @@ class _DoctorPatientProfileScreenState
   List<Map<String, dynamic>> _questionnaireResponses = [];
   String? _openingDocumentId;
   late int _webTabIndex;
+
+  @override
+  bool get wantKeepAlive => widget.embeddedTabPanelsOnly;
+
+  int get _activeTabIndex => widget.embeddedTabPanelsOnly
+      ? widget.externalTabIndex.clamp(0, 3)
+      : _webTabIndex;
 
   List<_QuestionnaireGroup> _buildQuestionnaireGroups(
       List<Map<String, dynamic>> rows) {
@@ -106,7 +118,9 @@ class _DoctorPatientProfileScreenState
   @override
   void initState() {
     super.initState();
-    _webTabIndex = widget.initialTabIndex.clamp(0, 3);
+    if (!widget.embeddedTabPanelsOnly) {
+      _webTabIndex = widget.initialTabIndex.clamp(0, 3);
+    }
     _loadData();
   }
 
@@ -209,19 +223,15 @@ class _DoctorPatientProfileScreenState
                 const SizedBox(height: 26),
                 DoctorPatientTabBar(
                   selectedIndex: _webTabIndex,
-                  onSelected: (index) {
-                    if (index == 4) {
-                      widget.onOpenConsultation?.call();
-                      return;
-                    }
-                    setState(() => _webTabIndex = index);
-                  },
+                  onSelected: (index) =>
+                      setState(() => _webTabIndex = index),
                 ),
                 const SizedBox(height: 22),
                 _buildWebTabBody(
                   pendingList: pendingList,
                   completed: completed,
                   questionnaireGroups: questionnaireGroups,
+                  tabIndex: _activeTabIndex,
                 ),
               ],
             ),
@@ -235,8 +245,9 @@ class _DoctorPatientProfileScreenState
     required List<AnalysisRequestDto> pendingList,
     required List<AnalysisRequestDto> completed,
     required List<_QuestionnaireGroup> questionnaireGroups,
+    required int tabIndex,
   }) {
-    switch (_webTabIndex) {
+    switch (tabIndex) {
       case 1:
         return _buildAnalysisPanel(
           pendingList: pendingList,
@@ -447,8 +458,47 @@ class _DoctorPatientProfileScreenState
     );
   }
 
+  Widget _buildEmbeddedTabPanelsOnly() {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
+        ),
+      );
+    }
+    if (_error != null) {
+      return _ErrorState(message: _error!, onRetry: _loadData);
+    }
+
+    final completed = _analysisRequests
+        .where((r) => r.status.toLowerCase() == 'completed')
+        .toList()
+      ..sort((a, b) => (b.completedAt ?? b.createdAt)
+          .compareTo(a.completedAt ?? a.createdAt));
+    final pendingList = _analysisRequests
+        .where((r) => r.status.toLowerCase() != 'completed')
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final questionnaireGroups =
+        _buildQuestionnaireGroups(_questionnaireResponses);
+
+    return _buildWebTabBody(
+      pendingList: pendingList,
+      completed: completed,
+      questionnaireGroups: questionnaireGroups,
+      tabIndex: _activeTabIndex,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
+    if (widget.embeddedTabPanelsOnly) {
+      return _buildEmbeddedTabPanelsOnly();
+    }
+
     final completed = _analysisRequests
         .where((r) => r.status.toLowerCase() == 'completed')
         .toList()

@@ -19,6 +19,7 @@ import '../common/storage_choice_flow.dart';
 import '../user/settings_screen.dart';
 import 'create_patient_screen.dart';
 import '../../widgets/doctor_note_field.dart';
+import '../../widgets/doctor_appointment_slot_picker.dart';
 import 'doctor_assign_prescription_screen.dart';
 import 'doctor_calendar_tab.dart';
 import 'doctor_consultation_screen.dart';
@@ -366,38 +367,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _scheduleAppointment(PatientListItem p) async {
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: KeepiColors.orange),
-        ),
-        child: child!,
-      ),
-    );
-    if (pickedDate == null || !mounted) return;
-
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (pickedTime == null || !mounted) return;
-
-    final finalDateTime = DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-      pickedTime.hour,
-      pickedTime.minute,
-    );
+    final finalDateTime = await pickDoctorAppointmentSlot(context);
+    if (finalDateTime == null || !mounted) return;
 
     final noteCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
     final dateStr =
-        '${_two(pickedDate.day)}/${_two(pickedDate.month)}/${pickedDate.year}';
-    final timeStr = pickedTime.format(context);
+        '${_two(finalDateTime.day)}/${_two(finalDateTime.month)}/${finalDateTime.year}';
+    final timeStr = formatSlotTimeLocal(finalDateTime);
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -452,6 +429,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                ConsultationReasonField(controller: reasonCtrl),
+                const SizedBox(height: 16),
                 DoctorNoteField(controller: noteCtrl),
               ],
             ),
@@ -490,16 +469,24 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     );
 
     final doctorNote = noteCtrl.text.trim();
+    final reason = reasonCtrl.text.trim();
     noteCtrl.dispose();
+    reasonCtrl.dispose();
 
     if (confirm != true || !mounted) return;
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Indica el motivo de la consulta.')),
+      );
+      return;
+    }
 
     try {
       final svc = DoctorService(context.read<ApiClient>());
       await svc.scheduleAppointment(
         patientId: p.id,
         date: finalDateTime,
-        reason: 'Consulta médica',
+        reason: reason,
         doctorNote: doctorNote.isEmpty ? null : doctorNote,
       );
       if (!mounted) return;

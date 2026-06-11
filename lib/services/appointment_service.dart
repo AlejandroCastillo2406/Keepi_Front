@@ -12,6 +12,7 @@ class AppointmentDto {
     this.appointmentDate,
     this.endDate,
     required this.createdAt,
+    this.patientName,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class AppointmentDto {
   final DateTime? appointmentDate;
   final DateTime? endDate;
   final DateTime createdAt;
+  final String? patientName;
 
   factory AppointmentDto.fromJson(Map<String, dynamic> json) {
     return AppointmentDto(
@@ -33,6 +35,7 @@ class AppointmentDto {
       appointmentDate: json['appointment_date'] != null ? DateTime.parse(json['appointment_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      patientName: json['patient_name'] as String?,
     );
   }
 }

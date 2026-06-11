@@ -408,7 +408,7 @@ class DoctorPatientHeaderActions extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: onEditProfile,
             style: FilledButton.styleFrom(
-              backgroundColor: KeepiColors.skyBlue,
+              backgroundColor: KeepiColors.orange,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               shape: RoundedRectangleBorder(
@@ -607,23 +607,30 @@ class DoctorPatientTabBar extends StatelessWidget {
     super.key,
     required this.selectedIndex,
     required this.onSelected,
-    this.accentColor = KeepiColors.skyBlue,
+    this.accentColor = KeepiColors.orange,
+    this.includeConsultationTab = false,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final Color accentColor;
+  /// Solo visible al abrir desde el dashboard (HOY) en [DoctorConsultationScreen].
+  final bool includeConsultationTab;
 
-  static const labels = [
+  static const _baseLabels = [
     'Resumen',
     'Análisis',
     'Cuestionarios',
     'Historial',
-    'Consulta',
   ];
+
+  List<String> get _labels => includeConsultationTab
+      ? [..._baseLabels, 'Consulta']
+      : _baseLabels;
 
   @override
   Widget build(BuildContext context) {
+    final labels = _labels;
     return Container(
       decoration: const BoxDecoration(
         border: Border(

@@ -6,7 +6,9 @@ import '../../core/web_layout.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
+import '../../services/scheduling_service.dart';
 import '../../widgets/doctor_note_field.dart';
+import '../../widgets/doctor_appointment_slot_picker.dart';
 
 class DoctorCalendarTab extends StatefulWidget {
   const DoctorCalendarTab({
@@ -104,33 +106,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
   // --- ASIGNAR O REASIGNAR FECHA ---
   Future<void> _assignDate(AppointmentDto a) async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) => Theme(
-        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
-        child: child!,
-      ),
-    );
-    if (date == null) return;
-
-    if (!mounted) return;
-    
-    final time = await showTimePicker(
-      context: context,
-      initialTime: const TimeOfDay(hour: 9, minute: 0),
-      builder: (context, child) => Theme(
-        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
-        child: child!,
-      ),
-    );
-    if (time == null) return;
-
-    final proposed = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-
-    if (!mounted) return;
+    final proposed = await pickDoctorAppointmentSlot(context);
+    if (proposed == null || !mounted) return;
 
     showDialog(
       context: context, 
@@ -139,9 +116,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
 
     try {
+      final settings =
+          await SchedulingService(context.read<ApiClient>()).fetchSettings();
       await AppointmentService(context.read<ApiClient>()).doctorProposeTime(
         appointmentId: a.id,
         proposedStartAt: proposed,
+        durationMinutes: settings.slotDurationMinutes,
       );
       
       if (mounted) Navigator.pop(context); 
@@ -359,32 +339,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
     if (selectedPatient == null || !mounted) return;
 
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
-        child: child!,
-      ),
-    );
-    if (pickedDate == null || !mounted) return;
-
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (pickedTime == null || !mounted) return;
-
-    final finalDateTime = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
-
-    if (!mounted) return;
+    final finalDateTime = await pickDoctorAppointmentSlot(context);
+    if (finalDateTime == null || !mounted) return;
 
     final noteCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
     final dateStr =
-        '${_two(pickedDate.day)}/${_two(pickedDate.month)}/${pickedDate.year}';
-    final timeStr = pickedTime.format(context);
+        '${_two(finalDateTime.day)}/${_two(finalDateTime.month)}/${finalDateTime.year}';
+    final timeStr = formatSlotTimeLocal(finalDateTime);
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -439,6 +401,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                ConsultationReasonField(controller: reasonCtrl),
+                const SizedBox(height: 16),
                 DoctorNoteField(controller: noteCtrl),
               ],
             ),
@@ -469,9 +433,17 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
 
     final doctorNote = noteCtrl.text.trim();
+    final reason = reasonCtrl.text.trim();
     noteCtrl.dispose();
+    reasonCtrl.dispose();
 
     if (confirm != true || !mounted) return;
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Indica el motivo de la consulta.')),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -483,7 +455,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       await DoctorService(context.read<ApiClient>()).scheduleAppointment(
         patientId: selectedPatient.id,
         date: finalDateTime,
-        reason: 'Consulta médica',
+        reason: reason,
         doctorNote: doctorNote.isEmpty ? null : doctorNote,
       );
       if (mounted) Navigator.pop(context); 
@@ -734,16 +706,22 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
               final canCancel = !isCanceled;
 
+              final patientName =
+                  (a.patientName ?? '').trim().isNotEmpty ? a.patientName!.trim() : 'Paciente';
+
               return _buildAppointmentItem(
                 time: timeString,
-                name: 'Paciente',
+                name: patientName,
                 type: statusLabel,
-                description: a.reason,
+                description: 'Toca para ver el motivo',
                 typeColor: statusColor,
                 isCanceled: isCanceled,
-                onTap: !isCanceled && widget.onOpenConsultation != null
-                    ? () => widget.onOpenConsultation!(a)
-                    : null,
+                onTap: () => showAppointmentReasonDialog(
+                  context,
+                  patientName: patientName,
+                  reason: a.reason,
+                  status: a.status,
+                ),
                 onReassign: isCanceled ? () => _assignDate(a) : null,
                 onCancel: canCancel ? () => _cancelAppointment(a) : null,
               );
@@ -777,6 +755,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
               children: [
                 const Text('Nueva Solicitud', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: KeepiColors.slate)),
                 const SizedBox(height: 4),
+                if ((a.patientName ?? '').trim().isNotEmpty)
+                  Text(
+                    a.patientName!.trim(),
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: KeepiColors.skyBlue),
+                  ),
+                if ((a.patientName ?? '').trim().isNotEmpty) const SizedBox(height: 2),
                 Text(a.reason.isEmpty ? 'Sin motivo específico' : a.reason, style: const TextStyle(fontSize: 13, color: KeepiColors.slateLight)),
               ],
             ),
@@ -836,6 +820,17 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                         color: KeepiColors.slate,
                       ),
                     ),
+                    if ((a.patientName ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        a.patientName!.trim(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: KeepiColors.skyBlue,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       a.reason.isEmpty ? 'Consulta en línea' : a.reason,

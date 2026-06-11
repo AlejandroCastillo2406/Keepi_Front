@@ -30,6 +30,7 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^33.2.8
   flutter_stripe: ^12.6.0
   http_parser: ^4.1.2
+  speech_to_text: ^7.4.0
 
 dev_dependencies:
   flutter_test:

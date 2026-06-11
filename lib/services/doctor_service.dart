@@ -6,6 +6,7 @@ import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
+import 'scheduling_service.dart';
 
 /// Llamadas a `/api/v1/doctors/patients` y `/api/v1/analysis-requests`.
 class DoctorService {
@@ -270,11 +271,15 @@ class DoctorService {
     required DateTime date,
     required String reason,
     String? doctorNote,
+    int? durationMinutes,
   }) async {
+    final duration = durationMinutes ??
+        (await SchedulingService(_api).fetchSettings()).slotDurationMinutes;
     final d = await AppointmentService(_api).createDoctorAppointment(
       patientId: patientId,
       startAt: date,
       reason: reason,
+      durationMinutes: duration,
       notes: doctorNote,
     );
     return ScheduleAppointmentResult(

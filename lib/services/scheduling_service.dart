@@ -53,6 +53,27 @@ class AvailabilityRuleDto {
       };
 }
 
+class AvailabilitySlotsResult {
+  AvailabilitySlotsResult({required this.slots, this.message});
+
+  final List<AvailabilitySlotDto> slots;
+  final String? message;
+}
+
+class AvailabilitySlotDto {
+  AvailabilitySlotDto({required this.startAt, required this.endAt});
+
+  final DateTime startAt;
+  final DateTime endAt;
+
+  factory AvailabilitySlotDto.fromJson(Map<String, dynamic> json) {
+    return AvailabilitySlotDto(
+      startAt: DateTime.parse(json['start_at'] as String),
+      endAt: DateTime.parse(json['end_at'] as String),
+    );
+  }
+}
+
 class SchedulingService {
   SchedulingService(this._api);
 
@@ -109,5 +130,28 @@ class SchedulingService {
     return (res.data ?? [])
         .map((e) => AvailabilityRuleDto.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<AvailabilitySlotsResult> fetchAvailableSlots({
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    String dateParam(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.doctorSchedulingAvailableSlots,
+      queryParameters: {
+        'from': dateParam(from),
+        'to': dateParam(to),
+      },
+    );
+    final data = res.data ?? const {};
+    final rawSlots = data['slots'] as List<dynamic>? ?? [];
+    return AvailabilitySlotsResult(
+      slots: rawSlots
+          .map((e) => AvailabilitySlotDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      message: data['message'] as String?,
+    );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/doctor_web_shell_scope.dart';
@@ -11,12 +12,14 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
+import '../../services/speech_dictation_service.dart';
 import '../../services/timeline_event_opener.dart';
 import '../../utils/consultation_note_codec.dart';
 import '../../utils/patient_expediente_export.dart';
 import '../../utils/timeline_event_resolver.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
 import '../../widgets/profile_settings_widgets.dart';
+import 'doctor_patient_profile_screen.dart';
 import 'doctor_patient_timeline_screen.dart';
 import 'doctor_upload_analysis_for_patient_screen.dart';
 
@@ -66,6 +69,11 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   List<AnalysisRequestDto> _analysisRequests = [];
   ConsultationContext? _context;
   late final TextEditingController _notesCtrl;
+  int _tabIndex = 4;
+  final SpeechDictationService _dictation = SpeechDictationService();
+  String _dictationPrefix = '';
+  bool _isDictating = false;
+  bool _dictationHeardThisSession = false;
 
   @override
   void initState() {
@@ -76,8 +84,101 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
 
   @override
   void dispose() {
+    _dictation.dispose();
     _notesCtrl.dispose();
     super.dispose();
+  }
+
+  void _warnNoSpeechDetected() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'No se detectó voz. Verifica el micrófono e inténtalo de nuevo.',
+        ),
+        backgroundColor: Colors.orange.shade800,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _finishDictationSession({bool forceNoSpeechCheck = false}) {
+    if (!_isDictating) return;
+
+    final heard = _dictationHeardThisSession ||
+        _notesCtrl.text.trim().length > _dictationPrefix.trim().length;
+    setState(() => _isDictating = false);
+    if (forceNoSpeechCheck && !heard) {
+      _warnNoSpeechDetected();
+    }
+  }
+
+  void _applyDictationText(String text) {
+    if (text.trim().isNotEmpty) {
+      _dictationHeardThisSession = true;
+    }
+    final combined = '$_dictationPrefix$text';
+    if (_notesCtrl.text == combined) return;
+    _notesCtrl.value = TextEditingValue(
+      text: combined,
+      selection: TextSelection.collapsed(offset: combined.length),
+    );
+  }
+
+  Future<void> _toggleDictation() async {
+    if (_isDictating || _dictation.isListening) {
+      await _dictation.stop();
+      if (!mounted) return;
+      _finishDictationSession(forceNoSpeechCheck: true);
+      return;
+    }
+
+    _dictationHeardThisSession = false;
+    _dictationPrefix = _notesCtrl.text.trimRight();
+    if (_dictationPrefix.isNotEmpty) {
+      _dictationPrefix = '$_dictationPrefix ';
+    }
+
+    final error = await _dictation.start(
+      onTranscript: (text, {required isFinal}) {
+        if (!mounted) return;
+        _applyDictationText(text);
+      },
+      onStatus: (status) {
+        if (!mounted) return;
+        if (status == 'doneNoResult') {
+          _finishDictationSession(forceNoSpeechCheck: true);
+          return;
+        }
+        if (status == SpeechToText.notListeningStatus ||
+            status == SpeechToText.doneStatus) {
+          _finishDictationSession(forceNoSpeechCheck: true);
+        }
+      },
+      onError: (message) {
+        if (!mounted) return;
+        final noMatch = message.toLowerCase().contains('no_match') ||
+            message.toLowerCase().contains('no match');
+        _finishDictationSession(forceNoSpeechCheck: noMatch);
+        if (noMatch) {
+          _warnNoSpeechDetected();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
+      },
+    );
+
+    if (!mounted) return;
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+
+    setState(() => _isDictating = true);
   }
 
   Future<void> _bootstrap() async {
@@ -815,42 +916,65 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
                 ),
               ),
               IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.mic_none_rounded,
-                    color: KeepiColors.slateLight, size: 20),
-                tooltip: 'Dictado (próximamente)',
-              ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.text_fields_rounded,
-                    color: KeepiColors.slateLight, size: 20),
-                tooltip: 'Formato (próximamente)',
+                onPressed: _saving ? null : _toggleDictation,
+                icon: Icon(
+                  _isDictating ? Icons.mic_rounded : Icons.mic_none_rounded,
+                  color: _isDictating ? KeepiColors.orange : KeepiColors.slateLight,
+                  size: 20,
+                ),
+                tooltip: _isDictating
+                    ? 'Detener dictado'
+                    : 'Dictado por voz (español o inglés)',
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          TextField(
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 120,
+            child: TextField(
             controller: _notesCtrl,
-            maxLines: 10,
-            minLines: 7,
+            expands: true,
+            maxLines: null,
             enabled: !_saving,
             textCapitalization: TextCapitalization.sentences,
+            textAlignVertical: TextAlignVertical.top,
             decoration: InputDecoration(
-              hintText:
-                  'Comience a escribir las observaciones de la consulta…',
+              hintText: 'Seguimiento',
               filled: true,
               fillColor: KeepiColors.surfaceBg,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: KeepiColors.cardBorder),
+                borderSide: BorderSide(
+                  color: _isDictating
+                      ? KeepiColors.orange
+                      : KeepiColors.cardBorder,
+                  width: _isDictating ? 1.6 : 1,
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: KeepiColors.cardBorder),
+                borderSide: BorderSide(
+                  color: _isDictating
+                      ? KeepiColors.orange
+                      : KeepiColors.cardBorder,
+                  width: _isDictating ? 1.6 : 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _isDictating
+                      ? KeepiColors.orange
+                      : KeepiColors.orange.withValues(alpha: 0.7),
+                  width: 1.6,
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
@@ -963,7 +1087,47 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildProfileTabPanels() {
+    final ctx = _context;
+    return DoctorPatientProfileScreen(
+      key: const ValueKey('consultation-profile-tabs'),
+      embeddedTabPanelsOnly: true,
+      externalTabIndex: _tabIndex.clamp(0, 3),
+      embedded: true,
+      patientId: widget.appointment.patientId,
+      patientName: ctx?.patientName ?? widget.patientName,
+      patientEmail: ctx?.patientEmail ?? widget.patientEmail ?? '',
+      mustChangePassword: false,
+      onOpenTimeline: widget.onOpenTimeline ?? _openFullTimeline,
+      onOpenRequestAnalysis: widget.onOpenRequestAnalysis ?? () {},
+      onOpenAssignPrescription: widget.onOpenAssignPrescription ?? () {},
+      onOpenSchedule: widget.onOpenSchedule ?? () {},
+      onOpenQuestionnaire: widget.onOpenQuestionnaire ?? () {},
+    );
+  }
+
+  Widget _buildConsultationTabPanel(bool wide) {
+    if (wide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _buildMainColumn()),
+          const SizedBox(width: 20),
+          _buildTimelineSidebar(wide: true),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildMainColumn(),
+        const SizedBox(height: 20),
+        _buildTimelineSidebar(wide: false),
+      ],
+    );
+  }
+
+  Widget _buildShell() {
     final ctx = _context;
     final pending = _pendingAnalysis;
     final stats = ctx?.stats ?? const ConsultationStats();
@@ -1015,32 +1179,35 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
               ),
               const SizedBox(height: 26),
               DoctorPatientTabBar(
-                selectedIndex: 4,
+                selectedIndex: _tabIndex,
+                includeConsultationTab: true,
                 onSelected: (index) {
-                  if (index == 4) return;
-                  widget.onTabSelected?.call(index);
+                  if (index == _tabIndex) return;
+                  setState(() => _tabIndex = index);
                 },
               ),
               const SizedBox(height: 22),
               if (_error != null) ...[
-                const SizedBox(height: 12),
                 Text(_error!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 12),
               ],
-              const SizedBox(height: 18),
-              if (wide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Expanded(
+                child: IndexedStack(
+                  index: _tabIndex == 4 ? 1 : 0,
                   children: [
-                    Expanded(child: _buildMainColumn()),
-                    const SizedBox(width: 20),
-                    _buildTimelineSidebar(wide: true),
+                    SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 32),
+                      child: _buildProfileTabPanels(),
+                    ),
+                    SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 32),
+                      child: _buildConsultationTabPanel(wide),
+                    ),
                   ],
-                )
-              else ...[
-                _buildMainColumn(),
-                const SizedBox(height: 20),
-                _buildTimelineSidebar(wide: false),
-              ],
+                ),
+              ),
             ],
           ),
         );
@@ -1074,9 +1241,9 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     if (widget.embedded) {
       return ColoredBox(
         color: KeepiColors.surfaceBg,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(pad, 8, pad, 32),
-          child: _buildContent(),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+          child: _buildShell(),
         ),
       );
     }
@@ -1084,9 +1251,9 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(pad, 12, pad, 28),
-          child: _buildContent(),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(pad, 12, pad, 0),
+          child: _buildShell(),
         ),
       ),
     );

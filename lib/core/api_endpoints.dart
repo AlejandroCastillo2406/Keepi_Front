@@ -102,6 +102,8 @@ class ApiEndpoints {
       _path('/doctors/scheduling/settings');
   static String get doctorSchedulingAvailabilityRules =>
       _path('/doctors/scheduling/availability-rules');
+  static String get doctorSchedulingAvailableSlots =>
+      _path('/doctors/scheduling/available-slots');
 
   // Flujo del paciente
   static String get appointmentsPatientRequest =>
