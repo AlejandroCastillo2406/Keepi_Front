@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../screens/common/notifications_dropdown_menu.dart'; // O la ruta donde lo guardaste
 import '../core/app_theme.dart';
 class WebNavItem {
   const WebNavItem({
@@ -317,11 +317,7 @@ class _WebShellHeader extends StatelessWidget {
       child: Row(
         children: [
           const Spacer(),
-          if (onNotifications != null)
-            _HeaderIconButton(
-              icon: Icons.notifications_none_rounded,
-              onTap: onNotifications!,
-            ),
+          NotificationBellMenu(onViewAll: onNotifications),
           if (userLabel != null) ...[
             const SizedBox(width: 14),
             Column(

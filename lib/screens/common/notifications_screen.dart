@@ -666,7 +666,7 @@ class _NotifCard extends StatelessWidget {
     if (raw == null || raw.isEmpty) return '';
     final dt = DateTime.tryParse(raw)?.toLocal();
     if (dt == null) return '';
-    return '${_two(dt.day)} ${_monthsEsUpper[dt.month - 1]} Â· ${_two(dt.hour)}:${_two(dt.minute)}';
+    return '${_two(dt.day)} ${_monthsEsUpper[dt.month - 1]} · ${_two(dt.hour)}:${_two(dt.minute)}';
   }
 
   @override
