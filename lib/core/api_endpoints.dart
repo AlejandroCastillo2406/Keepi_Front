@@ -61,6 +61,8 @@ class ApiEndpoints {
       _path(Config.pathDocumentsS3FoldersContents);
   static String get documentsS3FileViewUrl =>
       _path('/documents/s3/files/view-url');
+  static String get documentsS3FileContent =>
+      _path('/documents/s3/files/content');
 
   static String get documentsMobileAnalyze =>
       _path(Config.pathDocumentsMobileAnalyze);

@@ -49,11 +49,11 @@ class DocumentExportService {
 
   Future<Uint8List> downloadFileBytes(DriveFile file) async {
     if (DocumentFileOpener.isS3Path(file.id)) {
-      final info = await _drive.getS3FileViewUrl(file.id);
-      if (info.viewUrl.isEmpty) {
-        throw Exception('No se pudo obtener el enlace del archivo en la nube.');
+      final bytes = await _drive.downloadS3FileContent(file.id);
+      if (bytes.isEmpty) {
+        throw Exception('El archivo está vacío o no está disponible.');
       }
-      return DocumentBytesLoader.fetch(url: info.viewUrl);
+      return Uint8List.fromList(bytes);
     }
 
     final docId = _resolveDocumentId(file);

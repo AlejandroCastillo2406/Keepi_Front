@@ -18,6 +18,7 @@ import '../../utils/consultation_note_codec.dart';
 import '../../utils/patient_expediente_export.dart';
 import '../../utils/timeline_event_resolver.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
+import '../../widgets/patient_care_timeline.dart';
 import '../../widgets/profile_settings_widgets.dart';
 import 'doctor_patient_profile_screen.dart';
 import 'doctor_patient_timeline_screen.dart';
@@ -565,9 +566,12 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final message = e is DioException
+          ? DoctorService.messageFromDio(e)
+          : e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(message),
           backgroundColor: Colors.red.shade800,
         ),
       );
@@ -1037,22 +1041,18 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
               ),
             )
           else
-            ...recent.asMap().entries.map((entry) {
-              final i = entry.key;
-              final e = entry.value;
-              final isLast = i == recent.length - 1;
-              return _ConsultationTimelineEntry(
+            PatientCareTimeline(
+              events: recent,
+              showSectionHeader: false,
+              compact: true,
+              onEventTap: (e) => TimelineEventOpener.openTimelineEvent(
+                context,
+                patientId: widget.appointment.patientId,
+                patientName: widget.patientName,
                 event: e,
-                isLast: isLast,
-                onTap: () => TimelineEventOpener.openTimelineEvent(
-                  context,
-                  patientId: widget.appointment.patientId,
-                  patientName: widget.patientName,
-                  event: e,
-                  onNoteSaved: _bootstrap,
-                ),
-              );
-            }),
+                onNoteSaved: _bootstrap,
+              ),
+            ),
           const SizedBox(height: 12),
           TextButton(
             onPressed: _openFullTimeline,
@@ -1071,7 +1071,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     );
 
     if (wide) {
-      return SizedBox(width: 300, child: panel);
+      return SizedBox(width: 340, child: panel);
     }
     return panel;
   }
@@ -1254,152 +1254,6 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
         child: Padding(
           padding: EdgeInsets.fromLTRB(pad, 12, pad, 0),
           child: _buildShell(),
-        ),
-      ),
-    );
-  }
-}
-
-class _ConsultationTimelineEntry extends StatelessWidget {
-  const _ConsultationTimelineEntry({
-    required this.event,
-    required this.isLast,
-    required this.onTap,
-  });
-
-  final TimelineEvent event;
-  final bool isLast;
-  final VoidCallback onTap;
-
-  static const _months = [
-    'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
-    'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC',
-  ];
-
-  Color _iconColor(String type) {
-    switch (type) {
-      case 'prescription':
-        return KeepiColors.skyBlue;
-      case 'appointment':
-        return KeepiColors.orange;
-      case 'analysis':
-      case 'analysis_request':
-        return const Color(0xFF2563EB);
-      default:
-        return KeepiColors.slate;
-    }
-  }
-
-  IconData _icon(String type) {
-    switch (type) {
-      case 'prescription':
-        return Icons.medication_outlined;
-      case 'appointment':
-        return Icons.event_available_outlined;
-      case 'analysis':
-      case 'analysis_request':
-        return Icons.biotech_outlined;
-      default:
-        return Icons.circle_outlined;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dt = DateTime.tryParse(event.occurredAt)?.toLocal();
-    final day = dt?.day ?? 0;
-    final month = dt != null ? _months[dt.month - 1] : event.date;
-    final accent = _iconColor(event.eventType);
-    final subtitle = (event.subtitle ?? event.description).trim();
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: 52,
-                child: Column(
-                  children: [
-                    Text(
-                      day > 0 ? '$day' : '—',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: KeepiColors.slate,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      month,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: KeepiColors.slateLight,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: Container(
-                        width: 2,
-                        color: isLast
-                            ? Colors.transparent
-                            : KeepiColors.cardBorder,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: accent.withValues(alpha: 0.35)),
-                  ),
-                  child: Icon(_icon(event.eventType), size: 17, color: accent),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event.title,
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: KeepiColors.slateLight,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

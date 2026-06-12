@@ -1,6 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+import 'document_export_save_stub.dart'
+    if (dart.library.html) 'document_export_save_web.dart';
 
 /// Abre el diálogo del sistema para elegir carpeta/nombre del ZIP exportado.
 class DocumentExportSave {
@@ -12,6 +16,11 @@ class DocumentExportSave {
     var name = fileName.trim();
     if (name.isEmpty) name = 'Expedientes_Keepi.zip';
     if (!name.toLowerCase().endsWith('.zip')) name = '$name.zip';
+
+    if (kIsWeb) {
+      await downloadZipInBrowser(bytes, name);
+      return name;
+    }
 
     return FilePicker.platform.saveFile(
       dialogTitle: '¿Dónde quieres guardar el expediente?',

@@ -446,6 +446,15 @@ class DriveStructureService {
     return DriveFileViewInfo.fromJson(res.data!);
   }
 
+  Future<List<int>> downloadS3FileContent(String path) async {
+    final res = await _api.dio.get<List<int>>(
+      ApiEndpoints.documentsS3FileContent,
+      queryParameters: {'path': path},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return res.data ?? [];
+  }
+
   Future<DriveFolderContentsResponse> getS3FolderContents(String path) async {
     final res = await _api.dio.get<Map<String, dynamic>>(
       ApiEndpoints.documentsS3FoldersContents,

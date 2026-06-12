@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/patient_export_folder.dart';
 import '../services/api_client.dart';
@@ -76,7 +77,11 @@ Future<void> exportPatientExpedienteZip({
 
   messenger.showSnackBar(
     SnackBar(
-      content: Text('Expediente guardado en:\n$savedPath'),
+      content: Text(
+        kIsWeb
+            ? 'Expediente descargado: $savedPath'
+            : 'Expediente guardado en:\n$savedPath',
+      ),
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 5),
     ),

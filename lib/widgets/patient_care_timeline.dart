@@ -20,6 +20,7 @@ class PatientCareTimeline extends StatelessWidget {
     this.title = 'Historial y próximos pasos',
     this.subtitle,
     this.onEventTap,
+    this.compact = false,
   });
 
   final List<TimelineEvent> events;
@@ -27,6 +28,8 @@ class PatientCareTimeline extends StatelessWidget {
   final String title;
   final String? subtitle;
   final void Function(TimelineEvent)? onEventTap;
+  /// Sidebar estrecho (p. ej. consulta): tipografía más pequeña y sin detalle en CUENTA.
+  final bool compact;
 
   static const _green = Color(0xFF15803D);
   static const _orange = Color(0xFFC2410C);
@@ -144,6 +147,7 @@ class PatientCareTimeline extends StatelessWidget {
         widgets.add(_MonthDivider(
           label: '${_monthsEs[dt.month - 1]} · ${dt.year}',
           isFirst: i == 0,
+          compact: compact,
         ));
       }
 
@@ -160,6 +164,7 @@ class PatientCareTimeline extends StatelessWidget {
         stateLabel: _stateLabel(e.visualState),
         onTap: onEventTap != null ? () => onEventTap!(e) : null,
         hasDoctorNote: e.hasDoctorNote,
+        compact: compact,
       ));
     }
 
@@ -268,36 +273,44 @@ class _Header extends StatelessWidget {
 // SEPARADOR DE MES
 
 class _MonthDivider extends StatelessWidget {
-  const _MonthDivider({required this.label, required this.isFirst});
+  const _MonthDivider({
+    required this.label,
+    required this.isFirst,
+    this.compact = false,
+  });
 
   final String label;
   final bool isFirst;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final stampWidth = compact ? 40.0 : 52.0;
     return Padding(
       padding: EdgeInsets.only(top: isFirst ? 14 : 6, bottom: 10),
       child: Row(
         children: [
-          // Alineación con el bloque del sello de fecha
-          const SizedBox(width: 52),
-          const SizedBox(width: 10),
+          SizedBox(width: stampWidth),
+          SizedBox(width: compact ? 8 : 10),
           Container(
-            width: 24,
+            width: compact ? 18 : 24,
             height: 1,
             color: KeepiColors.slate.withValues(alpha: 0.35),
           ),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2.0,
-              color: KeepiColors.slate,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: compact ? 9.5 : 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: compact ? 1.4 : 2.0,
+                color: KeepiColors.slate,
+              ),
+              softWrap: true,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Container(
               height: 1,
@@ -327,6 +340,7 @@ class _Entry extends StatelessWidget {
     required this.stateLabel,
     this.onTap,
     this.hasDoctorNote = false,
+    this.compact = false,
   });
 
   final TimelineEvent event;
@@ -341,6 +355,7 @@ class _Entry extends StatelessWidget {
   final String stateLabel;
   final VoidCallback? onTap;
   final bool hasDoctorNote;
+  final bool compact;
 
   String get _detail {
     final s = (event.subtitle ?? '').trim();
@@ -349,18 +364,28 @@ class _Entry extends StatelessWidget {
     return d;
   }
 
+  bool get _showDetail => !compact && _detail.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     final detail = _detail;
     final isCurrent = event.visualState == 'current';
+    final stampWidth = compact ? 40.0 : 52.0;
+    final railWidth = compact ? 28.0 : 34.0;
+    final gapAfterStamp = compact ? 6.0 : 10.0;
+    final gapAfterRail = compact ? 8.0 : 14.0;
+    final dayFontSize = compact ? 20.0 : 26.0;
+    final titleFontSize = compact ? 13.5 : 15.5;
+    final detailFontSize = compact ? 12.0 : 13.0;
+    final markerSize = compact ? 28.0 : 32.0;
+    final iconSize = compact ? 15.0 : 18.0;
 
     final content = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-            // ── Sello de fecha (DAY / MES / HORA) ──
             SizedBox(
-              width: 52,
+              width: stampWidth,
               child: Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Column(
@@ -368,47 +393,49 @@ class _Entry extends StatelessWidget {
                   children: [
                     Text(
                       day.toString().padLeft(2, '0'),
-                      style: const TextStyle(
-                        fontSize: 26,
+                      style: TextStyle(
+                        fontSize: dayFontSize,
                         fontWeight: FontWeight.w800,
                         color: KeepiColors.slate,
                         height: 1,
-                        letterSpacing: -1.0,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                        letterSpacing: compact ? -0.5 : -1.0,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       monthAbbr,
-                      style: const TextStyle(
-                        fontSize: 9.5,
+                      style: TextStyle(
+                        fontSize: compact ? 8.5 : 9.5,
                         fontWeight: FontWeight.w800,
                         color: KeepiColors.slateLight,
-                        letterSpacing: 1.8,
+                        letterSpacing: compact ? 1.2 : 1.8,
                       ),
                     ),
                     if (event.time.trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      SizedBox(height: compact ? 4 : 6),
                       Text(
                         event.time.trim(),
-                        style: const TextStyle(
-                          fontSize: 10,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: compact ? 9 : 10,
                           color: KeepiColors.slateLight,
                           fontWeight: FontWeight.w600,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                          letterSpacing: 0.3,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          letterSpacing: 0.2,
+                          height: 1.2,
                         ),
+                        softWrap: true,
                       ),
                     ],
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: gapAfterStamp),
 
-            // ── Rail con marcador ──
             SizedBox(
-              width: 34,
+              width: railWidth,
               child: Stack(
                 alignment: Alignment.topCenter,
                 children: [
@@ -418,6 +445,7 @@ class _Entry extends StatelessWidget {
                         color: stateColor.withValues(alpha: 0.45),
                         skipTop: isFirstInMonth,
                         skipBottom: isLastInMonth,
+                        markerSize: markerSize,
                       ),
                     ),
                   ),
@@ -428,39 +456,40 @@ class _Entry extends StatelessWidget {
                       ringColor: stateColor,
                       iconColor: eventColor,
                       isCurrent: isCurrent,
+                      size: markerSize,
+                      iconSize: iconSize,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 14),
+            SizedBox(width: gapAfterRail),
 
-            // ── Contenido ──
             Expanded(
               child: Padding(
-                padding: EdgeInsets.only(top: 2, bottom: isLastInMonth ? 18 : 22),
+                padding: EdgeInsets.only(top: 2, bottom: isLastInMonth ? (compact ? 14 : 18) : (compact ? 16 : 22)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Meta line: ● TIPO / ESTADO
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
                           width: 5,
                           height: 5,
                           decoration: BoxDecoration(color: stateColor, shape: BoxShape.circle),
                         ),
-                        const SizedBox(width: 7),
                         Text(
                           typeLabel,
                           style: TextStyle(
-                            fontSize: 10.5,
+                            fontSize: compact ? 9.5 : 10.5,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: 1.4,
+                            letterSpacing: compact ? 1.0 : 1.4,
                             color: eventColor,
                           ),
                         ),
-                        const SizedBox(width: 7),
                         Container(
                           width: 2,
                           height: 2,
@@ -469,50 +498,51 @@ class _Entry extends StatelessWidget {
                             shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(width: 7),
                         Text(
                           stateLabel,
                           style: TextStyle(
-                            fontSize: 10.5,
+                            fontSize: compact ? 9.5 : 10.5,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2,
+                            letterSpacing: compact ? 0.8 : 1.2,
                             color: KeepiColors.slateLight,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: compact ? 4 : 6),
                     Container(
                       height: 2,
-                      width: 20,
+                      width: compact ? 16 : 20,
                       decoration: BoxDecoration(
                         color: eventColor,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: compact ? 6 : 8),
                     Text(
                       event.title,
-                      style: const TextStyle(
-                        fontSize: 15.5,
+                      style: TextStyle(
+                        fontSize: titleFontSize,
                         fontWeight: FontWeight.w700,
                         color: KeepiColors.slate,
                         height: 1.25,
                         letterSpacing: -0.25,
                       ),
+                      softWrap: true,
                     ),
-                    if (detail.isNotEmpty) ...[
+                    if (_showDetail) ...[
                       const SizedBox(height: 3),
                       Text(
                         detail,
-                        style: const TextStyle(
-                          fontSize: 13,
+                        style: TextStyle(
+                          fontSize: detailFontSize,
                           color: KeepiColors.slateLight,
-                          height: 1.4,
+                          height: 1.35,
                         ),
+                        softWrap: true,
                       ),
                     ],
-                    if (event.actor.trim().isNotEmpty) ...[
+                    if (event.actor.trim().isNotEmpty && !compact) ...[
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -588,18 +618,22 @@ class _Marker extends StatelessWidget {
     required this.ringColor,
     required this.iconColor,
     required this.isCurrent,
+    this.size = 32,
+    this.iconSize = 18,
   });
 
   final IconData icon;
   final Color ringColor;
   final Color iconColor;
   final bool isCurrent;
+  final double size;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 32,
-      height: 32,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
@@ -614,7 +648,7 @@ class _Marker extends StatelessWidget {
               ]
             : null,
       ),
-      child: Icon(icon, size: 18, color: iconColor),
+      child: Icon(icon, size: iconSize, color: iconColor),
     );
   }
 }
@@ -627,16 +661,17 @@ class _RailPainter extends CustomPainter {
     required this.color,
     required this.skipTop,
     required this.skipBottom,
+    this.markerSize = 32,
   });
 
   final Color color;
   final bool skipTop;
   final bool skipBottom;
+  final double markerSize;
 
   static const _markerTop = 2.0;
-  static const _markerSize = 32.0;
-  static const _centerY = _markerTop + _markerSize / 2;
-  static const _half = _markerSize / 2;
+  double get _centerY => _markerTop + markerSize / 2;
+  double get _half => markerSize / 2;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -658,6 +693,7 @@ class _RailPainter extends CustomPainter {
   bool shouldRepaint(covariant _RailPainter oldDelegate) {
     return oldDelegate.color != color ||
         oldDelegate.skipTop != skipTop ||
-        oldDelegate.skipBottom != skipBottom;
+        oldDelegate.skipBottom != skipBottom ||
+        oldDelegate.markerSize != markerSize;
   }
 }
