@@ -370,8 +370,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
 
   Widget _buildPremiumPrescriptionCard(AppNotificationDto n) {
-    return FutureBuilder<List<dynamic>>(
-      future: PrescriptionService(context.read<ApiClient>()).fetchMine().catchError((e) => []),
+    return FutureBuilder<List<PrescriptionDto>>(
+      future: PrescriptionService(context.read<ApiClient>())
+          .fetchMine()
+          .catchError((_) => <PrescriptionDto>[]),
       builder: (context, snapshot) {
         
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -393,7 +395,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             if (p.id.toString().replaceAll(RegExp(r'^pres_'), '').trim() == targetId) {
               doctorName = p.doctorName ?? doctorName;
               fileName = p.sourceFileName ?? fileName;
-              itemsToDisplay = p.items ?? [];
+              itemsToDisplay = p.items;
               break;
             }
           }
@@ -648,8 +650,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
 
-    return FutureBuilder<List<dynamic>>(
-      future: DoctorService(context.read<ApiClient>()).fetchPatientAnalysisRequests(patientId).catchError((e) => []),
+    return FutureBuilder<List<AnalysisRequestDto>>(
+      future: DoctorService(context.read<ApiClient>())
+          .fetchPatientAnalysisRequests(patientId)
+          .catchError((_) => <AnalysisRequestDto>[]),
       builder: (context, snapshot) {
         
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -660,7 +664,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
 
         final payloadData = NotificationNavigation.dataFromNotification(n);
-        final targetId = (payloadData['requestId']?.toString() ?? payloadData['analysisId']?.toString() ?? n.id ?? '').replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+        final targetId = (payloadData['requestId']?.toString() ??
+                payloadData['analysisId']?.toString() ??
+                n.id)
+            .replaceAll(RegExp(r'^(ana_|req_)'), '')
+            .trim();
         
         bool isCompleted = false;
         bool hasDocument = false;
@@ -669,34 +677,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         String description = n.message.isNotEmpty ? n.message : n.title;
 
         if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-          final eventDesc = description.trim().toLowerCase();
+          for (final r in snapshot.data!) {
+            final rId = r.id.replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+            final rDesc = r.description;
+            final rStatus = r.status;
+            final rDocId = r.documentId ?? '';
+            final rCompleted = r.completedAt ?? '';
 
-          for (var r in snapshot.data!) {
-            String rId = '';
-            String rDesc = '';
-            String rStatus = '';
-            String rDocId = '';
-            String rCompleted = '';
+            final eventDesc = description.trim().toLowerCase();
+            final cleanRDesc = rDesc.trim().toLowerCase();
 
-            if (r is Map) {
-              rId = (r['id'] ?? '').toString();
-              rDesc = (r['description'] ?? '').toString();
-              rStatus = (r['status'] ?? '').toString();
-              rDocId = (r['document_id'] ?? r['documentId'] ?? '').toString();
-              rCompleted = (r['completed_at'] ?? r['completedAt'] ?? '').toString();
-            } else {
-              try { rId = r.id?.toString() ?? ''; } catch(_) {}
-              try { rDesc = r.description?.toString() ?? ''; } catch(_) {}
-              try { rStatus = r.status?.toString() ?? ''; } catch(_) {}
-              try { rDocId = r.documentId?.toString() ?? ''; } catch(_) {}
-              try { rCompleted = r.completedAt?.toString() ?? ''; } catch(_) {}
-            }
-
-            rId = rId.replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
-            String cleanRDesc = rDesc.trim().toLowerCase();
-
-            bool matchById = targetId.isNotEmpty && rId == targetId;
-            bool matchByDesc = eventDesc.isNotEmpty && (cleanRDesc == eventDesc || cleanRDesc.contains(eventDesc) || eventDesc.contains(cleanRDesc));
+            final matchById = targetId.isNotEmpty && rId == targetId;
+            final matchByDesc = eventDesc.isNotEmpty &&
+                (cleanRDesc == eventDesc ||
+                    cleanRDesc.contains(eventDesc) ||
+                    eventDesc.contains(cleanRDesc));
 
             if (matchById || matchByDesc) {
               isCompleted = rStatus.toLowerCase() == 'completed' || rDocId.isNotEmpty;

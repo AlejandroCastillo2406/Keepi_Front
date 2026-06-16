@@ -15,7 +15,6 @@ import '../../services/timeline_event_opener.dart';
 import '../../utils/patient_expediente_export.dart';
 import '../../widgets/doctor_clinical_profile_editor.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
-import '../../widgets/timeline_event_detail_sheet.dart';
 import '../../widgets/patient_care_timeline.dart';
 import '../../router/app_navigation.dart';
 import '../../router/app_paths.dart';
@@ -1042,16 +1041,6 @@ class _DoctorPatientProfileScreenState
       body: body,
     );
   }
-
-  void _showEventDetail(BuildContext context, TimelineEvent event) {
-    TimelineEventDetailSheet.show(
-      context,
-      patientId: widget.patientId,
-      event: event,
-      onNoteSaved: () => _reloadProfile(),
-    );
-  }
-
 
   Future<void> _openDoctorUploadPending(AnalysisRequestDto item) async {
     final ok = await context.push<bool>(

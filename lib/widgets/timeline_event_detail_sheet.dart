@@ -232,9 +232,9 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
                             border: Border.all(color: Colors.grey.shade200)
                           ),
                           child: Text(
-                            (event.description == null || event.description!.isEmpty) 
-                                ? "Sin contenido registrado." 
-                                : event.description!, 
+                            event.description.isEmpty
+                                ? "Sin contenido registrado."
+                                : event.description,
                             style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)
                           ),
                         ),
@@ -254,8 +254,10 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
 
 
   Widget _buildAnalysisDetailCard(TimelineEvent event) {
-    return FutureBuilder<List<dynamic>>(
-      future: DoctorService(context.read<ApiClient>()).fetchPatientAnalysisRequests(widget.patientId).catchError((e) => []),
+    return FutureBuilder<List<AnalysisRequestDto>>(
+      future: DoctorService(context.read<ApiClient>())
+          .fetchPatientAnalysisRequests(widget.patientId)
+          .catchError((_) => <AnalysisRequestDto>[]),
       builder: (context, snapshot) {
         
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -265,22 +267,20 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
           );
         }
 
-        dynamic matchedRequest;
-        final targetId = (event.id ?? '').replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
-        final eventDesc = (event.description ?? '').trim().toLowerCase();
+        AnalysisRequestDto? matchedRequest;
+        final targetId = event.id.replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+        final eventDesc = event.description.trim().toLowerCase();
 
         if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-          for (var r in snapshot.data!) {
-            String rId = '';
-            try { rId = r.id.toString().replaceAll(RegExp(r'^(ana_|req_)'), '').trim(); } catch(e){}
-            
+          for (final r in snapshot.data!) {
+            final rId = r.id.replaceAll(RegExp(r'^(ana_|req_)'), '').trim();
+
             if (rId == targetId && targetId.isNotEmpty) {
               matchedRequest = r;
               break;
             }
-            
-            String rDesc = '';
-            try { rDesc = (r.description ?? '').toString().trim().toLowerCase(); } catch(e){}
+
+            final rDesc = r.description.trim().toLowerCase();
             if (rDesc.isNotEmpty && rDesc == eventDesc) {
               matchedRequest = r;
             }
@@ -291,14 +291,18 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
         bool hasDocument = false;
         String docId = '';
         String completedAtStr = '';
-        String description = event.description ?? event.title;
+        String description =
+            event.description.isEmpty ? event.title : event.description;
 
         if (matchedRequest != null) {
-           try { isCompleted = matchedRequest.status.toString().toLowerCase() == 'completed'; } catch(e) {}
-           try { docId = matchedRequest.documentId?.toString() ?? ''; } catch(e) {}
-           try { hasDocument = docId.isNotEmpty; } catch(e) {}
-           try { completedAtStr = matchedRequest.completedAt?.toString() ?? ''; } catch(e) {}
-           try { description = matchedRequest.description?.toString() ?? description; } catch(e) {}
+          isCompleted =
+              matchedRequest.status.toLowerCase() == 'completed';
+          docId = matchedRequest.documentId ?? '';
+          hasDocument = docId.isNotEmpty;
+          completedAtStr = matchedRequest.completedAt ?? '';
+          if (matchedRequest.description.isNotEmpty) {
+            description = matchedRequest.description;
+          }
         }
 
         bool eventHasFile = event.s3Url != null && event.s3Url!.isNotEmpty;
@@ -627,9 +631,9 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
                   border: Border.all(color: Colors.grey.shade200)
                 ),
                 child: Text(
-                  (event.description == null || event.description!.isEmpty) 
-                      ? "Sin contenido registrado o respuestas no encontradas." 
-                      : event.description!, 
+                  event.description.isEmpty
+                      ? "Sin contenido registrado o respuestas no encontradas."
+                      : event.description,
                   style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)
                 ),
               ),
@@ -799,8 +803,10 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
 
 
   Widget _buildPremiumPrescriptionCard(TimelineEvent event) {
-    return FutureBuilder<List<dynamic>>(
-      future: PrescriptionService(context.read<ApiClient>()).fetchMine().catchError((e) => []),
+    return FutureBuilder<List<PrescriptionDto>>(
+      future: PrescriptionService(context.read<ApiClient>())
+          .fetchMine()
+          .catchError((_) => <PrescriptionDto>[]),
       builder: (context, snapshot) {
         
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -812,25 +818,28 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
 
         String doctorName = "Médico Tratante";
         String fileName = "receta_clinica.pdf";
-        List<dynamic> itemsToDisplay = [];
+        List<Object> itemsToDisplay = [];
 
         if (snapshot.hasData && snapshot.data!.isNotEmpty) {
           final list = snapshot.data!;
-          final targetId = (event.id ?? '').replaceAll(RegExp(r'^pres_'), '').trim();
+          final targetId = event.id.replaceAll(RegExp(r'^pres_'), '').trim();
           
-          for (var p in list) {
-            if (p.id.toString().replaceAll(RegExp(r'^pres_'), '').trim() == targetId) {
+          for (final p in list) {
+            if (p.id.replaceAll(RegExp(r'^pres_'), '').trim() == targetId) {
               doctorName = p.doctorName ?? doctorName;
               fileName = p.sourceFileName ?? fileName;
-              itemsToDisplay = p.items ?? [];
+              itemsToDisplay = p.items;
               break;
             }
           }
         }
 
         if (itemsToDisplay.isEmpty) {
-          if (event.description != null && event.description!.isNotEmpty) {
-            itemsToDisplay = event.description!.split('\n').where((e) => e.trim().isNotEmpty).toList();
+          if (event.description.isNotEmpty) {
+            itemsToDisplay = event.description
+                .split('\n')
+                .where((e) => e.trim().isNotEmpty)
+                .toList();
           } else {
             itemsToDisplay = ["Receta registrada en el historial"];
           }
@@ -902,13 +911,11 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
 
                 if (item is String) {
                   medName = item.trim().toUpperCase();
-                } else {
-                  try {
-                    medName = item.medication?.toString().toUpperCase() ?? "DESCONOCIDO";
-                    String hours = item.everyHours?.toString() ?? "-";
-                    String days = item.durationDays?.toString() ?? "-";
-                    subtitle = "cada ${hours}h · $days días · Oral";
-                  } catch(e) {}
+                } else if (item is PrescriptionItemDto) {
+                  medName = item.medication.toUpperCase();
+                  final hours = item.everyHours?.toString() ?? "-";
+                  final days = item.durationDays?.toString() ?? "-";
+                  subtitle = "cada ${hours}h · $days días · Oral";
                 }
 
                 return Padding(
@@ -938,7 +945,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => _openScanFromTimeline(event.id ?? ''), 
+                  onPressed: () => _openScanFromTimeline(event.id),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4B5563), 
                     foregroundColor: Colors.white,

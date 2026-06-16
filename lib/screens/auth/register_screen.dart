@@ -7,7 +7,6 @@ import '../../core/decorative_background.dart';
 import '../../core/roles.dart';
 import '../../providers/auth_provider.dart';
 import '../../router/app_paths.dart';
-import '../doctor/doctor_scheduling_settings_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
