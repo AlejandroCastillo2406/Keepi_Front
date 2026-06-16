@@ -130,10 +130,26 @@ class PushNotificationService {
       return;
     }
 
+    if (NotificationNavigation.isQuestionnaireCompleted(data)) {
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        await NotificationNavigation.openQuestionnaireCompletedDetail(
+          context,
+          notification: NotificationNavigation.notificationFromPushData(
+            data,
+            fallbackTitle: fallbackTitle,
+            fallbackBody: fallbackQuestion,
+          ),
+        );
+      }
+      return;
+    }
+
     final appointmentId = data['appointment_id']?.toString();
     if (appointmentId != null && appointmentId.isNotEmpty) {
       await _handleAppointmentFromPush(
         navigatorKey: navigatorKey,
+        data: data,
         appointmentId: appointmentId,
         action: data['action']?.toString(),
         fallbackTitle: fallbackTitle,
@@ -175,6 +191,7 @@ class PushNotificationService {
 
   static Future<void> _handleAppointmentFromPush({
     required GlobalKey<NavigatorState> navigatorKey,
+    required Map<String, dynamic> data,
     required String appointmentId,
     String? action,
     String? fallbackTitle,
@@ -182,14 +199,16 @@ class PushNotificationService {
   }) async {
     final context = navigatorKey.currentContext;
     if (context == null) return;
+    NotificationNavigation.navigateForAppointmentPush(context, data);
+    if (!context.mounted) return;
     final api = Provider.of<ApiClient>(context, listen: false);
     final svc = AppointmentService(api);
 
-    // Determinamos si la push es para el doctor o para el paciente
-    final isDoctorReview = action == 'doctor_review';
+    final isDoctorReview = action == 'doctor_review' ||
+        action == 'doctor_approve' ||
+        data['type']?.toString() == 'appointment_pending_approval';
 
     if (isDoctorReview) {
-      // --- FLUJO DEL DOCTOR (Asignar fecha) ---
       final title = fallbackTitle ?? 'Solicitud de Cita';
       final question = fallbackQuestion ?? 'Un paciente ha solicitado una cita. ¿Deseas asignarle una fecha ahora?';
 
@@ -240,7 +259,6 @@ class PushNotificationService {
         }
       }
     } else {
-      // --- FLUJO DEL PACIENTE (Aceptar / Rechazar) ---
       final title = fallbackTitle ?? 'Propuesta de Cita';
       final question = fallbackQuestion ?? 'El doctor ha asignado una fecha para tu cita. ¿Deseas aceptarla?';
 

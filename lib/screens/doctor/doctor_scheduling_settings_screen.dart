@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
@@ -194,7 +195,7 @@ class _DoctorSchedulingSettingsScreenState
       );
       widget.onFinished?.call();
       if (widget.canSkip) {
-        Navigator.of(context).pop();
+        context.pop();
       }
     } catch (e) {
       if (!mounted) return;
@@ -209,7 +210,9 @@ class _DoctorSchedulingSettingsScreenState
       widget.onBack!();
       return;
     }
-    Navigator.of(context).maybePop();
+    if (context.canPop()) {
+      context.pop();
+    }
   }
 
   Widget _buildHeader() {
@@ -652,7 +655,7 @@ class _DoctorSchedulingSettingsScreenState
                   ? null
                   : () {
                       widget.onFinished?.call();
-                      Navigator.of(context).pop();
+                      context.pop();
                     },
               child: const Text('Omitir'),
             ),

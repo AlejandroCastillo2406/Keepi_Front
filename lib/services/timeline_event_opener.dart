@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../core/app_theme.dart';
-import '../core/doctor_web_shell_scope.dart';
-import '../core/web_layout.dart';
 import '../models/timeline_event.dart';
-import '../screens/common/prior_documents_screen.dart';
-import '../screens/doctor/doctor_consultation_screen.dart';
+import '../router/app_navigation.dart';
+import '../router/app_paths.dart';
 import '../services/api_client.dart';
 import '../services/appointment_service.dart';
 import '../services/doctor_service.dart';
@@ -26,25 +24,7 @@ class TimelineEventOpener {
   }) async {
     if (event.isPriorDocuments) {
       final pid = event.actionPatientId ?? patientId;
-      final webNav = DoctorWebShellScope.maybeOf(context);
-      if (webNav != null && isWebWide(context)) {
-        webNav.push(
-          DoctorWebRoute(
-            kind: DoctorWebOverlayKind.priorDocuments,
-            priorDocumentsPatientId: pid,
-            priorDocumentsPatientName: patientName,
-          ),
-        );
-        return;
-      }
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => PriorDocumentsScreen(
-            patientId: pid,
-            patientName: patientName,
-          ),
-        ),
-      );
+      await context.push<void>(AppPaths.doctorPriorDocuments(pid));
       return;
     }
 
@@ -93,24 +73,12 @@ class TimelineEventOpener {
 
     if (!context.mounted) return;
 
-    final webNav = DoctorWebShellScope.maybeOf(context);
-    if (webNav != null && isWebWide(context)) {
-      webNav.openConsultation(
-        appointment,
-        patientName: name,
-        patientEmail: email,
-      );
-      return;
-    }
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => DoctorConsultationScreen(
-          appointment: appointment,
-          patientName: name,
-          patientEmail: email,
-          onSaved: onNoteSaved,
-        ),
+    await context.push<void>(
+      AppPaths.doctorConsultation(
+        appointment.id,
+        patientId: appointment.patientId,
+        name: name,
+        email: email,
       ),
     );
   }
@@ -123,48 +91,12 @@ class TimelineEventOpener {
     VoidCallback? onSaved,
   }) async {
     if (!context.mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: KeepiColors.orange),
-      ),
-    );
-
-    AppointmentDto appointment;
-    try {
-      appointment =
-          await AppointmentService(context.read<ApiClient>()).fetchById(
+    await AppNavigation.push<void>(
+      context,
+      AppPaths.doctorConsultation(
         appointmentId,
-      );
-    } catch (e) {
-      if (context.mounted) Navigator.of(context).pop();
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppointmentService.messageFromDio(e))),
-      );
-      return;
-    }
-
-    if (context.mounted) Navigator.of(context).pop();
-    if (!context.mounted) return;
-
-    final webNav = DoctorWebShellScope.maybeOf(context);
-    if (webNav != null && isWebWide(context)) {
-      webNav.openConsultation(
-        appointment,
-        patientName: patientName,
-      );
-      return;
-    }
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => DoctorConsultationScreen(
-          appointment: appointment,
-          patientName: patientName,
-          onSaved: onSaved,
-        ),
+        patientId: patientId,
+        name: patientName,
       ),
     );
   }
@@ -197,16 +129,28 @@ class TimelineEventOpener {
       return;
     }
 
+    final patientName = patients
+            ?.where((p) => p.id == patientId)
+            .map((p) => p.name)
+            .firstOrNull ??
+        'Paciente';
+
+    if (type == 'appointment') {
+      await AppNavigation.push<void>(
+        context,
+        AppPaths.doctorConsultation(
+          item.id,
+          patientId: patientId,
+          name: patientName,
+        ),
+      );
+      return;
+    }
+
     final doctorSvc = DoctorService(context.read<ApiClient>());
 
     if (!context.mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: KeepiColors.orange),
-      ),
-    );
+    AppNavigation.showLoadingOverlay(context);
 
     TimelineEvent? event;
     try {
@@ -215,7 +159,7 @@ class TimelineEventOpener {
         item: item,
       );
     } catch (e) {
-      if (context.mounted) Navigator.of(context).pop();
+      if (context.mounted) AppNavigation.hideLoadingOverlay(context);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(DoctorService.messageFromDio(e))),
@@ -223,14 +167,8 @@ class TimelineEventOpener {
       return;
     }
 
-    if (context.mounted) Navigator.of(context).pop();
+    if (context.mounted) AppNavigation.hideLoadingOverlay(context);
     if (!context.mounted || event == null) return;
-
-    final patientName = patients
-            ?.where((p) => p.id == patientId)
-            .map((p) => p.name)
-            .firstOrNull ??
-        'Paciente';
 
     await openTimelineEvent(
       context,

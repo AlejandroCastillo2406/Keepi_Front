@@ -2,10 +2,13 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../providers/expedientes_cache_provider.dart';
+import '../../router/app_paths.dart';
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../core/file_type_style.dart';
@@ -23,10 +26,12 @@ class FolderContentsScreen extends StatefulWidget {
     super.key,
     required this.folderId,
     required this.folderName,
+    this.embedded = false,
   });
 
   final String folderId;
   final String folderName;
+  final bool embedded;
 
   @override
   State<FolderContentsScreen> createState() => _FolderContentsScreenState();
@@ -47,7 +52,15 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    final cached =
+        context.read<ExpedientesCacheProvider>().peekFolder(widget.folderId);
+    if (cached != null) {
+      _data = cached;
+      _loading = false;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load(force: cached == null);
+    });
   }
 
   @override
@@ -61,8 +74,23 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
     if (state == AppLifecycleState.resumed && _needsDriveReauth) _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
     if (!mounted) return;
+
+    final cache = context.read<ExpedientesCacheProvider>();
+    if (!force) {
+      final cached = cache.peekFolder(widget.folderId);
+      if (cached != null) {
+        setState(() {
+          _data = cached;
+          _loading = false;
+          _error = null;
+          _needsDriveReauth = false;
+        });
+        return;
+      }
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -71,9 +99,12 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
     try {
       final api = context.read<ApiClient>();
       final service = DriveStructureService(api);
-      final data = _isS3Folder
-          ? await service.getS3FolderContents(widget.folderId)
-          : await service.getFolderContents(widget.folderId);
+      final data = await cache.fetchAndCacheFolder(
+        driveSvc: service,
+        folderId: widget.folderId,
+        isS3: _isS3Folder,
+        force: force,
+      );
       if (mounted) {
         setState(() {
           _data = data;
@@ -123,7 +154,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
           );
         }
       }
-      await _load();
+      await _load(force: true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -155,7 +186,7 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
           DecorativeBackground(
         blobOpacity: 0.2,
         child: RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: () => _load(force: true),
         color: KeepiColors.orange,
         child: _loading
             ? Center(
@@ -349,15 +380,16 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
   }
 
   void _openFolder(DriveFolder folder) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => FolderContentsScreen(
-          folderId: folder.id,
-          folderName: folder.name,
-        ),
-      ),
-    );
+    final path = widget.embedded || _isDoctorExpedientesContext
+        ? AppPaths.doctorFolder(folder.id, name: folder.name)
+        : AppPaths.userFolder(folder.id, name: folder.name);
+    context.push(path);
   }
+
+  bool get _isDoctorExpedientesContext =>
+      widget.embedded || AppPaths.isDoctorFolderPath(
+        GoRouterState.of(context).uri.path,
+      );
 
   Future<void> _openExportModal() async {
     try {
@@ -389,7 +421,8 @@ class _FolderContentsScreenState extends State<FolderContentsScreen> with Widget
       preview: file,
     );
     if (saved && mounted) {
-      await _load();
+      context.read<ExpedientesCacheProvider>().invalidateFolder(widget.folderId);
+      await _load(force: true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

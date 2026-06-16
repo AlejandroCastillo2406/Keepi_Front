@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/api_endpoints.dart';
@@ -29,7 +30,7 @@ class _GoogleDriveAuthScreenState extends State<GoogleDriveAuthScreen> {
             });
             // Si el backend redirige al callback, cerramos la pantalla.
             if (url.contains(ApiEndpoints.authGoogleCallback)) {
-              Navigator.of(context).pop(true);
+              context.pop(true);
             }
           },
         ),

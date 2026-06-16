@@ -1,3 +1,5 @@
+import 'dart:ui' show FontFeature;
+
 import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
@@ -44,6 +46,7 @@ class ConsultationPatientHeader extends StatelessWidget {
     this.onEditProfile,
     this.onExport,
     this.exporting = false,
+    this.editingProfile = false,
   });
 
   final String name;
@@ -59,6 +62,7 @@ class ConsultationPatientHeader extends StatelessWidget {
   final VoidCallback? onEditProfile;
   final VoidCallback? onExport;
   final bool exporting;
+  final bool editingProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -193,6 +197,7 @@ class ConsultationPatientHeader extends StatelessWidget {
               onEditProfile: onEditProfile!,
               onExport: onExport!,
               exporting: exporting,
+              editingProfile: editingProfile,
             ),
           ],
         ],
@@ -392,11 +397,15 @@ class DoctorPatientHeaderActions extends StatelessWidget {
     required this.onEditProfile,
     required this.onExport,
     this.exporting = false,
+    this.editingProfile = false,
   });
 
   final VoidCallback onEditProfile;
   final VoidCallback onExport;
   final bool exporting;
+  final bool editingProfile;
+
+  bool get _busy => exporting || editingProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -406,7 +415,7 @@ class DoctorPatientHeaderActions extends StatelessWidget {
         SizedBox(
           width: 168,
           child: FilledButton.icon(
-            onPressed: onEditProfile,
+            onPressed: _busy ? null : onEditProfile,
             style: FilledButton.styleFrom(
               backgroundColor: KeepiColors.orange,
               foregroundColor: Colors.white,
@@ -415,10 +424,19 @@ class DoctorPatientHeaderActions extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            icon: const Icon(Icons.edit_outlined, size: 18),
-            label: const Text(
-              'Editar Perfil',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+            icon: editingProfile
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.edit_outlined, size: 18),
+            label: Text(
+              editingProfile ? 'Guardando…' : 'Editar Perfil',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
             ),
           ),
         ),
@@ -426,7 +444,7 @@ class DoctorPatientHeaderActions extends StatelessWidget {
         SizedBox(
           width: 168,
           child: OutlinedButton.icon(
-            onPressed: exporting ? null : onExport,
+            onPressed: _busy ? null : onExport,
             style: OutlinedButton.styleFrom(
               foregroundColor: KeepiColors.slate,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -448,6 +466,98 @@ class DoctorPatientHeaderActions extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Cabecera unificada: tarjeta del paciente (con botones) + grid 2×2 de métricas.
+class DoctorPatientSummaryHeaderRow extends StatelessWidget {
+  const DoctorPatientSummaryHeaderRow({
+    super.key,
+    required this.name,
+    required this.email,
+    required this.totalAnalysis,
+    required this.uploadedAnalysis,
+    required this.pendingAnalysis,
+    required this.timelineEvents,
+    this.sex,
+    this.ageYears,
+    this.bloodType,
+    this.weightKg,
+    this.subtitle,
+    this.onEditAge,
+    this.onEditBloodType,
+    this.onEditWeight,
+    this.onEditProfile,
+    this.onExport,
+    this.exporting = false,
+    this.editingProfile = false,
+    this.wide = true,
+  });
+
+  final String name;
+  final String email;
+  final int totalAnalysis;
+  final int uploadedAnalysis;
+  final int pendingAnalysis;
+  final int timelineEvents;
+  final String? sex;
+  final int? ageYears;
+  final String? bloodType;
+  final double? weightKg;
+  final String? subtitle;
+  final VoidCallback? onEditAge;
+  final VoidCallback? onEditBloodType;
+  final VoidCallback? onEditWeight;
+  final VoidCallback? onEditProfile;
+  final VoidCallback? onExport;
+  final bool exporting;
+  final bool editingProfile;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final header = ConsultationPatientHeader(
+      name: name,
+      email: email,
+      sex: sex,
+      subtitle: subtitle,
+      ageYears: ageYears,
+      bloodType: bloodType,
+      weightKg: weightKg,
+      onEditAge: onEditAge,
+      onEditBloodType: onEditBloodType,
+      onEditWeight: onEditWeight,
+      onEditProfile: onEditProfile,
+      onExport: onExport,
+      exporting: exporting,
+      editingProfile: editingProfile,
+    );
+    final statsGrid = DoctorPatientStatsGrid(
+      totalAnalysis: totalAnalysis,
+      uploadedAnalysis: uploadedAnalysis,
+      pendingAnalysis: pendingAnalysis,
+      timelineEvents: timelineEvents,
+    );
+
+    if (wide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 5, child: header),
+          const SizedBox(width: 18),
+          Expanded(flex: 4, child: statsGrid),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        const SizedBox(height: 14),
+        statsGrid,
       ],
     );
   }
@@ -715,6 +825,214 @@ class DoctorSectionTitle extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Cabecera del perfil de paciente (web): avatar, nombre y correo.
+class DoctorPatientWebHeaderCard extends StatelessWidget {
+  const DoctorPatientWebHeaderCard({
+    super.key,
+    required this.name,
+    required this.email,
+    this.mustChangePassword = false,
+  });
+
+  final String name;
+  final String email;
+  final bool mustChangePassword;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: KeepiColors.skyBlueSoft,
+              shape: BoxShape.circle,
+              border: Border.all(color: KeepiColors.skyBlue, width: 1.8),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initial,
+              style: const TextStyle(
+                color: KeepiColors.skyBlue,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'PACIENTE',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                    color: KeepiColors.skyBlue,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: KeepiColors.slate,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.8,
+                    color: KeepiColors.slateLight,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (mustChangePassword)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: KeepiColors.orangeSoft,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: KeepiColors.orange.withValues(alpha: 0.5),
+                ),
+              ),
+              child: const Text(
+                'PRIMER ACCESO',
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                  color: KeepiColors.orange,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Barra horizontal de métricas del paciente (web).
+class DoctorPatientWebStatsBar extends StatelessWidget {
+  const DoctorPatientWebStatsBar({
+    super.key,
+    required this.totalAnalysis,
+    required this.uploadedAnalysis,
+    required this.pendingAnalysis,
+    required this.timelineEvents,
+  });
+
+  final int totalAnalysis;
+  final int uploadedAnalysis;
+  final int pendingAnalysis;
+  final int timelineEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            _DoctorPatientStatCell(value: totalAnalysis, label: 'SOLICITADOS'),
+            const _DoctorPatientStatDivider(),
+            _DoctorPatientStatCell(
+              value: uploadedAnalysis,
+              label: 'SUBIDOS',
+              accent: true,
+            ),
+            const _DoctorPatientStatDivider(),
+            _DoctorPatientStatCell(value: pendingAnalysis, label: 'PENDIENTES'),
+            const _DoctorPatientStatDivider(),
+            _DoctorPatientStatCell(value: timelineEvents, label: 'EVENTOS'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DoctorPatientStatDivider extends StatelessWidget {
+  const _DoctorPatientStatDivider();
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 1, color: KeepiColors.cardBorder);
+}
+
+class _DoctorPatientStatCell extends StatelessWidget {
+  const _DoctorPatientStatCell({
+    required this.value,
+    required this.label,
+    this.accent = false,
+  });
+
+  final int value;
+  final String label;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ? KeepiColors.orange : KeepiColors.slate;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          children: [
+            Text(
+              value.toString().padLeft(2, '0'),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1,
+                letterSpacing: -0.8,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+                color: KeepiColors.slateLight,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

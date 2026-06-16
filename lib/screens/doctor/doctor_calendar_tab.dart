@@ -75,7 +75,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   
   String _two(int v) => v.toString().padLeft(2, '0');
 
-  // --- FILTROS DE CITAS ---
 
   List<AppointmentDto> get _pendingRows => _appointments
       .where((a) =>
@@ -104,7 +103,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         return dateA.compareTo(dateB);
       });
 
-  // --- ASIGNAR O REASIGNAR FECHA ---
   Future<void> _assignDate(AppointmentDto a) async {
     final proposed = await pickDoctorAppointmentSlot(context);
     if (proposed == null || !mounted) return;
@@ -140,7 +138,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     }
   }
 
-  // --- CANCELAR CITA ---
   Future<void> _cancelAppointment(AppointmentDto a) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -280,7 +277,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     }
   }
 
-  // --- AGENDAR DESDE CERO (GLOBAL) ---
   Future<void> _scheduleGlobalAppointment() async {
     showDialog(
       context: context, 
@@ -870,7 +866,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
   }
 
-  // --- CALENDARIO MENSUAL ---
   Widget _buildFullMonthCalendar({bool compact = false}) {
     final firstDayOfMonth = DateTime(_selectedDay.year, _selectedDay.month, 1);
     final daysInMonth = DateTime(_selectedDay.year, _selectedDay.month + 1, 0).day;

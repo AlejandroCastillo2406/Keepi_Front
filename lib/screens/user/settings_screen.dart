@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -7,14 +9,12 @@ import '../../core/decorative_background.dart';
 import '../../core/roles.dart';
 import '../../core/web_layout.dart';
 import '../../providers/auth_provider.dart';
+import '../../router/app_auth_actions.dart';
+import '../../router/app_paths.dart';
 import '../../services/api_client.dart';
 import '../../services/cloud_storage_service.dart';
 import '../../services/config_service.dart' as config_dto;
 import '../../widgets/profile_settings_widgets.dart';
-import '../doctor/doctor_scheduling_settings_screen.dart';
-import '../doctor/questionnaire/questionnaire_settings_screen.dart';
-
-enum _SettingsSubPage { main, scheduling }
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -35,7 +35,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _loading = true;
   String? _error;
   bool _switching = false;
-  _SettingsSubPage _subPage = _SettingsSubPage.main;
 
   @override
   void initState() {
@@ -95,9 +94,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (res.authorizationRequired &&
           res.authorizationUrl != null &&
           res.authorizationUrl!.isNotEmpty) {
-        final uri = Uri.parse(res.authorizationUrl!);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (kIsWeb) {
+          final uri = Uri.parse(res.authorizationUrl!);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        } else if (mounted) {
+          await context.push(
+            AppPaths.userGoogleDriveAuth(res.authorizationUrl!),
+          );
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -200,25 +205,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _openQuestionnaireSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const QuestionnaireSettingsScreen()),
-    );
+    context.push(AppPaths.doctorQuestionnaires);
   }
 
   void _openSchedulingSettings() {
-    if (widget.embedded || isWebWide(context)) {
-      setState(() => _subPage = _SettingsSubPage.scheduling);
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const DoctorSchedulingSettingsScreen(),
-      ),
-    );
-  }
-
-  void _backToSettingsMain() {
-    setState(() => _subPage = _SettingsSubPage.main);
+    context.push(AppPaths.doctorSchedulingSettings);
   }
 
   String _storageSubtitle() {
@@ -338,13 +329,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildContent(AuthProvider auth) {
-    if (_subPage == _SettingsSubPage.scheduling) {
-      return DoctorSchedulingSettingsScreen(
-        embedded: true,
-        onBack: _backToSettingsMain,
-      );
-    }
-
     final isDoctor = auth.roleName == AppRole.doctor;
     final configCount = isDoctor ? 3 : 1;
 
@@ -467,7 +451,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 accent: Colors.red,
                 title: 'Cerrar sesión',
                 subtitle: 'Salir de Keepi en este dispositivo.',
-                onTap: auth.logout,
+                onTap: () => AppAuthActions.logout(context),
               ),
             ],
           ),
@@ -495,7 +479,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           title: const Text('Configuración'),
           backgroundColor: Colors.transparent,
           elevation: 0,
-          automaticallyImplyLeading: Navigator.canPop(context),
+          automaticallyImplyLeading: context.canPop(),
         ),
         body: _buildContent(auth),
       );
@@ -506,7 +490,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         title: const Text('Configuración'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,

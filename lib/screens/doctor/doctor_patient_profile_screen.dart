@@ -1,22 +1,24 @@
-import 'dart:ui' show FontFeature;
-
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
-import '../../core/doctor_web_shell_scope.dart';
 import '../../core/web_layout.dart';
+import '../../models/consultation_context.dart';
 import '../../models/timeline_event.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/patients_cache_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../services/timeline_event_opener.dart';
-import '../../services/questionnaire_service.dart';
+import '../../utils/patient_expediente_export.dart';
+import '../../widgets/doctor_clinical_profile_editor.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
 import '../../widgets/timeline_event_detail_sheet.dart';
 import '../../widgets/patient_care_timeline.dart';
-import 'analysis_document_viewer_screen.dart';
-import 'doctor_upload_analysis_for_patient_screen.dart';
+import '../../router/app_navigation.dart';
+import '../../router/app_paths.dart';
 
 class DoctorPatientProfileScreen extends StatefulWidget {
   const DoctorPatientProfileScreen({
@@ -64,11 +66,15 @@ class DoctorPatientProfileScreen extends StatefulWidget {
 class _DoctorPatientProfileScreenState
     extends State<DoctorPatientProfileScreen> with AutomaticKeepAliveClientMixin {
   bool _loading = true;
+  bool _bootstrapping = false;
   String? _error;
 
   List<AnalysisRequestDto> _analysisRequests = [];
   List<TimelineEvent> _timeline = [];
   List<Map<String, dynamic>> _questionnaireResponses = [];
+  ConsultationContext? _clinicalContext;
+  bool _exportingExpediente = false;
+  bool _editingProfile = false;
   String? _openingDocumentId;
   late int _webTabIndex;
 
@@ -96,20 +102,41 @@ class _DoctorPatientProfileScreenState
 
     final groups = <_QuestionnaireGroup>[];
     for (final row in parsed) {
-      final current = groups.isEmpty ? null : groups.last;
-      if (current == null ||
-          row.answeredAt == null ||
-          current.anchor == null ||
-          current.anchor!.difference(row.answeredAt!).abs() >
-              const Duration(minutes: 12)) {
+      final invId = (row.data['invitation_id'] ?? '').toString().trim();
+
+      _QuestionnaireGroup? match;
+      if (invId.isNotEmpty) {
+        for (final g in groups) {
+          if (g.invitationId == invId) {
+            match = g;
+            break;
+          }
+        }
+      } else {
+        final current = groups.isEmpty ? null : groups.last;
+        if (current != null &&
+            row.answeredAt != null &&
+            current.anchor != null &&
+            current.anchor!.difference(row.answeredAt!).abs() <=
+                const Duration(minutes: 12)) {
+          match = current;
+        }
+      }
+
+      if (match != null) {
+        match.items.add(row.data);
+        final t = row.answeredAt;
+        if (t != null && (match.anchor == null || t.isAfter(match.anchor!))) {
+          match.anchor = t;
+        }
+      } else {
         groups.add(
           _QuestionnaireGroup(
+            invitationId: invId.isEmpty ? null : invId,
             anchor: row.answeredAt,
             items: [row.data],
           ),
         );
-      } else {
-        current.items.add(row.data);
       }
     }
     return groups;
@@ -121,39 +148,84 @@ class _DoctorPatientProfileScreenState
     if (!widget.embeddedTabPanelsOnly) {
       _webTabIndex = widget.initialTabIndex.clamp(0, 3);
     }
-    _loadData();
+    final cached =
+        context.read<PatientsCacheProvider>().peekProfile(widget.patientId);
+    if (cached != null) {
+      _applyProfileSnapshot(cached);
+      _loading = false;
+      _bootstrapping = false;
+    } else {
+      _loading = false;
+      _bootstrapping = true;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData(force: cached == null);
+    });
   }
 
-  Future<void> _loadData() async {
+  void _applyProfileSnapshot(PatientProfileSnapshot snap) {
+    _analysisRequests = snap.analysisRequests;
+    _timeline = snap.timeline;
+    _questionnaireResponses = snap.questionnaireResponses;
+    if (snap.clinicalContext != null) {
+      _clinicalContext = snap.clinicalContext;
+    }
+  }
+
+  Future<void> _reloadProfile({bool force = true}) async {
+    if (force) {
+      context.read<PatientsCacheProvider>().invalidateProfile(widget.patientId);
+    }
+    await _loadData(force: force);
+  }
+
+  Future<void> _loadData({bool force = false}) async {
+    if (!mounted) return;
+
+    final cache = context.read<PatientsCacheProvider>();
+    if (!force) {
+      final cached = cache.peekProfile(widget.patientId);
+      if (cached != null) {
+        setState(() {
+          _applyProfileSnapshot(cached);
+          _loading = false;
+          _bootstrapping = false;
+          _error = null;
+        });
+        return;
+      }
+    }
+
     setState(() {
-      _loading = true;
+      _bootstrapping = true;
       _error = null;
+      if (_analysisRequests.isEmpty &&
+          _timeline.isEmpty &&
+          _clinicalContext == null) {
+        _loading = false;
+      }
     });
     try {
-      final svc = DoctorService(context.read<ApiClient>());
-      final questionnaireSvc = QuestionnaireService(context.read<ApiClient>());
-      final analysisFuture = svc.fetchPatientAnalysisRequests(widget.patientId);
-      final timelineFuture = svc.fetchPatientTimeline(widget.patientId);
-      final responsesFuture =
-          questionnaireSvc.fetchPatientResponses(widget.patientId);
-      final analysis = await analysisFuture;
-      final timeline = await timelineFuture;
-      final responsesRaw = await responsesFuture;
+      final api = context.read<ApiClient>();
+      final svc = DoctorService(api);
+      final snap = await cache.fetchAndCacheProfile(
+        patientId: widget.patientId,
+        doctorSvc: svc,
+        apiClient: api,
+        force: force,
+      );
       if (!mounted) return;
       setState(() {
-        _analysisRequests = analysis;
-        _timeline = timeline;
-        _questionnaireResponses = responsesRaw
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
+        _applyProfileSnapshot(snap);
         _loading = false;
+        _bootstrapping = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = DoctorService.messageFromDio(e);
         _loading = false;
+        _bootstrapping = false;
       });
     }
   }
@@ -164,8 +236,224 @@ class _DoctorPatientProfileScreenState
       patientId: widget.patientId,
       patientName: widget.patientName,
       event: event,
-      onNoteSaved: _loadData,
+      onNoteSaved: () => _reloadProfile(),
     );
+  }
+
+  Widget _buildSummaryHeader({
+    required int pendingCount,
+    required int completedCount,
+    required bool wide,
+  }) {
+    final ctx = _clinicalContext;
+    return DoctorPatientSummaryHeaderRow(
+      name: ctx?.patientName ?? widget.patientName,
+      email: ctx?.patientEmail ?? widget.patientEmail,
+      sex: ctx?.sex,
+      ageYears: ctx?.ageYears,
+      bloodType: ctx?.bloodType,
+      weightKg: ctx?.weightKg,
+      totalAnalysis: _analysisRequests.length,
+      uploadedAnalysis: completedCount,
+      pendingAnalysis: pendingCount,
+      timelineEvents: _timeline.length,
+      onEditAge: () => _editClinicalAge(),
+      onEditBloodType: () => _editClinicalBloodType(),
+      onEditWeight: () => _editClinicalWeight(),
+      onEditProfile: _openEditProfileDialog,
+      onExport: _exportExpediente,
+      exporting: _exportingExpediente,
+      editingProfile: _editingProfile,
+      wide: wide,
+    );
+  }
+
+  Future<void> _persistClinicalProfile({
+    int? ageYears,
+    String? bloodType,
+    double? weightKg,
+  }) async {
+    try {
+      final updated = await DoctorService(context.read<ApiClient>())
+          .upsertClinicalProfile(
+        patientId: widget.patientId,
+        ageYears: ageYears,
+        bloodType: bloodType,
+        weightKg: weightKg,
+      );
+      if (!mounted) return;
+      setState(() => _clinicalContext = updated);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(DoctorService.messageFromDio(e))),
+      );
+    }
+  }
+
+  Future<String?> _promptClinicalField({
+    required String title,
+    required String label,
+    required String initial,
+    required String hint,
+  }) async {
+    final ctrl = TextEditingController(text: initial);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: hint,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return result;
+  }
+
+  Future<void> _editClinicalAge() async {
+    final raw = await _promptClinicalField(
+      title: 'Edad',
+      label: 'Años',
+      initial: _clinicalContext?.ageYears?.toString() ?? '',
+      hint: 'Ej. 35',
+    );
+    if (raw == null || !mounted) return;
+    if (raw.isEmpty) {
+      await _persistClinicalProfile(ageYears: null);
+      return;
+    }
+    final age = int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (age == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Edad inválida')),
+      );
+      return;
+    }
+    await _persistClinicalProfile(ageYears: age);
+  }
+
+  Future<void> _editClinicalBloodType() async {
+    final raw = await _promptClinicalField(
+      title: 'Tipo de sangre',
+      label: 'Grupo',
+      initial: _clinicalContext?.bloodType ?? '',
+      hint: 'Ej. O+',
+    );
+    if (raw == null || !mounted) return;
+    await _persistClinicalProfile(bloodType: raw.isEmpty ? null : raw);
+  }
+
+  Future<void> _editClinicalWeight() async {
+    final raw = await _promptClinicalField(
+      title: 'Peso',
+      label: 'Kilogramos',
+      initial: _clinicalContext?.weightKg?.toString() ?? '',
+      hint: 'Ej. 72.5',
+    );
+    if (raw == null || !mounted) return;
+    if (raw.isEmpty) {
+      await _persistClinicalProfile(weightKg: null);
+      return;
+    }
+    final weight = double.tryParse(
+      raw.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), ''),
+    );
+    if (weight == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Peso inválido')),
+      );
+      return;
+    }
+    await _persistClinicalProfile(weightKg: weight);
+  }
+
+  Future<void> _openEditProfileDialog() async {
+    if (_editingProfile || _exportingExpediente) return;
+
+    final form = await showDoctorClinicalProfileEditor(
+      context,
+      initial: _clinicalContext,
+      fallbackName: widget.patientName,
+      fallbackEmail: widget.patientEmail,
+    );
+    if (form == null || !mounted) return;
+
+    setState(() => _editingProfile = true);
+    try {
+      final updated = await saveClinicalProfileForm(
+        api: context.read<ApiClient>(),
+        patientId: widget.patientId,
+        form: form,
+      );
+      if (updated == null || !mounted) return;
+      setState(() => _clinicalContext = updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Perfil actualizado'),
+          backgroundColor: KeepiColors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(DoctorService.messageFromDio(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _editingProfile = false);
+    }
+  }
+
+  Future<void> _exportExpediente() async {
+    final doctorId = context.read<AuthProvider>().userId;
+    if (doctorId == null || doctorId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sesión no válida.')),
+      );
+      return;
+    }
+
+    setState(() => _exportingExpediente = true);
+    try {
+      await exportPatientExpedienteZip(
+        context: context,
+        api: context.read<ApiClient>(),
+        doctorId: doctorId,
+        patientId: widget.patientId,
+        patientName: _clinicalContext?.patientName ?? widget.patientName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final message = e is DioException
+          ? DoctorService.messageFromDio(e)
+          : e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingExpediente = false);
+    }
   }
 
   Widget _buildWebLayout({
@@ -183,28 +471,10 @@ class _DoctorPatientProfileScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 4,
-                      child: _PatientHeaderCard(
-                        name: widget.patientName,
-                        email: widget.patientEmail,
-                        mustChangePassword: widget.mustChangePassword,
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      flex: 6,
-                      child: _PatientStats(
-                        totalAnalysis: _analysisRequests.length,
-                        uploadedAnalysis: completed.length,
-                        pendingAnalysis: pendingList.length,
-                        timelineEvents: _timeline.length,
-                      ),
-                    ),
-                  ],
+                _buildSummaryHeader(
+                  pendingCount: pendingList.length,
+                  completedCount: completed.length,
+                  wide: constraints.maxWidth >= 900,
                 ),
                 const SizedBox(height: 24),
                 const _SectionTitle(tag: 'ACCIONES RÁPIDAS', count: 6),
@@ -247,6 +517,17 @@ class _DoctorPatientProfileScreenState
     required List<_QuestionnaireGroup> questionnaireGroups,
     required int tabIndex,
   }) {
+    if (_bootstrapping &&
+        _analysisRequests.isEmpty &&
+        _timeline.isEmpty &&
+        _questionnaireResponses.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
+        ),
+      );
+    }
     switch (tabIndex) {
       case 1:
         return _buildAnalysisPanel(
@@ -372,8 +653,10 @@ class _DoctorPatientProfileScreenState
               border: Border.all(color: KeepiColors.cardBorder),
             ),
             child: PatientCareTimeline(
-              events: _timeline.take(compact ? 6 : 10).toList(),
+              events: _timeline.take(compact ? 5 : 10).toList(),
               showSectionHeader: false,
+              compact: compact,
+              titleOnly: compact,
               onEventTap: _handleTimelineEventTap,
             ),
           ),
@@ -459,6 +742,17 @@ class _DoctorPatientProfileScreenState
   }
 
   Widget _buildEmbeddedTabPanelsOnly() {
+    if (_bootstrapping &&
+        _analysisRequests.isEmpty &&
+        _timeline.isEmpty &&
+        _questionnaireResponses.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
+        ),
+      );
+    }
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48),
@@ -468,7 +762,7 @@ class _DoctorPatientProfileScreenState
       );
     }
     if (_error != null) {
-      return _ErrorState(message: _error!, onRetry: _loadData);
+      return _ErrorState(message: _error!, onRetry: () => _reloadProfile());
     }
 
     final completed = _analysisRequests
@@ -514,13 +808,16 @@ class _DoctorPatientProfileScreenState
 
     final body = RefreshIndicator(
       color: KeepiColors.orange,
-      onRefresh: _loadData,
+      onRefresh: () => _reloadProfile(),
       child: _loading
           ? const Center(
               child: CircularProgressIndicator(color: KeepiColors.orange),
             )
-          : _error != null
-              ? _ErrorState(message: _error!, onRetry: _loadData)
+          : _error != null &&
+                  _analysisRequests.isEmpty &&
+                  _timeline.isEmpty &&
+                  _clinicalContext == null
+              ? _ErrorState(message: _error!, onRetry: () => _reloadProfile())
               : isWebWide(context) || widget.embedded
                   ? _buildWebLayout(
                       pendingList: pendingList,
@@ -530,17 +827,10 @@ class _DoctorPatientProfileScreenState
                   : ListView(
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                     children: [
-                      _PatientHeaderCard(
-                        name: widget.patientName,
-                        email: widget.patientEmail,
-                        mustChangePassword: widget.mustChangePassword,
-                      ),
-                      const SizedBox(height: 14),
-                      _PatientStats(
-                        totalAnalysis: _analysisRequests.length,
-                        uploadedAnalysis: completed.length,
-                        pendingAnalysis: pendingCount,
-                        timelineEvents: _timeline.length,
+                      _buildSummaryHeader(
+                        pendingCount: pendingCount,
+                        completedCount: completed.length,
+                        wide: false,
                       ),
                       const SizedBox(height: 22),
                       _SectionTitle(
@@ -624,8 +914,10 @@ class _DoctorPatientProfileScreenState
                             border: Border.all(color: KeepiColors.cardBorder),
                           ),
                           child: PatientCareTimeline(
-                            events: _timeline.take(6).toList(),
+                            events: _timeline.take(5).toList(),
                             showSectionHeader: false,
+                            compact: true,
+                            titleOnly: true,
                             onEventTap: _handleTimelineEventTap,
                           ),
                         ),
@@ -756,40 +1048,20 @@ class _DoctorPatientProfileScreenState
       context,
       patientId: widget.patientId,
       event: event,
-      onNoteSaved: _loadData,
+      onNoteSaved: () => _reloadProfile(),
     );
   }
 
 
   Future<void> _openDoctorUploadPending(AnalysisRequestDto item) async {
-    final webNav = DoctorWebShellScope.maybeOf(context);
-    if (webNav != null && (widget.embedded || isWebWide(context))) {
-      webNav.push(
-        DoctorWebRoute(
-          kind: DoctorWebOverlayKind.uploadAnalysis,
-          uploadRequestId: item.id,
-          uploadDescription: item.description,
-          patient: PatientListItem(
-            id: widget.patientId,
-            email: widget.patientEmail,
-            name: widget.patientName,
-            mustChangePassword: widget.mustChangePassword,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => DoctorUploadAnalysisForPatientScreen(
-          requestId: item.id,
-          description: item.description,
-          patientName: widget.patientName,
-        ),
+    final ok = await context.push<bool>(
+      AppPaths.doctorUploadAnalysis(
+        widget.patientId,
+        item.id,
+        description: item.description,
       ),
     );
-    if (ok == true && mounted) await _loadData();
+    if (ok == true && mounted) await _reloadProfile();
   }
 
   Future<void> _openAnalysisDocument(AnalysisRequestDto item) async {
@@ -815,14 +1087,11 @@ class _DoctorPatientProfileScreenState
         'Accept': '*/*',
       };
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AnalysisDocumentViewerScreen(
-            url: url,
-            title: 'Archivo de análisis',
-            headers: headers,
-          ),
-        ),
+      await AppNavigation.pushDocumentViewer(
+        context,
+        url: url,
+        title: 'Archivo de análisis',
+        headers: headers,
       );
     } catch (e) {
       if (!mounted) return;
@@ -836,204 +1105,6 @@ class _DoctorPatientProfileScreenState
     } finally {
       if (mounted) setState(() => _openingDocumentId = null);
     }
-  }
-}
-
-class _PatientHeaderCard extends StatelessWidget {
-  const _PatientHeaderCard({
-    required this.name,
-    required this.email,
-    required this.mustChangePassword,
-  });
-
-  final String name;
-  final String email;
-  final bool mustChangePassword;
-
-  @override
-  Widget build(BuildContext context) {
-    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: KeepiColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: KeepiColors.skyBlueSoft,
-              shape: BoxShape.circle,
-              border: Border.all(color: KeepiColors.skyBlue, width: 1.8),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              initial,
-              style: const TextStyle(
-                color: KeepiColors.skyBlue,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'PACIENTE',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                    color: KeepiColors.skyBlue,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: KeepiColors.slate,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  email,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12.8,
-                    color: KeepiColors.slateLight,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (mustChangePassword)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: KeepiColors.orangeSoft,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                    color: KeepiColors.orange.withValues(alpha: 0.5)),
-              ),
-              child: const Text(
-                'PRIMER ACCESO',
-                style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                  color: KeepiColors.orange,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PatientStats extends StatelessWidget {
-  const _PatientStats({
-    required this.totalAnalysis,
-    required this.uploadedAnalysis,
-    required this.pendingAnalysis,
-    required this.timelineEvents,
-  });
-
-  final int totalAnalysis;
-  final int uploadedAnalysis;
-  final int pendingAnalysis;
-  final int timelineEvents;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: KeepiColors.cardBorder),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          children: [
-            _StatCell(value: totalAnalysis, label: 'SOLICITADOS'),
-            const _VLine(),
-            _StatCell(value: uploadedAnalysis, label: 'SUBIDOS', accent: true),
-            const _VLine(),
-            _StatCell(value: pendingAnalysis, label: 'PENDIENTES'),
-            const _VLine(),
-            _StatCell(value: timelineEvents, label: 'EVENTOS'),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VLine extends StatelessWidget {
-  const _VLine();
-  @override
-  Widget build(BuildContext context) =>
-      Container(width: 1, color: KeepiColors.cardBorder);
-}
-
-class _StatCell extends StatelessWidget {
-  const _StatCell({
-    required this.value,
-    required this.label,
-    this.accent = false,
-  });
-
-  final int value;
-  final String label;
-  final bool accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = accent ? KeepiColors.orange : KeepiColors.slate;
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          children: [
-            Text(
-              value.toString().padLeft(2, '0'),
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: color,
-                height: 1,
-                letterSpacing: -0.8,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 9.2,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.4,
-                color: KeepiColors.slateLight,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -1347,18 +1418,69 @@ class _QuestionnaireGroupCard extends StatelessWidget {
   final int index;
   final _QuestionnaireGroup group;
 
+  String get _title => group.displayName(index);
+
+  void _openResponsesModal(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            color: KeepiColors.slate,
+            fontSize: 17,
+          ),
+        ),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_formatAnchor(group.anchor).isNotEmpty) ...[
+                  Text(
+                    'Respondido: ${_formatAnchor(group.anchor)}',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: KeepiColors.slateLight,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                ...group.items.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _QuestionAnswerRow(data: item),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final answeredAt = _formatAnchor(group.anchor);
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: KeepiColors.cardBorder),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 36,
@@ -1374,64 +1496,49 @@ class _QuestionnaireGroupCard extends StatelessWidget {
               color: KeepiColors.orange,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'CUESTIONARIO ${index + 1}',
+                  _title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 10,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 1.3,
-                    color: KeepiColors.orange,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${group.items.length} respuestas registradas',
-                  style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
                     color: KeepiColors.slate,
-                    height: 1.3,
+                    height: 1.25,
                   ),
                 ),
-                const SizedBox(height: 5),
                 if (answeredAt.isNotEmpty) ...[
-                  const SizedBox(height: 1),
+                  const SizedBox(height: 4),
                   Text(
                     'Respondido: $answeredAt',
                     style: const TextStyle(
-                      fontSize: 12.2,
+                      fontSize: 12.5,
                       color: KeepiColors.slateLight,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                ...group.items.take(4).toList().asMap().entries.map(
-                      (entry) => Padding(
-                        padding: EdgeInsets.only(
-                          bottom: entry.key == group.items.take(4).length - 1
-                              ? 0
-                              : 8,
-                        ),
-                        child: _QuestionAnswerRow(data: entry.value),
-                      ),
-                    ),
-                if (group.items.length > 4) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '+ ${group.items.length - 4} respuestas más',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: KeepiColors.slateLight,
-                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ],
               ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: () => _openResponsesModal(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: KeepiColors.orange,
+              side: const BorderSide(color: KeepiColors.orange),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'Ver respuestas',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
           ),
         ],
@@ -1459,12 +1566,10 @@ class _QuestionAnswerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final question = (data['question_text'] ?? 'Pregunta').toString();
     
-    // --- LÓGICA DE LIMPIEZA AGREGADA AQUÍ ---
     String answer = (data['answer_value'] ?? 'Sin respuesta').toString();
     if (answer.contains('value:')) {
       answer = answer.replaceAll(RegExp(r'[{}]'), '').replaceAll('value:', '').trim();
     }
-    // ----------------------------------------
 
     return Container(
       width: double.infinity,
@@ -1502,12 +1607,22 @@ class _QuestionAnswerRow extends StatelessWidget {
 
 class _QuestionnaireGroup {
   _QuestionnaireGroup({
+    this.invitationId,
     required this.anchor,
     required this.items,
   });
 
-  final DateTime? anchor;
+  final String? invitationId;
+  DateTime? anchor;
   final List<Map<String, dynamic>> items;
+
+  String displayName(int fallbackIndex) {
+    for (final item in items) {
+      final name = (item['questionnaire_name'] ?? '').toString().trim();
+      if (name.isNotEmpty) return name;
+    }
+    return 'Cuestionario ${fallbackIndex + 1}';
+  }
 }
 
 class _ResponseRow {

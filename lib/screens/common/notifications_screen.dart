@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:keepi/screens/doctor/analysis_document_viewer_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
 import '../../core/app_theme.dart';
+import '../../core/care_event_style.dart';
+import '../../providers/auth_provider.dart';
+import '../../router/app_navigation.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/notification_navigation.dart';
 import '../../services/notifications_service.dart';
 import '../../services/prescription_service.dart';
-import '../../services/questionnaire_service.dart';
-import '../../services/doctor_service.dart'; 
-import '../../providers/auth_provider.dart';
+import '../../services/doctor_service.dart';
 
 const _monthsEsUpper = <String>[
   'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
@@ -68,9 +69,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ==========================================
-  // APERTURA DE DOCUMENTOS Y ENLACES EXTERNOS
-  // ==========================================
+
   void _openBackendDocument(String url, String title) {
     if (url.isEmpty) return;
     final api = context.read<ApiClient>();
@@ -80,14 +79,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       'Accept': '*/*',
     };
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AnalysisDocumentViewerScreen(
-          url: url,
-          title: title,
-          headers: headers,
-        ),
-      ),
+    AppNavigation.pushDocumentViewer(
+      context,
+      url: url,
+      title: title,
+      headers: headers,
     );
   }
 
@@ -126,7 +122,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ── Acciones originales de notificaciones ─────────────────────────
   Future<void> _openAnalysisDocument(AppNotificationDto n) async {
     final data = NotificationNavigation.dataFromNotification(n);
     if (!NotificationNavigation.isAnalysisRequestCompleted(data)) return;
@@ -182,7 +177,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ── Acciones de citas (FLUJO NUEVO) ─────────────────────────────
   Future<void> _openAppointmentPrompt(AppNotificationDto n) async {
     final appointmentId = n.appointmentId; 
     if (appointmentId == null || appointmentId.isEmpty) return;
@@ -331,9 +325,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  // =======================================================================
-  // DISEÑOS GENÉRICOS (PORTADOS EXACTAMENTE DE TIMELINE)
-  // =======================================================================
   Widget _buildProfessionalCalendarCard(String dateStr, Color color) {
     String day = "??";
     String monthYear = "---";
@@ -377,9 +368,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // =======================================================================
-  // DISEÑO PREMIUM DE LA RECETA
-  // =======================================================================
+
   Widget _buildPremiumPrescriptionCard(AppNotificationDto n) {
     return FutureBuilder<List<dynamic>>(
       future: PrescriptionService(context.read<ApiClient>()).fetchMine().catchError((e) => []),
@@ -539,9 +528,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // =======================================================================
-  // DISEÑO PARA CITA 
-  // =======================================================================
+
   Widget _buildAppointmentDetailCard(AppNotificationDto n) {
     DateTime dt = DateTime.now();
     try {
@@ -643,9 +630,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // =======================================================================
-  // DISEÑO INTELIGENTE PARA ANÁLISIS 
-  // =======================================================================
+
   Widget _buildAnalysisDetailCard(BuildContext context, AppNotificationDto n, String patientId) {
     if (patientId.isEmpty) {
       return Column(
@@ -871,144 +856,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ── LÓGICA DE UI PARA RESPUESTAS DE CUESTIONARIOS ──────────────────────
-  Widget _buildQuestionnaireDetailCard(BuildContext context, AppNotificationDto n, String patientId) {
-    if (patientId.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Detalles del cuestionario:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-            child: Text(n.message.isEmpty ? "Sin contenido registrado." : n.message, style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)),
-          ),
-        ],
+  void _showNotificationDetail(BuildContext context, AppNotificationDto n) {
+    if (n.isQuestionnaireCompleted) {
+      NotificationNavigation.openQuestionnaireCompletedDetail(
+        context,
+        notification: n,
       );
+      return;
     }
 
-    return FutureBuilder<List<dynamic>>(
-      future: QuestionnaireService(context.read<ApiClient>()).fetchPatientResponses(patientId).catchError((e) => []),
-      builder: (context, snapshot) {
-        
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
-          );
-        }
-
-        List<Map<String, dynamic>> matchingResponses = [];
-        
-        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-          final notifDate = DateTime.tryParse(n.createdAt ?? '')?.toLocal();
-          
-          for (var r in snapshot.data!) {
-            if (r is Map) {
-              final answeredAt = DateTime.tryParse((r['answered_at'] ?? '').toString())?.toLocal();
-              // Ampliamos un poco más el rango de tiempo de búsqueda por seguridad (24 horas)
-              if (answeredAt != null && notifDate != null && answeredAt.difference(notifDate).abs() < const Duration(hours: 24)) {
-                matchingResponses.add(Map<String, dynamic>.from(r));
-              } else if (notifDate == null) {
-                matchingResponses.add(Map<String, dynamic>.from(r));
-              }
-            }
-          }
-        }
-
-        if (matchingResponses.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Detalles del cuestionario:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                child: Text(n.message.isEmpty ? "Sin contenido registrado o respuestas no encontradas." : n.message, style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)),
-              ),
-            ],
-          );
-        }
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
-            ]
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(color: KeepiColors.orange.withOpacity(0.1), shape: BoxShape.circle),
-                    child: const Icon(Icons.quiz_outlined, color: KeepiColors.orange, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("RESPUESTAS GUARDADAS", style: TextStyle(color: KeepiColors.orange, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
-                        const SizedBox(height: 4),
-                        Text("${matchingResponses.length} preguntas respondidas", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
-                      ],
-                    ),
-                  )
-                ],
-              ),
-              const SizedBox(height: 24),
-              ...matchingResponses.map((data) {
-                final question = (data['question_text'] ?? 'Pregunta').toString();
-                
-                String answer = (data['answer_value'] ?? 'Sin respuesta').toString();
-                if (answer.contains('value:')) {
-                  answer = answer.replaceAll(RegExp(r'[{}]'), '').replaceAll('value:', '').trim();
-                }
-
-                return Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: KeepiColors.surfaceBg,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(question, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: KeepiColors.slate)),
-                      const SizedBox(height: 6),
-                      Text(answer, style: const TextStyle(fontSize: 13.5, color: KeepiColors.slateLight, height: 1.4)),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ),
-        );
-      }
-    );
-  }
-
-  // ── Orquestador de Interfaz: Muestra el BottomSheet Detallado ───────────
-  void _showNotificationDetail(BuildContext context, AppNotificationDto n) {
     bool isAppointment = n.appointmentId != null;
     bool isPrescription = n.prescriptionId != null;
     bool isAnalysis = n.isAnalysisRequestCompleted;
-    bool isQuestionnaire = n.isQuestionnaireCompleted;
     bool isReplaced = n.isDocumentReplaced;
     
     // Extracción de ID robusta:
@@ -1041,10 +900,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       eventColor = KeepiColors.orange;
       eventIcon = Icons.biotech_outlined;
       tag = 'ANÁLISIS CLÍNICO';
-    } else if (isQuestionnaire) {
-      eventColor = KeepiColors.orange;
-      eventIcon = Icons.assignment_turned_in_outlined;
-      tag = 'CUESTIONARIO COMPLETADO';
     } else if (isReplaced) {
       eventColor = KeepiColors.slate;
       eventIcon = Icons.find_replace_rounded;
@@ -1103,9 +958,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                   const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider()),
 
-                  // ==========================================
-                  // DISEÑOS GENÉRICOS (AÑADIDOS DEL TIMELINE)
-                  // ==========================================
                   _buildProfessionalCalendarCard(n.createdAt ?? DateTime.now().toIso8601String(), eventColor),
                   const SizedBox(height: 16),
                   
@@ -1114,12 +966,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ]),
                   const SizedBox(height: 24),
 
-                  // ==========================================
-                  // CONTENIDO CONDICIONAL POR EVENTO (TARJETAS TIMELINE)
-                  // ==========================================
-                  if (isQuestionnaire)
-                    _buildQuestionnaireDetailCard(context, n, patientId)
-                  else if (isPrescription)
+                  if (isPrescription)
                     _buildPremiumPrescriptionCard(n)
                   else if (isAnalysis)
                     _buildAnalysisDetailCard(context, n, patientId)
@@ -1139,9 +986,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                 ],
 
-                // ==========================================
-                // BOTONES EXTRAS DE NOTIFICACIONES
-                // ==========================================
                 if (isAnalysis) ...[
                   const SizedBox(height: 16),
                   SizedBox(
@@ -1205,26 +1049,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   )
                 ],
 
-                if (isQuestionnaire) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: KeepiColors.orange,
-                        side: const BorderSide(color: KeepiColors.orange),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.check_circle_outline_rounded),
-                      label: const Text("ENTENDIDO", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-                
                 if (isAppointment) ...[
                   const SizedBox(height: 24),
                   SizedBox(
@@ -1254,12 +1078,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────
   void _handleBack() {
     if (widget.onBack != null) {
       widget.onBack!();
     } else {
-      Navigator.of(context).maybePop();
+      if (context.canPop()) {
+      context.pop();
+    }
     }
   }
 
@@ -1330,10 +1155,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-//   TOP BAR
-// ──────────────────────────────────────────────────────────────────────────
-
 class _NotifTopBar extends StatelessWidget {
   const _NotifTopBar({required this.onBack});
   final VoidCallback onBack;
@@ -1385,10 +1206,6 @@ class _IconPill extends StatelessWidget {
     );
   }
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-//   HERO
-// ──────────────────────────────────────────────────────────────────────────
 
 class _NotifHero extends StatelessWidget {
   const _NotifHero({required this.total, required this.unread});
@@ -1523,10 +1340,6 @@ class _NotifStatCell extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-//   DIVIDER
-// ──────────────────────────────────────────────────────────────────────────
-
 class _NotifSectionDivider extends StatelessWidget {
   const _NotifSectionDivider({required this.tag, required this.count});
   final String tag;
@@ -1574,53 +1387,17 @@ class _NotifSectionDivider extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-//   CARD
-// ──────────────────────────────────────────────────────────────────────────
-
 class _NotifCard extends StatelessWidget {
   const _NotifCard({required this.data, required this.onTap});
   final AppNotificationDto data;
   final VoidCallback onTap;
 
   ({String tag, Color color, IconData icon, String actionHint}) _meta() {
-    if (data.isAnalysisRequestCompleted) {
-      return (
-        tag: 'ANÁLISIS',
-        color: KeepiColors.orange,
-        icon: Icons.biotech_outlined,
-        actionHint: 'Toca para ver detalles',
-      );
-    }
-    if (data.isQuestionnaireCompleted) {
-      return (
-        tag: 'CUESTIONARIO',
-        color: KeepiColors.orange,
-        icon: Icons.assignment_turned_in_outlined,
-        actionHint: 'Completado por paciente',
-      );
-    }
-    if (data.appointmentId != null) {
-      return (
-        tag: 'CITA',
-        color: KeepiColors.skyBlue,
-        icon: Icons.event_available_outlined,
-        actionHint: 'Toca para gestionar',
-      );
-    }
-    if (data.prescriptionId != null) {
-      return (
-        tag: 'RECETA',
-        color: const Color(0xFF7C3AED),
-        icon: Icons.medication_outlined,
-        actionHint: 'Toca para opciones',
-      );
-    }
     return (
-      tag: 'AVISO',
-      color: KeepiColors.slate,
-      icon: Icons.info_outline_rounded,
-      actionHint: 'Ver más',
+      tag: NotificationEventStyle.tagFor(data),
+      color: NotificationEventStyle.colorFor(data),
+      icon: NotificationEventStyle.iconFor(data),
+      actionHint: NotificationEventStyle.actionHintFor(data),
     );
   }
 
@@ -1635,7 +1412,7 @@ class _NotifCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = _meta();
-    final stateColor = data.read ? KeepiColors.slateLight : KeepiColors.orange;
+    final stateColor = data.read ? KeepiColors.slateLight : m.color;
     final stateLabel = data.read ? 'LEÍDA' : 'NUEVA';
 
     return InkWell(
@@ -1648,7 +1425,7 @@ class _NotifCard extends StatelessWidget {
           border: Border.all(
             color: data.read
                 ? KeepiColors.cardBorder
-                : KeepiColors.orange.withValues(alpha: 0.45),
+                : m.color.withValues(alpha: 0.45),
           ),
         ),
         child: Padding(
@@ -1800,10 +1577,6 @@ class _NotifCard extends StatelessWidget {
     );
   }
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-//   STATE WIDGETS
-// ──────────────────────────────────────────────────────────────────────────
 
 class _NotifLoadingBox extends StatelessWidget {
   const _NotifLoadingBox();

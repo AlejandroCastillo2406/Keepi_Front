@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../core/web_layout.dart';
@@ -119,7 +120,7 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
     if (widget.onBack != null) {
       widget.onBack!();
     } else {
-      Navigator.of(context).pop(true);
+      context.pop(true);
     }
   }
 
@@ -128,7 +129,7 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
     if (widget.onBack != null) {
       widget.onBack!();
     } else {
-      Navigator.of(context).pop(false);
+      context.pop(false);
     }
   }
 

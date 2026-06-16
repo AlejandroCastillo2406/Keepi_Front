@@ -1,14 +1,15 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../core/app_theme.dart';
-import '../../core/doctor_web_shell_scope.dart';
 import '../../core/web_layout.dart';
 import '../../models/consultation_context.dart';
 import '../../models/timeline_event.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/consultation_bootstrap_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
@@ -16,19 +17,19 @@ import '../../services/speech_dictation_service.dart';
 import '../../services/timeline_event_opener.dart';
 import '../../utils/consultation_note_codec.dart';
 import '../../utils/patient_expediente_export.dart';
-import '../../utils/timeline_event_resolver.dart';
+import '../../widgets/doctor_clinical_profile_editor.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
 import '../../widgets/patient_care_timeline.dart';
+import '../../router/app_paths.dart';
 import '../../widgets/profile_settings_widgets.dart';
 import 'doctor_patient_profile_screen.dart';
-import 'doctor_patient_timeline_screen.dart';
-import 'doctor_upload_analysis_for_patient_screen.dart';
 
 class DoctorConsultationScreen extends StatefulWidget {
   const DoctorConsultationScreen({
     super.key,
     required this.appointment,
     required this.patientName,
+    this.patientId,
     this.patientEmail,
     this.embedded = false,
     this.onBack,
@@ -43,6 +44,7 @@ class DoctorConsultationScreen extends StatefulWidget {
 
   final AppointmentDto appointment;
   final String patientName;
+  final String? patientId;
   final String? patientEmail;
   final bool embedded;
   final VoidCallback? onBack;
@@ -60,9 +62,10 @@ class DoctorConsultationScreen extends StatefulWidget {
 }
 
 class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
-  bool _loading = true;
+  bool _bootstrapping = false;
   bool _saving = false;
   bool _exportingExpediente = false;
+  bool _editingProfile = false;
   String? _error;
   TimelineEvent? _event;
   ConsultationVitals _vitals = const ConsultationVitals();
@@ -76,11 +79,62 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   bool _isDictating = false;
   bool _dictationHeardThisSession = false;
 
+  AppointmentDto? _resolvedAppointment;
+  String? _resolvedPatientId;
+
+  AppointmentDto get _effectiveAppointment =>
+      _resolvedAppointment ?? widget.appointment;
+
+  String get _patientId {
+    final resolved = _resolvedPatientId?.trim();
+    if (resolved != null && resolved.isNotEmpty) return resolved;
+    return _effectiveAppointment.patientId.trim();
+  }
+
   @override
   void initState() {
     super.initState();
     _notesCtrl = TextEditingController();
-    _bootstrap();
+    _resolvedPatientId = _initialPatientId();
+
+    final initialPatientId = _initialPatientId();
+    if (initialPatientId != null && initialPatientId.isNotEmpty) {
+      final cached = context.read<ConsultationBootstrapProvider>().peek(
+            initialPatientId,
+            widget.appointment.id,
+          );
+      if (cached != null) {
+        _applyBootstrapFields(cached);
+        _bootstrapping = false;
+      } else {
+        _bootstrapping = true;
+      }
+    } else {
+      _bootstrapping = true;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startBootstrap();
+    });
+  }
+
+  String? _initialPatientId() {
+    final fromRoute = widget.patientId?.trim();
+    if (fromRoute != null && fromRoute.isNotEmpty) return fromRoute;
+    final fromAppt = widget.appointment.patientId.trim();
+    if (fromAppt.isNotEmpty) return fromAppt;
+    return null;
+  }
+
+  @override
+  void didUpdateWidget(covariant DoctorConsultationScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.appointment.id != widget.appointment.id ||
+        oldWidget.patientId != widget.patientId) {
+      _resolvedAppointment = null;
+      _resolvedPatientId = _initialPatientId();
+      _startBootstrap(forceRefresh: true);
+    }
   }
 
   @override
@@ -182,69 +236,124 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     setState(() => _isDictating = true);
   }
 
-  Future<void> _bootstrap() async {
+  Future<void> _startBootstrap({bool forceRefresh = false}) async {
+    if (!mounted) return;
+
+    final patientId = await _resolvePatientId();
+    if (!mounted) return;
+    if (patientId == null || patientId.isEmpty) {
+      setState(() {
+        _error = 'No se pudo identificar al paciente de esta cita.';
+        _bootstrapping = false;
+      });
+      return;
+    }
+
+    await _bootstrap(patientId: patientId, forceRefresh: forceRefresh);
+  }
+
+  Future<String?> _resolvePatientId() async {
+    final cached = _resolvedPatientId?.trim();
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    final fromAppt = _effectiveAppointment.patientId.trim();
+    if (fromAppt.isNotEmpty) {
+      _resolvedPatientId = fromAppt;
+      return fromAppt;
+    }
+
+    try {
+      final appt = await AppointmentService(context.read<ApiClient>())
+          .fetchById(_effectiveAppointment.id);
+      if (!mounted) return null;
+      _resolvedAppointment = appt;
+      final resolved = appt.patientId.trim();
+      if (resolved.isNotEmpty) {
+        _resolvedPatientId = resolved;
+        return resolved;
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  Future<void> _bootstrap({
+    required String patientId,
+    bool forceRefresh = false,
+  }) async {
+    final appointmentId = _effectiveAppointment.id;
+    final cache = context.read<ConsultationBootstrapProvider>();
+
+    if (!forceRefresh) {
+      final cached = cache.peek(patientId, appointmentId);
+      if (cached != null) {
+        _applyBootstrap(cached);
+        return;
+      }
+    }
+
     setState(() {
-      _loading = true;
+      _bootstrapping = true;
       _error = null;
     });
     try {
-      final api = context.read<ApiClient>();
-      final doctorSvc = DoctorService(api);
-      final event = await TimelineEventResolver.resolveForAppointment(
-        doctorService: doctorSvc,
-        appointment: widget.appointment,
+      final data = await DoctorService(context.read<ApiClient>())
+          .fetchConsultationBootstrap(
+        patientId: patientId,
+        appointmentId: appointmentId,
       );
-      final timelineFuture = doctorSvc.fetchPatientTimeline(
-        widget.appointment.patientId,
-      );
-      final consultationContextFuture = doctorSvc.fetchConsultationContext(
-        widget.appointment.patientId,
-      );
-      final analysisFuture = doctorSvc.fetchPatientAnalysisRequests(
-        widget.appointment.patientId,
-      );
-      final timeline = await timelineFuture;
-      final consultationContext = await consultationContextFuture;
-      final analysis = await analysisFuture;
       if (!mounted) return;
-
-      var vitals = const ConsultationVitals();
-      try {
-        final data = await doctorSvc.fetchTimelineDoctorNote(
-          patientId: widget.appointment.patientId,
-          eventId: event.id,
-        );
-        final decoded = ConsultationNoteCodec.decode(
-          (data['content'] as String?) ?? '',
-        );
-        _notesCtrl.text = decoded.clinicalNote;
-        vitals = decoded.vitals;
-      } on DioException catch (e) {
-        if (e.response?.statusCode != 404) rethrow;
-      }
-
-      final intakeAllergies = (consultationContext.allergies ?? '').trim();
-      if (vitals.allergies.isEmpty && intakeAllergies.isNotEmpty) {
-        vitals = vitals.copyWith(allergies: intakeAllergies);
-      }
-
-      setState(() {
-        _event = event;
-        _context = consultationContext;
-        _analysisRequests = analysis;
-        _vitals = vitals;
-        _timeline = timeline
-            .where((e) => e.eventType.toLowerCase() != 'analysis_upload')
-            .toList();
-        _loading = false;
-      });
+      cache.put(patientId, appointmentId, data);
+      _applyBootstrap(data);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = DoctorService.messageFromDio(e);
-        _loading = false;
+        _error = _humanizeBootstrapError(e);
+        _bootstrapping = false;
       });
     }
+  }
+
+  String _humanizeBootstrapError(Object e) {
+    final msg = DoctorService.messageFromDio(e);
+    if (msg == 'not_found') {
+      return 'No se pudo cargar la consulta. Verifica la cita e intenta de nuevo.';
+    }
+    return msg;
+  }
+
+  void _applyBootstrapFields(ConsultationBootstrapData data) {
+    var vitals = const ConsultationVitals();
+    final noteRaw = data.doctorNoteContent.trim();
+    if (noteRaw.isNotEmpty) {
+      final decoded = ConsultationNoteCodec.decode(noteRaw);
+      _notesCtrl.text = decoded.clinicalNote;
+      vitals = decoded.vitals;
+    } else {
+      _notesCtrl.text = '';
+    }
+
+    final intakeAllergies = (data.context.allergies ?? '').trim();
+    if (vitals.allergies.isEmpty && intakeAllergies.isNotEmpty) {
+      vitals = vitals.copyWith(allergies: intakeAllergies);
+    }
+
+    _event = data.event;
+    _context = data.context;
+    _analysisRequests = data.analysisRequests;
+    _vitals = vitals;
+    _timeline = data.timeline
+        .where((e) => e.eventType.toLowerCase() != 'analysis_upload')
+        .toList();
+  }
+
+  void _applyBootstrap(ConsultationBootstrapData data) {
+    _applyBootstrapFields(data);
+    if (!mounted) return;
+    setState(() {
+      _bootstrapping = false;
+      _error = null;
+    });
   }
 
   void _handleBack() {
@@ -252,7 +361,9 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       widget.onBack!();
       return;
     }
-    Navigator.of(context).maybePop();
+    if (context.canPop()) {
+      context.pop();
+    }
   }
 
   void _openFullTimeline() {
@@ -260,13 +371,8 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       widget.onOpenTimeline!();
       return;
     }
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => DoctorPatientTimelineScreen(
-          patientId: widget.appointment.patientId,
-          patientName: widget.patientName,
-        ),
-      ),
+    context.push<void>(
+      AppPaths.doctorPatientTimeline(_patientId),
     );
   }
 
@@ -275,253 +381,73 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       .toList();
 
   Future<void> _openDoctorUploadPending(AnalysisRequestDto item) async {
-    final webNav = DoctorWebShellScope.maybeOf(context);
-    if (webNav != null && widget.embedded) {
-      webNav.push(
-        DoctorWebRoute(
-          kind: DoctorWebOverlayKind.uploadAnalysis,
-          uploadRequestId: item.id,
-          uploadDescription: item.description,
-          patient: PatientListItem(
-            id: widget.appointment.patientId,
-            email: widget.patientEmail ?? '',
-            name: widget.patientName,
-            mustChangePassword: false,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => DoctorUploadAnalysisForPatientScreen(
-          requestId: item.id,
-          description: item.description,
-          patientName: widget.patientName,
-        ),
+    final ok = await context.push<bool>(
+      AppPaths.doctorUploadAnalysis(
+        _patientId,
+        item.id,
+        description: item.description,
       ),
     );
-    if (ok == true && mounted) await _bootstrap();
+    if (ok == true && mounted) {
+      context.read<ConsultationBootstrapProvider>().invalidate(
+            _patientId,
+            _effectiveAppointment.id,
+          );
+      await _startBootstrap(forceRefresh: true);
+    }
+  }
+
+  Widget _buildPatientSummaryHeader({
+    required ConsultationContext? ctx,
+    required ConsultationStats stats,
+    required bool wide,
+  }) {
+    return DoctorPatientSummaryHeaderRow(
+      name: ctx?.patientName ?? widget.patientName,
+      email: ctx?.patientEmail ?? widget.patientEmail ?? '',
+      sex: ctx?.sex,
+      subtitle: _whenLabel(),
+      ageYears: ctx?.ageYears,
+      bloodType: ctx?.bloodType,
+      weightKg: ctx?.weightKg,
+      totalAnalysis: stats.analysisRequested,
+      uploadedAnalysis: stats.analysisUploaded,
+      pendingAnalysis: stats.analysisPending,
+      timelineEvents: stats.timelineEvents,
+      onEditAge: () => _editClinicalAge(),
+      onEditBloodType: () => _editClinicalBloodType(),
+      onEditWeight: () => _editClinicalWeight(),
+      onEditProfile: _openEditProfileDialog,
+      onExport: _exportExpediente,
+      exporting: _exportingExpediente,
+      editingProfile: _editingProfile,
+      wide: wide,
+    );
   }
 
   Future<void> _openEditProfileDialog() async {
-    final ctx = _context;
-    final nameCtrl = TextEditingController(
-      text: ctx?.patientName ?? widget.patientName,
+    if (_editingProfile || _exportingExpediente) return;
+
+    final form = await showDoctorClinicalProfileEditor(
+      context,
+      initial: _context,
+      fallbackName: widget.patientName,
+      fallbackEmail: widget.patientEmail ?? '',
     );
-    final emailCtrl = TextEditingController(
-      text: ctx?.patientEmail ?? widget.patientEmail ?? '',
-    );
-    final phoneCtrl = TextEditingController(text: ctx?.phone ?? '');
-    final ageCtrl = TextEditingController(text: ctx?.ageYears?.toString() ?? '');
-    final bloodCtrl = TextEditingController(text: ctx?.bloodType ?? '');
-    final weightCtrl = TextEditingController(text: ctx?.weightKg?.toString() ?? '');
-    final allergiesCtrl = TextEditingController(text: ctx?.allergies ?? '');
-    var selectedSex = (ctx?.sex ?? '').trim();
-    if (selectedSex.isEmpty) selectedSex = 'Masculino';
+    if (form == null || !mounted) return;
 
-    const sexOptions = [
-      'Femenino',
-      'Masculino',
-      'Otro',
-      'Prefiero no decir',
-    ];
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
-            'Editar perfil',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          content: SizedBox(
-            width: 380,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre completo',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Correo electrónico',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Teléfono',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: sexOptions.contains(selectedSex) ? selectedSex : 'Masculino',
-                    decoration: const InputDecoration(
-                      labelText: 'Sexo',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: sexOptions
-                        .map(
-                          (option) => DropdownMenuItem(
-                            value: option,
-                            child: Text(option),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() => selectedSex = value);
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  const Divider(),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: ageCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Edad (años)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: bloodCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Tipo de sangre',
-                      hintText: 'Ej. O+',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: weightCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Peso (kg)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: allergiesCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Alergias',
-                      hintText: 'Ej. Penicilina',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogCtx, true),
-              style: FilledButton.styleFrom(backgroundColor: KeepiColors.skyBlue),
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (saved != true || !mounted) {
-      nameCtrl.dispose();
-      emailCtrl.dispose();
-      phoneCtrl.dispose();
-      ageCtrl.dispose();
-      bloodCtrl.dispose();
-      weightCtrl.dispose();
-      allergiesCtrl.dispose();
-      return;
-    }
-
-    final name = nameCtrl.text.trim();
-    final email = emailCtrl.text.trim();
-    final phone = phoneCtrl.text.trim();
-    final ageRaw = ageCtrl.text.trim();
-    final weightRaw = weightCtrl.text.trim();
-    final bloodType = bloodCtrl.text.trim();
-    final allergiesText = allergiesCtrl.text.trim();
-    nameCtrl.dispose();
-    emailCtrl.dispose();
-    phoneCtrl.dispose();
-    ageCtrl.dispose();
-    bloodCtrl.dispose();
-    weightCtrl.dispose();
-    allergiesCtrl.dispose();
-
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('El nombre es obligatorio')),
-      );
-      return;
-    }
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('El correo es obligatorio')),
-      );
-      return;
-    }
-
-    int? ageYears;
-    double? weightKg;
-    if (ageRaw.isNotEmpty) {
-      ageYears = int.tryParse(ageRaw.replaceAll(RegExp(r'[^0-9]'), ''));
-      if (ageYears == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Edad inválida')),
-        );
-        return;
-      }
-    }
-    if (weightRaw.isNotEmpty) {
-      weightKg = double.tryParse(
-        weightRaw.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), ''),
-      );
-      if (weightKg == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Peso inválido')),
-        );
-        return;
-      }
-    }
-
+    setState(() => _editingProfile = true);
     try {
-      final doctorSvc = DoctorService(context.read<ApiClient>());
-      final updated = await doctorSvc.upsertClinicalProfile(
-        patientId: widget.appointment.patientId,
-        name: name,
-        email: email,
-        phone: phone.isEmpty ? null : phone,
-        sex: selectedSex,
-        ageYears: ageYears,
-        bloodType: bloodType.isEmpty ? null : bloodType,
-        weightKg: weightKg,
-        allergies: allergiesText.isEmpty ? null : allergiesText,
+      final updated = await saveClinicalProfileForm(
+        api: context.read<ApiClient>(),
+        patientId: _patientId,
+        form: form,
       );
-      if (!mounted) return;
+      if (updated == null || !mounted) return;
+      context.read<ConsultationBootstrapProvider>().invalidate(
+            _patientId,
+            _effectiveAppointment.id,
+          );
       final allergies = (updated.allergies ?? '').trim();
       setState(() {
         _context = updated;
@@ -538,11 +464,10 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(DoctorService.messageFromDio(e)),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(DoctorService.messageFromDio(e))),
       );
+    } finally {
+      if (mounted) setState(() => _editingProfile = false);
     }
   }
 
@@ -561,8 +486,8 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
         context: context,
         api: context.read<ApiClient>(),
         doctorId: doctorId,
-        patientId: widget.appointment.patientId,
-        patientName: widget.patientName,
+        patientId: _patientId,
+        patientName: _context?.patientName ?? widget.patientName,
       );
     } catch (e) {
       if (!mounted) return;
@@ -580,49 +505,101 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     }
   }
 
-  Widget _buildPatientSummaryHeader({
-    required ConsultationContext? ctx,
-    required ConsultationStats stats,
-    required bool wide,
-  }) {
-    final header = ConsultationPatientHeader(
-      name: ctx?.patientName ?? widget.patientName,
-      email: ctx?.patientEmail ?? widget.patientEmail ?? '',
-      sex: ctx?.sex,
-      subtitle: _whenLabel(),
-      ageYears: ctx?.ageYears,
-      bloodType: ctx?.bloodType,
-      weightKg: ctx?.weightKg,
-      onEditProfile: _openEditProfileDialog,
-      onExport: _exportExpediente,
-      exporting: _exportingExpediente,
-    );
-    final statsGrid = DoctorPatientStatsGrid(
-      totalAnalysis: stats.analysisRequested,
-      uploadedAnalysis: stats.analysisUploaded,
-      pendingAnalysis: stats.analysisPending,
-      timelineEvents: stats.timelineEvents,
-    );
+  String _whenLabel() {
+    final dt = _effectiveAppointment.appointmentDate?.toLocal();
+    if (dt == null) return '';
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day}/${dt.month}/${dt.year} · $h:$m';
+  }
 
-    if (wide) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(flex: 5, child: header),
-          const SizedBox(width: 18),
-          Expanded(flex: 4, child: statsGrid),
-        ],
+  Future<void> _persistClinicalProfile({
+    int? ageYears,
+    String? bloodType,
+    double? weightKg,
+  }) async {
+    try {
+      final updated = await DoctorService(context.read<ApiClient>())
+          .upsertClinicalProfile(
+        patientId: _patientId,
+        ageYears: ageYears,
+        bloodType: bloodType,
+        weightKg: weightKg,
+      );
+      if (!mounted) return;
+      context.read<ConsultationBootstrapProvider>().invalidate(
+            _patientId,
+            _effectiveAppointment.id,
+          );
+      setState(() => _context = updated);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(DoctorService.messageFromDio(e))),
       );
     }
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        header,
-        const SizedBox(height: 14),
-        statsGrid,
-      ],
+  Future<void> _editClinicalAge() async {
+    final raw = await _editVital(
+      title: 'Edad',
+      label: 'Años',
+      initial: _context?.ageYears?.toString() ?? '',
+      hint: 'Ej. 35',
+      onSave: (_) {},
     );
+    if (raw == null || !mounted) return;
+    if (raw.isEmpty) {
+      await _persistClinicalProfile(ageYears: null);
+      return;
+    }
+    final age = int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (age == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Edad inválida')),
+      );
+      return;
+    }
+    await _persistClinicalProfile(ageYears: age);
+  }
+
+  Future<void> _editClinicalBloodType() async {
+    final raw = await _editVital(
+      title: 'Tipo de sangre',
+      label: 'Grupo',
+      initial: _context?.bloodType ?? '',
+      hint: 'Ej. O+',
+      onSave: (_) {},
+    );
+    if (raw == null || !mounted) return;
+    await _persistClinicalProfile(
+      bloodType: raw.isEmpty ? null : raw,
+    );
+  }
+
+  Future<void> _editClinicalWeight() async {
+    final raw = await _editVital(
+      title: 'Peso',
+      label: 'Kilogramos',
+      initial: _context?.weightKg?.toString() ?? '',
+      hint: 'Ej. 72.5',
+      onSave: (_) {},
+    );
+    if (raw == null || !mounted) return;
+    if (raw.isEmpty) {
+      await _persistClinicalProfile(weightKg: null);
+      return;
+    }
+    final weight = double.tryParse(
+      raw.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), ''),
+    );
+    if (weight == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Peso inválido')),
+      );
+      return;
+    }
+    await _persistClinicalProfile(weightKg: weight);
   }
 
   Future<String?> _editVital({
@@ -689,11 +666,15 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
         vitals: _vitals,
       );
       await DoctorService(context.read<ApiClient>()).upsertTimelineDoctorNote(
-        patientId: widget.appointment.patientId,
+        patientId: _patientId,
         eventId: event.id,
         eventType: event.eventType,
         doctorNote: payload,
       );
+      context.read<ConsultationBootstrapProvider>().invalidate(
+            _patientId,
+            _effectiveAppointment.id,
+          );
       if (!mounted) return;
       widget.onSaved?.call();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -710,14 +691,6 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
         _error = DoctorService.messageFromDio(e);
       });
     }
-  }
-
-  String _whenLabel() {
-    final dt = widget.appointment.appointmentDate?.toLocal();
-    if (dt == null) return 'Sin fecha';
-    final h = dt.hour.toString().padLeft(2, '0');
-    final m = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day}/${dt.month}/${dt.year} · $h:$m';
   }
 
   Widget _vitalCell({
@@ -1045,12 +1018,13 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
               events: recent,
               showSectionHeader: false,
               compact: true,
+              titleOnly: true,
               onEventTap: (e) => TimelineEventOpener.openTimelineEvent(
                 context,
-                patientId: widget.appointment.patientId,
+                patientId: _patientId,
                 patientName: widget.patientName,
                 event: e,
-                onNoteSaved: _bootstrap,
+                onNoteSaved: () => _startBootstrap(forceRefresh: true),
               ),
             ),
           const SizedBox(height: 12),
@@ -1090,11 +1064,11 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   Widget _buildProfileTabPanels() {
     final ctx = _context;
     return DoctorPatientProfileScreen(
-      key: const ValueKey('consultation-profile-tabs'),
+      key: ValueKey('consultation-profile-tabs-$_patientId'),
       embeddedTabPanelsOnly: true,
       externalTabIndex: _tabIndex.clamp(0, 3),
       embedded: true,
-      patientId: widget.appointment.patientId,
+      patientId: _patientId,
       patientName: ctx?.patientName ?? widget.patientName,
       patientEmail: ctx?.patientEmail ?? widget.patientEmail ?? '',
       mustChangePassword: false,
@@ -1107,6 +1081,14 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   }
 
   Widget _buildConsultationTabPanel(bool wide) {
+    if (_bootstrapping && _context == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
+        ),
+      );
+    }
     if (wide) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1187,12 +1169,29 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
                 },
               ),
               const SizedBox(height: 22),
-              if (_error != null) ...[
+              if (_error != null &&
+                  _context == null &&
+                  !_bootstrapping) ...[
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => _startBootstrap(forceRefresh: true),
+                    child: const Text('Reintentar'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ] else if (_error != null) ...[
                 Text(_error!, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 12),
               ],
               Expanded(
-                child: IndexedStack(
+                child: _error != null &&
+                        _context == null &&
+                        !_bootstrapping
+                    ? const SizedBox.shrink()
+                    : IndexedStack(
                   index: _tabIndex == 4 ? 1 : 0,
                   children: [
                     SingleChildScrollView(
@@ -1215,28 +1214,9 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     );
   }
 
-  Widget _buildLoadingView() {
-    return const Center(
-      child: CircularProgressIndicator(color: KeepiColors.orange),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final pad = widget.embedded || isWebWide(context) ? 28.0 : 18.0;
-
-    if (_loading) {
-      if (widget.embedded) {
-        return ColoredBox(
-          color: KeepiColors.surfaceBg,
-          child: _buildLoadingView(),
-        );
-      }
-      return Scaffold(
-        backgroundColor: KeepiColors.surfaceBg,
-        body: SafeArea(child: _buildLoadingView()),
-      );
-    }
 
     if (widget.embedded) {
       return ColoredBox(

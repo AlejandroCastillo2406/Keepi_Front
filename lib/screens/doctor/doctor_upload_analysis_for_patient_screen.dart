@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
@@ -83,7 +84,7 @@ class _DoctorUploadAnalysisForPatientScreenState
       if (widget.onBack != null) {
         widget.onBack!();
       } else {
-        Navigator.of(context).pop(true);
+        context.pop(true);
       }
     } on DioException catch (e) {
       if (!mounted) return;

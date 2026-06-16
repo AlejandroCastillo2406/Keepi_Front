@@ -82,7 +82,6 @@ class ApiEndpoints {
   static String get notifications => _path('/notifications/');
   static String get globalSearch => _path('/search/');
 
-  // --- NUEVAS RUTAS DE CITAS (Sincronizadas con el nuevo Backend) ---
 
   static String get appointmentsDoctorCreate => _path('/appointments/doctor');
   static String get appointmentsDoctorCalendar =>
@@ -99,6 +98,8 @@ class ApiEndpoints {
       _path('/appointments/$id/doctor/approve');
   static String appointmentDoctorReject(String id) =>
       _path('/appointments/$id/doctor/reject');
+  static String appointmentAttendance(String id) =>
+      _path('/appointments/$id/attendance');
 
   static String get doctorSchedulingSettings =>
       _path('/doctors/scheduling/settings');
@@ -113,7 +114,6 @@ class ApiEndpoints {
   static String appointmentPatientRespond(String appointmentId) =>
       _path('/patient/appointments/$appointmentId/respond');
 
-  // ──────── Cuestionarios de salud (solo doctor) ────────
   static String get questionnaireSpecialties =>
       _path('/questionnaire/specialties');
   static String questionnaireSpecialtyQuestions(String specialtyId,
@@ -146,6 +146,10 @@ class ApiEndpoints {
 
   static String doctorTimelineEventNote(String patientId, String eventId) =>
       _path('/doctors/patients/$patientId/timeline/events/$eventId/doctor-note');
+  static String doctorConsultationBootstrap(String patientId) =>
+      _path('/doctors/patients/$patientId/consultation-bootstrap');
+  static String doctorPatientProfileBootstrap(String patientId) =>
+      _path('/doctors/patients/$patientId/profile-bootstrap');
   static String questionnairePublicByToken(String token) =>
       _path('/questionnaire/public/$token');
   static String questionnairePublicSubmitByToken(String token) =>

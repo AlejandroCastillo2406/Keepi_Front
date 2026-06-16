@@ -1,22 +1,22 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/app_theme.dart';
-import 'core/decorative_background.dart';
 import 'providers/auth_provider.dart';
+import 'providers/consultation_bootstrap_provider.dart';
+import 'providers/expedientes_cache_provider.dart';
+import 'providers/patients_cache_provider.dart';
+import 'router/app_router.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
-import 'core/roles.dart';
-import 'screens/auth/auth.dart';
-import 'screens/doctor/doctor.dart';
-import 'screens/patient/patient.dart';
-import 'screens/user/user.dart';
 
-final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+/// Alias para notificaciones push (misma key que go_router).
+final GlobalKey<NavigatorState> appNavigatorKey = rootNavigatorKey;
 
 /// En web: controles más compactos (menos botones/FAB gigantes).
 Widget _webAwareBuilder(BuildContext context, Widget? child) {
@@ -47,58 +47,50 @@ void main() async {
   await dotenv.load(fileName: '.env');
   await PushNotificationService.initializeFirebaseSafely();
   await PushNotificationService.configureTapHandlers(appNavigatorKey);
-  runApp(const KeepiApp());
+  final prefs = await SharedPreferences.getInstance();
+  runApp(KeepiApp(prefs: prefs));
 }
 
 class KeepiApp extends StatelessWidget {
-  const KeepiApp({super.key});
+  const KeepiApp({super.key, required this.prefs});
+
+  final SharedPreferences prefs;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<SharedPreferences>(
-      future: SharedPreferences.getInstance(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return MaterialApp(
-            title: 'Keepi',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.theme,
-            home: const _SplashScreen(),
-          );
-        }
-        final prefs = snapshot.data!;
-        final api = ApiClient();
-        final authService = AuthService(api);
-        return MultiProvider(
-          providers: [
-            Provider<ApiClient>.value(value: api),
-            ChangeNotifierProvider<AuthProvider>(
-              create: (_) => AuthProvider(prefs, api, authService),
-            ),
-          ],
-          child: MaterialApp(
-            navigatorKey: appNavigatorKey,
-            title: 'Keepi',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.theme,
-            builder: _webAwareBuilder,
-            home: const _AuthWrapper(),
-          ),
-        );
-      },
+    final api = ApiClient();
+    final authService = AuthService(api);
+    return MultiProvider(
+      providers: [
+        Provider<ApiClient>.value(value: api),
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) => AuthProvider(prefs, api, authService),
+        ),
+        ChangeNotifierProvider<ConsultationBootstrapProvider>(
+          create: (_) => ConsultationBootstrapProvider(),
+        ),
+        ChangeNotifierProvider<ExpedientesCacheProvider>(
+          create: (_) => ExpedientesCacheProvider(),
+        ),
+        ChangeNotifierProvider<PatientsCacheProvider>(
+          create: (_) => PatientsCacheProvider(),
+        ),
+      ],
+      child: const _KeepiRouterApp(),
     );
   }
 }
 
-class _AuthWrapper extends StatefulWidget {
-  const _AuthWrapper();
+class _KeepiRouterApp extends StatefulWidget {
+  const _KeepiRouterApp();
 
   @override
-  State<_AuthWrapper> createState() => _AuthWrapperState();
+  State<_KeepiRouterApp> createState() => _KeepiRouterAppState();
 }
 
-class _AuthWrapperState extends State<_AuthWrapper> {
+class _KeepiRouterAppState extends State<_KeepiRouterApp> {
   static const _minSplashDuration = Duration(milliseconds: 1500);
+  GoRouter? _router;
   bool _minTimeElapsed = false;
 
   @override
@@ -110,26 +102,26 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _router ??= createAppRouter(context.read<AuthProvider>());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final showSplash = auth.isLoading || !_minTimeElapsed;
-    if (showSplash) {
-      return const _SplashScreen();
-    }
-    if (auth.isLoggedIn) {
-      if (auth.mustChangePassword) {
-        return const ForcePasswordChangeScreen();
-      }
-      final role = auth.roleName ?? AppRole.user;
-      if (role == AppRole.doctor) {
-        return const DoctorHomeScreen();
-      }
-      if (role == AppRole.patient) {
-        return const PatientHomeScreen();
-      }
-      return const HomeScreen();
-    }
-    return const LoginScreen();
+
+    return MaterialApp.router(
+      title: 'Keepi',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.theme,
+      routerConfig: _router!,
+      builder: (context, child) {
+        if (showSplash) return const _SplashScreen();
+        return _webAwareBuilder(context, child);
+      },
+    );
   }
 }
 
@@ -139,59 +131,56 @@ class _SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: DecorativeBackground(
-        blobOpacity: 0.2,
-        child: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: Image.asset(
-                    'assets/logo.png',
-                    height: 96,
-                    width: 96,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.folder_rounded,
-                      size: 96,
-                      color: KeepiColors.orange,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Text(
-                  'Keepi',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: KeepiColors.slate,
-                        letterSpacing: -0.5,
-                      ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Organiza, clasifica y nunca pierdas un documento',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: KeepiColors.slateLight,
-                      ),
-                ),
-                const SizedBox(height: 44),
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Image.asset(
+                  'assets/logo.png',
+                  height: 96,
+                  width: 96,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.folder_rounded,
+                    size: 96,
                     color: KeepiColors.orange,
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                'Keepi',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: KeepiColors.slate,
+                      letterSpacing: -0.5,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Organiza, clasifica y nunca pierdas un documento',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: KeepiColors.slateLight,
+                    ),
+              ),
+              const SizedBox(height: 44),
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: KeepiColors.orange,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
-

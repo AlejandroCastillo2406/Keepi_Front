@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/app_theme.dart';
+import '../../services/api_client.dart';
 import '../../services/document_bytes_loader.dart';
+import '../../services/drive_structure_service.dart';
 
 /// Visor de documentos (análisis, S3 Keepi Cloud, Drive, descarga móvil).
 class AnalysisDocumentViewerScreen extends StatefulWidget {
@@ -18,19 +22,21 @@ class AnalysisDocumentViewerScreen extends StatefulWidget {
     required this.title,
     this.headers = const {},
     this.mimeType,
+    this.s3Path,
   });
 
   final String url;
   final String title;
   final Map<String, String> headers;
   final String? mimeType;
+  final String? s3Path;
 
   @override
   State<AnalysisDocumentViewerScreen> createState() =>
       _AnalysisDocumentViewerScreenState();
 }
 
-enum _ViewerMode { loading, pdf, image, web, error }
+enum _ViewerMode { loading, pdf, image, text, web, error }
 
 class _AnalysisDocumentViewerScreenState
     extends State<AnalysisDocumentViewerScreen> {
@@ -65,7 +71,18 @@ class _AnalysisDocumentViewerScreenState
     }
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.csv')) return 'text/csv';
+    if (lower.endsWith('.json')) return 'application/json';
+    if (lower.endsWith('.md')) return 'text/markdown';
     return '';
+  }
+
+  bool get _isText {
+    final m = _effectiveMime;
+    if (m.startsWith('text/')) return true;
+    return RegExp(r'\.(txt|csv|md|log)$', caseSensitive: false)
+        .hasMatch(widget.title);
   }
 
   bool get _isPdf =>
@@ -85,40 +102,9 @@ class _AnalysisDocumentViewerScreenState
 
   Future<void> _loadBytes() async {
     try {
-      final bytes = await DocumentBytesLoader.fetch(
-        url: widget.url,
-        headers: widget.headers,
-      );
+      final bytes = await _fetchDocumentBytes();
       if (!mounted) return;
-
-      final kind = DocumentBytesLoader.detectKind(bytes);
-      if (kind == DetectedFileKind.pdf) {
-        setState(() {
-          _bytes = bytes;
-          _mode = _ViewerMode.pdf;
-        });
-        return;
-      }
-      if (kind == DetectedFileKind.image) {
-        setState(() {
-          _bytes = bytes;
-          _mode = _ViewerMode.image;
-        });
-        return;
-      }
-
-      if (_isPdf || _isImage) {
-        setState(() {
-          _mode = _ViewerMode.error;
-          _error = widget.title.toLowerCase().endsWith('.pdf')
-              ? 'Este archivo no es un PDF válido. Si subiste una foto, vuelve a guardarla desde el análisis (con extensión .jpg o .png).'
-              : 'No se pudo reconocer el formato del archivo.';
-        });
-        return;
-      }
-
-      _bytes = bytes;
-      _initWebView();
+      _applyBytes(bytes);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -126,6 +112,58 @@ class _AnalysisDocumentViewerScreenState
         _error = _messageFromError(e);
       });
     }
+  }
+
+  Future<Uint8List> _fetchDocumentBytes() async {
+    final s3Path = widget.s3Path?.trim();
+    if (s3Path != null && s3Path.isNotEmpty) {
+      final api = context.read<ApiClient>();
+      final data =
+          await DriveStructureService(api).downloadS3FileContent(s3Path);
+      return Uint8List.fromList(data);
+    }
+    return DocumentBytesLoader.fetch(
+      url: widget.url,
+      headers: widget.headers,
+    );
+  }
+
+  void _applyBytes(Uint8List bytes) {
+    final kind = DocumentBytesLoader.detectKind(bytes);
+    if (kind == DetectedFileKind.pdf) {
+      setState(() {
+        _bytes = bytes;
+        _mode = _ViewerMode.pdf;
+      });
+      return;
+    }
+    if (kind == DetectedFileKind.image) {
+      setState(() {
+        _bytes = bytes;
+        _mode = _ViewerMode.image;
+      });
+      return;
+    }
+    if (_isText) {
+      setState(() {
+        _bytes = bytes;
+        _mode = _ViewerMode.text;
+      });
+      return;
+    }
+
+    if (_isPdf || _isImage) {
+      setState(() {
+        _mode = _ViewerMode.error;
+        _error = widget.title.toLowerCase().endsWith('.pdf')
+            ? 'Este archivo no es un PDF válido. Si subiste una foto, vuelve a guardarla desde el análisis (con extensión .jpg o .png).'
+            : 'No se pudo reconocer el formato del archivo.';
+      });
+      return;
+    }
+
+    _bytes = bytes;
+    _initWebView();
   }
 
   String _messageFromError(Object e) {
@@ -273,6 +311,29 @@ class _AnalysisDocumentViewerScreenState
             maxScale: 4,
             child: Center(
               child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+          ),
+        );
+      case _ViewerMode.text:
+        final bytes = _bytes;
+        if (bytes == null) {
+          return const Center(child: Text('Sin datos del archivo'));
+        }
+        final text = utf8.decode(bytes, allowMalformed: true);
+        return ColoredBox(
+          color: Colors.white,
+          child: Scrollbar(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: SelectableText(
+                text,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13.5,
+                  height: 1.5,
+                  color: KeepiColors.slate,
+                ),
+              ),
             ),
           ),
         );

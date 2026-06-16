@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,7 +13,7 @@ import '../../services/prescription_service.dart';
 import '../../services/questionnaire_service.dart';
 import '../../services/timeline_event_opener.dart';
 import '../../widgets/patient_care_timeline.dart';
-import 'analysis_document_viewer_screen.dart'; // Tu visor inteligente original
+import '../../router/app_navigation.dart';
 
 class DoctorPatientTimelineScreen extends StatefulWidget {
   const DoctorPatientTimelineScreen({
@@ -69,9 +70,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     }
   }
 
-  // ==========================================
   // APERTURA DE ANÁLISIS (USA TU PROPIA PANTALLA)
-  // ==========================================
   void _openBackendDocument(String url, String title) {
     if (url.isEmpty) return;
 
@@ -83,20 +82,15 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     };
 
     // Usamos tu pantalla AnalysisDocumentViewerScreen (tal cual lo haces en el Perfil)
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AnalysisDocumentViewerScreen(
-          url: url,
-          title: title,
-          headers: headers,
-        ),
-      ),
+    AppNavigation.pushDocumentViewer(
+      context,
+      url: url,
+      title: title,
+      headers: headers,
     );
   }
 
-  // ==========================================
   // APERTURA EXTERNA (PARA RECETAS EN S3)
-  // ==========================================
   Future<void> _launchExternalUrl(String url) async {
     if (url.isEmpty) return;
     try {
@@ -334,9 +328,6 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
                   
                   const SizedBox(height: 24),
                   
-                  // ==========================================
-                  // CONTENIDO CONDICIONAL POR EVENTO
-                  // ==========================================
                   if (event.eventType.toLowerCase() == 'prescription')
                     _buildPremiumPrescriptionCard(event) 
                   else if (isQuestionnaire)
@@ -375,9 +366,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     );
   }
 
-  // =======================================================================
-  // DISEÑO INTELIGENTE PARA ANÁLISIS (BUSCADOR EXTREMADAMENTE ROBUSTO)
-  // =======================================================================
+
   Widget _buildAnalysisDetailCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
       future: DoctorService(context.read<ApiClient>()).fetchPatientAnalysisRequests(widget.patientId).catchError((e) => []),
@@ -597,9 +586,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     );
   }
 
-  // =======================================================================
-  // DISEÑO PARA CUESTIONARIOS
-  // =======================================================================
+
   Widget _buildQuestionnaireDetailCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
       future: QuestionnaireService(context.read<ApiClient>()).fetchPatientResponses(widget.patientId).catchError((e) => []),
@@ -723,9 +710,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     );
   }
 
-  // =======================================================================
-  // DISEÑO PARA CITA
-  // =======================================================================
+
   Widget _buildAppointmentDetailCard(TimelineEvent event) {
     DateTime dt = DateTime.now();
     try {
@@ -827,9 +812,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     );
   }
 
-  // =======================================================================
-  // DISEÑO PREMIUM DE LA RECETA
-  // =======================================================================
+
   Widget _buildPremiumPrescriptionCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
       future: PrescriptionService(context.read<ApiClient>()).fetchMine().catchError((e) => []),

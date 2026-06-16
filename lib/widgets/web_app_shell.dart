@@ -22,6 +22,7 @@ class WebAppShell extends StatelessWidget {
     required this.body,
     this.brandSubtitle,
     this.primaryAction,
+    this.headerCenter,
     this.onNotifications,
     this.onSettings,
     this.onLogout,
@@ -36,6 +37,7 @@ class WebAppShell extends StatelessWidget {
   final ValueChanged<int> onNavTap;
   final Widget body;
   final Widget? primaryAction;
+  final Widget? headerCenter;
   final VoidCallback? onNotifications;
   final VoidCallback? onSettings;
   final VoidCallback? onLogout;
@@ -64,6 +66,7 @@ class WebAppShell extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _WebShellHeader(
+                  headerCenter: headerCenter,
                   onNotifications: onNotifications,
                   onLogout: onLogout,
                   userLabel: userLabel,
@@ -292,6 +295,7 @@ class _SidebarFooterLink extends StatelessWidget {
 
 class _WebShellHeader extends StatelessWidget {
   const _WebShellHeader({
+    this.headerCenter,
     required this.onNotifications,
     required this.onLogout,
     required this.userLabel,
@@ -299,6 +303,7 @@ class _WebShellHeader extends StatelessWidget {
     required this.hideLogout,
   });
 
+  final Widget? headerCenter;
   final VoidCallback? onNotifications;
   final VoidCallback? onLogout;
   final String? userLabel;
@@ -307,16 +312,29 @@ class _WebShellHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final headerHeight = headerCenter != null ? 72.0 : 60.0;
     return Container(
-      height: 60,
+      height: headerHeight,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: KeepiColors.cardBorder)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Spacer(),
+          if (headerCenter != null) ...[
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: headerCenter!,
+                ),
+              ),
+            ),
+          ] else
+            const Spacer(),
           NotificationBellMenu(onViewAll: onNotifications),
           if (userLabel != null) ...[
             const SizedBox(width: 14),

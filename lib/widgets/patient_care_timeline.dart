@@ -1,17 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
+import '../core/care_event_style.dart';
 import '../models/timeline_event.dart';
+import '../utils/consultation_note_codec.dart';
 
-/// Timeline estilo "dossier clínico-editorial":
-/// - Sello de fecha al lado izquierdo (día / mes / hora en tabulares).
-/// - Rail fino con marcador circular (icono del tipo + anillo del estado).
-/// - Separadores por mes.
-/// - Meta line con TAG · ESTADO en mayúsculas con tracking.
-/// - Acento corto (barra) de color de evento bajo la meta.
-/// - Byline con em-dash para el actor.
-///
-/// Pensado para NO verse "auto-generado" sino trabajado a detalle.
 class PatientCareTimeline extends StatelessWidget {
   const PatientCareTimeline({
     super.key,
@@ -21,6 +14,7 @@ class PatientCareTimeline extends StatelessWidget {
     this.subtitle,
     this.onEventTap,
     this.compact = false,
+    this.titleOnly = false,
   });
 
   final List<TimelineEvent> events;
@@ -28,8 +22,8 @@ class PatientCareTimeline extends StatelessWidget {
   final String title;
   final String? subtitle;
   final void Function(TimelineEvent)? onEventTap;
-  /// Sidebar estrecho (p. ej. consulta): tipografía más pequeña y sin detalle en CUENTA.
   final bool compact;
+  final bool titleOnly;
 
   static const _green = Color(0xFF15803D);
   static const _orange = Color(0xFFC2410C);
@@ -51,71 +45,11 @@ class PatientCareTimeline extends StatelessWidget {
     }
   }
 
-  Color _eventColor(String t) {
-    switch (t) {
-      case 'registration':
-        return const Color(0xFF0F766E);
-      case 'appointment':
-        return KeepiColors.orange;
-      case 'prescription':
-        return const Color(0xFF7C3AED);
-      case 'analysis_upload':
-        return const Color(0xFF0284C7);
-      case 'analysis':
-      case 'analysis_request':
-        return const Color(0xFF2563EB);
-      case 'prior_documents':
-        return const Color(0xFF0D9488);
-      case 'clinical_intake':
-        return const Color(0xFF059669);
-      default:
-        return KeepiColors.slate;
-    }
-  }
+  Color _eventColor(String t) => CareEventStyle.colorFor(t);
 
-  IconData _eventIcon(String t) {
-    switch (t) {
-      case 'registration':
-        return Icons.verified_user_outlined;
-      case 'appointment':
-        return Icons.event_available_outlined;
-      case 'prescription':
-        return Icons.receipt_long_outlined;
-      case 'analysis_upload':
-        return Icons.attach_file_rounded;
-      case 'analysis':
-      case 'analysis_request':
-        return Icons.biotech_outlined;
-      case 'prior_documents':
-        return Icons.folder_shared_outlined;
-      case 'clinical_intake':
-        return Icons.assignment_turned_in_outlined;
-      default:
-        return Icons.flag_outlined;
-    }
-  }
+  IconData _eventIcon(String t) => CareEventStyle.iconFor(t);
 
-  String _typeLabel(String t) {
-    switch (t) {
-      case 'registration':
-        return 'CUENTA';
-      case 'appointment':
-        return 'CITA';
-      case 'prescription':
-        return 'RECETA';
-      case 'analysis_upload':
-        return 'ARCHIVO';
-      case 'analysis':
-      case 'analysis_request':
-        return 'ANÁLISIS';
-      case 'prior_documents':
-        return 'DOCUMENTOS';
-      case 'clinical_intake':
-        return 'ANTECEDENTES';
-      default:
-        return 'EVENTO';
-    }
-  }
+  String _typeLabel(String t) => CareEventStyle.labelFor(t);
 
   String _stateLabel(String s) {
     switch (s) {
@@ -165,6 +99,7 @@ class PatientCareTimeline extends StatelessWidget {
         onTap: onEventTap != null ? () => onEventTap!(e) : null,
         hasDoctorNote: e.hasDoctorNote,
         compact: compact,
+        titleOnly: titleOnly,
       ));
     }
 
@@ -179,8 +114,6 @@ class PatientCareTimeline extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// HEADER
 
 class _Header extends StatelessWidget {
   const _Header({required this.title, required this.count, this.subtitle});
@@ -269,8 +202,6 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// SEPARADOR DE MES
 
 class _MonthDivider extends StatelessWidget {
   const _MonthDivider({
@@ -323,8 +254,6 @@ class _MonthDivider extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// ENTRADA INDIVIDUAL
 
 class _Entry extends StatelessWidget {
   const _Entry({
@@ -341,6 +270,7 @@ class _Entry extends StatelessWidget {
     this.onTap,
     this.hasDoctorNote = false,
     this.compact = false,
+    this.titleOnly = false,
   });
 
   final TimelineEvent event;
@@ -356,6 +286,7 @@ class _Entry extends StatelessWidget {
   final VoidCallback? onTap;
   final bool hasDoctorNote;
   final bool compact;
+  final bool titleOnly;
 
   String get _detail {
     final s = (event.subtitle ?? '').trim();
@@ -364,7 +295,42 @@ class _Entry extends StatelessWidget {
     return d;
   }
 
-  bool get _showDetail => !compact && _detail.isNotEmpty;
+  bool get _isAppointment => event.eventType == 'appointment';
+
+  String get _appointmentReason {
+    final s = (event.subtitle ?? '').trim();
+    final d = event.description.trim();
+    if (s.isNotEmpty) return s;
+    if (d.isNotEmpty) return d;
+    return 'Consulta';
+  }
+
+  String? get _doctorNoteText {
+    if (!event.hasDoctorNote) return null;
+    final preview = (event.doctorNotePreview ?? '').trim();
+    if (preview.isEmpty) return null;
+    final clinical = ConsultationNoteCodec.decode(preview).clinicalNote.trim();
+    return clinical.isNotEmpty ? clinical : preview;
+  }
+
+  bool get _showDetail => !compact && !titleOnly && _detail.isNotEmpty;
+
+  bool get _showEventTitle => event.title.trim().isNotEmpty;
+
+  /// En vista compacta de citas: motivo + nota en lugar del título genérico.
+  bool get _showAppointmentCompactBody =>
+      _isAppointment && (compact || titleOnly);
+
+  bool get _showTitleBlock =>
+      _showEventTitle && !_showAppointmentCompactBody;
+
+  bool get _showAppointmentReason =>
+      _isAppointment &&
+      _appointmentReason.isNotEmpty &&
+      (_showAppointmentCompactBody || !_showDetail);
+
+  bool get _showDoctorNoteLine =>
+      _isAppointment && (_doctorNoteText ?? '').isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -509,27 +475,69 @@ class _Entry extends StatelessWidget {
                         ),
                       ],
                     ),
-                    SizedBox(height: compact ? 4 : 6),
-                    Container(
-                      height: 2,
-                      width: compact ? 16 : 20,
-                      decoration: BoxDecoration(
-                        color: eventColor,
-                        borderRadius: BorderRadius.circular(2),
+                    if (_showTitleBlock) ...[
+                      SizedBox(height: compact ? 4 : 6),
+                      Container(
+                        height: 2,
+                        width: compact ? 16 : 20,
+                        decoration: BoxDecoration(
+                          color: eventColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                    ),
-                    SizedBox(height: compact ? 6 : 8),
-                    Text(
-                      event.title,
-                      style: TextStyle(
-                        fontSize: titleFontSize,
-                        fontWeight: FontWeight.w700,
-                        color: KeepiColors.slate,
-                        height: 1.25,
-                        letterSpacing: -0.25,
+                      SizedBox(height: compact ? 6 : 8),
+                      Text(
+                        event.title,
+                        style: TextStyle(
+                          fontSize: titleFontSize,
+                          fontWeight: FontWeight.w700,
+                          color: KeepiColors.slate,
+                          height: 1.25,
+                          letterSpacing: -0.25,
+                        ),
+                        softWrap: true,
                       ),
-                      softWrap: true,
-                    ),
+                    ],
+                    if (_showAppointmentReason) ...[
+                      SizedBox(height: compact ? 4 : 6),
+                      if (_showAppointmentCompactBody)
+                        Container(
+                          height: 2,
+                          width: compact ? 16 : 20,
+                          decoration: BoxDecoration(
+                            color: eventColor,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      SizedBox(height: compact ? 6 : 8),
+                      if (_showAppointmentCompactBody)
+                        Text(
+                          'MOTIVO',
+                          style: TextStyle(
+                            fontSize: compact ? 8.5 : 9.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                            color: KeepiColors.slateLight,
+                          ),
+                        ),
+                      if (_showAppointmentCompactBody) const SizedBox(height: 3),
+                      Text(
+                        _appointmentReason,
+                        style: TextStyle(
+                          fontSize: _showAppointmentCompactBody
+                              ? titleFontSize
+                              : detailFontSize,
+                          fontWeight: _showAppointmentCompactBody
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: _showAppointmentCompactBody
+                              ? KeepiColors.slate
+                              : KeepiColors.slateLight,
+                          height: 1.35,
+                        ),
+                        softWrap: true,
+                      ),
+                    ],
                     if (_showDetail) ...[
                       const SizedBox(height: 3),
                       Text(
@@ -542,7 +550,32 @@ class _Entry extends StatelessWidget {
                         softWrap: true,
                       ),
                     ],
-                    if (event.actor.trim().isNotEmpty && !compact) ...[
+                    if (_showDoctorNoteLine) ...[
+                      SizedBox(height: compact ? 8 : 10),
+                      Text(
+                        'NOTA MÉDICA',
+                        style: TextStyle(
+                          fontSize: compact ? 8.5 : 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: KeepiColors.slateLight,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _doctorNoteText!,
+                        style: TextStyle(
+                          fontSize: detailFontSize,
+                          color: KeepiColors.slate.withValues(alpha: 0.88),
+                          height: 1.4,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        softWrap: true,
+                        maxLines: compact ? 4 : 6,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (event.actor.trim().isNotEmpty && !compact && !titleOnly) ...[
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -609,8 +642,6 @@ class _Entry extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// MARCADOR CIRCULAR
 
 class _Marker extends StatelessWidget {
   const _Marker({
@@ -653,8 +684,6 @@ class _Marker extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// PAINTER DEL RAIL
 
 class _RailPainter extends CustomPainter {
   _RailPainter({

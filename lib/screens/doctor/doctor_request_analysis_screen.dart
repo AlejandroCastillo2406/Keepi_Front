@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
@@ -111,7 +112,7 @@ class _DoctorRequestAnalysisScreenState extends State<DoctorRequestAnalysisScree
     if (widget.onBack != null) {
       widget.onBack!();
     } else {
-      Navigator.pop(context);
+      context.pop();
     }
   }
 

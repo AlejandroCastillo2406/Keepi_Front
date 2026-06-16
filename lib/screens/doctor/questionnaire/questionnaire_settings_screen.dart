@@ -1,17 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../models/questionnaire_models.dart';
 import '../../../services/api_client.dart';
+import '../../../router/app_paths.dart';
+import '../../../router/router_extras.dart';
 import '../../../services/questionnaire_service.dart';
 import '_widgets.dart';
-import 'question_editor_screen.dart';
-import 'specialty_questions_screen.dart';
-import 'template_editor_screen.dart';
 
 /// Shell con 3 pestañas: Especialidades / Plantillas personalizadas / Preguntas globales.
 class QuestionnaireSettingsScreen extends StatefulWidget {
@@ -141,9 +141,6 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
     }
   }
 
-  // =========================================================
-  // FLUJO DE ESCANEO OCR + IA (CON TIPOS DE PREGUNTA)
-  // =========================================================
   Future<void> _pickAndProcessImages() async {
     final picker = ImagePicker();
     List<File> files = [];
@@ -468,22 +465,20 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
       },
     );
   }
-  // =========================================================
 
   Future<void> _openQuestionEditor({
     Question? existing,
     String? presetSpecialtyId,
     bool global = false,
   }) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => QuestionEditorScreen(
-          service: _service,
-          specialties: _specialties ?? const [],
-          initial: existing,
-          presetSpecialtyId: presetSpecialtyId,
-          presetGlobal: global,
-        ),
+    final changed = await context.push<bool>(
+      AppPaths.doctorQuestionEditor,
+      extra: QuestionEditorExtra(
+        service: _service,
+        specialties: _specialties ?? const [],
+        initial: existing,
+        presetSpecialtyId: presetSpecialtyId,
+        presetGlobal: global,
       ),
     );
     if (changed == true) {
@@ -492,13 +487,12 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
   }
 
   Future<void> _openTemplateEditor({TemplateSummary? existing}) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => TemplateEditorScreen(
-          service: _service,
-          specialties: _specialties ?? const [],
-          existing: existing,
-        ),
+    final changed = await context.push<bool>(
+      AppPaths.doctorTemplateEditor,
+      extra: TemplateEditorExtra(
+        service: _service,
+        specialties: _specialties ?? const [],
+        existing: existing,
       ),
     );
     if (changed == true) {
@@ -533,7 +527,7 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
         title: const Text('Cuestionarios de salud'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
@@ -704,13 +698,12 @@ class _QuestionnaireSettingsScreenState extends State<QuestionnaireSettingsScree
           return QSpecialtyTile(
             specialty: spec,
             onTap: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => SpecialtyQuestionsScreen(
-                    specialty: spec,
-                    service: _service,
-                    specialties: _specialties ?? const [],
-                  ),
+              await context.push(
+                AppPaths.doctorSpecialtyQuestions,
+                extra: SpecialtyQuestionsExtra(
+                  specialty: spec,
+                  service: _service,
+                  specialties: _specialties ?? const [],
                 ),
               );
               await _reloadSpecialties();

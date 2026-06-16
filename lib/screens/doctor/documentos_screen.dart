@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +9,7 @@ import '../../core/decorative_background.dart';
 import '../../core/web_layout.dart';
 import '../../core/file_type_style.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/expedientes_cache_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/config_service.dart' as config_dto;
 import '../../services/document_file_opener.dart';
@@ -18,9 +20,9 @@ import '../../widgets/document_metadata_edit_sheet.dart';
 import '../../widgets/document_replacement_banner.dart';
 import '../../widgets/ios_export_fab.dart';
 import '../../widgets/ios_fab.dart';
+import '../../router/app_paths.dart';
 import '../../widgets/patient_folders_export_sheet.dart';
 import '../common/storage_choice_flow.dart';
-import '../user/folder_contents_screen.dart';
 
 class DocumentosScreen extends StatefulWidget {
   const DocumentosScreen({
@@ -58,11 +60,47 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    final cached = context.read<ExpedientesCacheProvider>().rootSnapshot;
+    if (cached != null) {
+      _applyRootSnapshot(cached);
+      _loading = false;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load(force: cached == null);
+    });
   }
 
-  Future<void> _load() async {
+  void _applyRootSnapshot(ExpedientesRootSnapshot snap) {
+    _config = snap.config;
+    _folders = snap.folders;
+    _rootFiles = snap.rootFiles;
+    _alerts = snap.alerts;
+    _totalKeepi = snap.totalKeepi;
+    _alertsCount = snap.alertsCount;
+    _alertsExpiredCount = snap.alertsExpiredCount;
+    _requiresDriveAuth = snap.requiresDriveAuth;
+    _authorizationUrl = snap.authorizationUrl;
+  }
+
+  Future<void> _load({bool force = false}) async {
     if (!mounted) return;
+
+    final cache = context.read<ExpedientesCacheProvider>();
+    if (!force) {
+      final cached = cache.rootSnapshot;
+      if (cached != null) {
+        setState(() {
+          _applyRootSnapshot(cached);
+          _loading = false;
+          _error = null;
+        });
+        if (cached.requiresDriveAuth) {
+          await _promptDriveReconnect();
+        }
+        return;
+      }
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -84,22 +122,18 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       if (!mounted) return;
 
       if (config.isNotConfigured) {
+        cache.putRootEmpty(config);
         setState(() {
-          _config = config;
-          _folders = [];
-          _rootFiles = [];
-          _alerts = [];
-          _totalKeepi = 0;
-          _alertsCount = 0;
-          _alertsExpiredCount = 0;
+          _applyRootSnapshot(cache.rootSnapshot!);
           _loading = false;
         });
         return;
       }
 
       if (!config.isGoogleDrive && !config.isKeepiCloud) {
+        cache.putRootUnsupported(config);
         setState(() {
-          _config = config;
+          _applyRootSnapshot(cache.rootSnapshot!);
           _loading = false;
           _error = 'Almacenamiento no soportado en móvil.';
         });
@@ -107,45 +141,20 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       }
 
       final driveSvc = DriveStructureService(api);
-      final dashboard = await driveSvc.getMobileDashboard();
-
-      var folders = dashboard.folders;
-      var rootFiles = dashboard.rootFiles;
-
-      if (config.isKeepiCloud) {
-        try {
-          final rootRes = await driveSvc.getKeepiCloudRoot();
-          folders = rootRes.folders;
-          rootFiles = rootRes.rootFiles;
-        } catch (_) {}
-      }
-
       final userId = mounted ? context.read<AuthProvider>().userId : null;
-      if (config.isKeepiCloud && userId != null) {
-        folders = folders
-            .where(
-              (f) =>
-                  f.id != 'users/$userId' &&
-                  f.id != 'users/$userId/',
-            )
-            .toList();
-      }
+      final snap = await cache.fetchAndCacheRoot(
+        config: config,
+        driveSvc: driveSvc,
+        userId: userId,
+      );
 
       if (!mounted) return;
       setState(() {
-        _config = config;
-        _folders = folders;
-        _rootFiles = rootFiles;
-        _alerts = dashboard.alerts;
-        _totalKeepi = dashboard.totalKeepi;
-        _alertsCount = dashboard.alertsCount;
-        _alertsExpiredCount = dashboard.alertsExpiredCount;
-        _requiresDriveAuth = dashboard.requiresDriveAuth;
-        _authorizationUrl = dashboard.authorizationUrl;
+        _applyRootSnapshot(snap);
         _loading = false;
       });
 
-      if (dashboard.requiresDriveAuth) {
+      if (snap.requiresDriveAuth) {
         await _promptDriveReconnect();
       }
     } catch (e) {
@@ -199,14 +208,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
   }
 
   void _openFolder(DriveFolder folder) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FolderContentsScreen(
-          folderId: folder.id,
-          folderName: folder.name,
-        ),
-      ),
-    );
+    final path = widget.embedded
+        ? AppPaths.doctorFolder(folder.id, name: folder.name)
+        : AppPaths.userFolder(folder.id, name: folder.name);
+    context.push(path);
   }
 
   Future<void> _openExportModal() async {
@@ -252,7 +257,8 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       documentId: docId,
     );
     if (saved && mounted) {
-      await _load();
+      context.read<ExpedientesCacheProvider>().invalidateRoot();
+      await _load(force: true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Metadatos actualizados')),
@@ -269,7 +275,8 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       preview: file,
     );
     if (saved && mounted) {
-      await _load();
+      context.read<ExpedientesCacheProvider>().invalidateRoot();
+      await _load(force: true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Metadatos actualizados')),
@@ -288,14 +295,16 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
 
     final scrollContent = RefreshIndicator(
       color: KeepiColors.orange,
-      onRefresh: _load,
+      onRefresh: () => _load(force: true),
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           if (!widget.embedded)
             SliverToBoxAdapter(
               child: _DocTopBar(
-                onBack: () => Navigator.of(context).maybePop(),
+                onBack: () {
+                  if (context.canPop()) context.pop();
+                },
               ),
             ),
           if (widget.embedded && isWebWide(context))
@@ -494,7 +503,6 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
   }
 }
 
-// ── Widgets de UI (estilo bandeja / perfil doctor) ───────────────────────────
 
 class _DocTopBar extends StatelessWidget {
   const _DocTopBar({required this.onBack});

@@ -3,6 +3,7 @@ import 'dart:ui' show FontFeature;
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -17,10 +18,9 @@ import '../../services/config_service.dart' as config_dto;
 import '../../services/doctor_service.dart';
 import '../../services/prescription_service.dart';
 import '../../widgets/patient_care_timeline.dart';
-import '../common/notifications_screen.dart';
-import '../common/prior_documents_screen.dart';
+import '../../router/app_auth_actions.dart';
+import '../../router/app_paths.dart';
 import '../common/storage_choice_flow.dart';
-import 'patient_upload_analysis_screen.dart';
 
 const _monthsEsUpper = <String>[
   'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
@@ -42,12 +42,12 @@ String _todayStamp() {
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
-// ────────────────────────────────────────────────────────────────
 //   PANTALLA
-// ────────────────────────────────────────────────────────────────
 
 class PatientHomeScreen extends StatefulWidget {
-  const PatientHomeScreen({super.key});
+  const PatientHomeScreen({super.key, this.shellChild});
+
+  final Widget? shellChild;
 
   @override
   State<PatientHomeScreen> createState() => _PatientHomeScreenState();
@@ -91,7 +91,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     super.dispose();
   }
 
-  // ── Data loading ─────────────────────────────────────────────
   Future<void> _loadCareTimeline() async {
     setState(() {
       _loadingTimeline = true;
@@ -116,16 +115,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   void _onTimelineEventTap(TimelineEvent event) {
     if (!event.isPriorDocuments) return;
-    final name = context.read<AuthProvider>().name ?? 'Paciente';
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PriorDocumentsScreen(
-          patientId: event.actionPatientId ?? '',
-          patientName: name,
-          forPatientView: true,
-        ),
-      ),
-    );
+    context.push(AppPaths.patientPriorDocuments);
   }
 
   Future<void> _loadPendingAnalysisRequests() async {
@@ -207,7 +197,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     }
   }
 
-  // ── Helpers de cita ──────────────────────────────────────────
   AppointmentDto? get _nextUpcomingAppointment {
     final now = DateTime.now();
     final future = _myAppointments.where((a) {
@@ -261,12 +250,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Future<void> _openUploadForRequest(AnalysisRequestDto req) async {
-    final done = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => PatientUploadAnalysisScreen(
-          requestId: req.id,
-          description: req.description,
-        ),
+    final done = await context.push<bool>(
+      AppPaths.patientUploadAnalysis(
+        req.id,
+        description: req.description,
       ),
     );
     if (done == true && mounted) {
@@ -275,7 +262,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
   }
 
-  // ── Pedir Nueva Cita (Nuevo Método) ──────────────────────────────────
   Future<void> _openRequestDialog() async {
     final reasonController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -380,7 +366,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     }
   }
 
-  // ── Responder Propuesta (NUEVO MÉTODO) ─────────────────────────────
   Future<void> _openResponseDialog(AppointmentDto a) async {
     final String? action = await showDialog<String>(
       context: context,
@@ -439,7 +424,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     }
   }
 
-  // ── Deep links (storage onboarding) ──────────────────────────
   void _listenForStorageDeepLinks() {
     _appLinks.getInitialLink().then(_onStorageDeepLink);
     _linkSubscription = _appLinks.uriLinkStream.listen(_onStorageDeepLink);
@@ -471,9 +455,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     } catch (_) {}
   }
 
+  Future<void> _handleLogout() => AppAuthActions.logout(context);
+
   void _onPatientNavTap(int i) {
-    setState(() => _currentIndex = i);
+    context.go(AppPaths.patientHomeForTab(i));
     if (i == 0) _loadCareTimeline();
+    if (i == 1) _loadRecetas();
+    if (i == 2) _loadPendingAnalysisRequests();
+  }
+
+  void _goPatientTab(int i) {
+    context.go(AppPaths.patientHomeForTab(i));
     if (i == 1) _loadRecetas();
     if (i == 2) _loadPendingAnalysisRequests();
   }
@@ -485,12 +477,23 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     WebNavItem(icon: Icons.person_outline_rounded, label: 'Perfil'),
   ];
 
-  // ── Build ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final body = IndexedStack(
-      index: _currentIndex,
+    final routePath = GoRouterState.of(context).uri.path;
+    final onOverlay = AppPaths.isPatientOverlayPath(routePath);
+    var tabIndex = _currentIndex;
+    if (!onOverlay) {
+      tabIndex = AppPaths.patientTabIndexFromPath(routePath);
+      if (tabIndex != _currentIndex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _currentIndex = tabIndex);
+        });
+      }
+    }
+
+    final mainBody = IndexedStack(
+      index: tabIndex,
       children: [
         _buildHomeTab(context, auth),
         _buildRecetasTab(auth),
@@ -499,20 +502,26 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       ],
     );
 
+    if (onOverlay && widget.shellChild != null && !isWebWide(context)) {
+      return widget.shellChild!;
+    }
+
+    final body = onOverlay && widget.shellChild != null
+        ? widget.shellChild!
+        : mainBody;
+
     if (isWebWide(context)) {
       return WebAppShell(
         brandTitle: auth.name ?? 'Paciente',
         brandSubtitle: 'KEEPI',
         navItems: _patientWebNav,
-        currentIndex: _currentIndex,
+        currentIndex: tabIndex,
         onNavTap: _onPatientNavTap,
-        onNotifications: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-        ),
-        onLogout: auth.logout,
+        onNotifications: () => context.push(AppPaths.patientNotifications),
+        onLogout: _handleLogout,
         userLabel: auth.name ?? 'Paciente',
         userSubtitle: 'PACIENTE',
-        primaryAction: _currentIndex == 2
+        primaryAction: tabIndex == 2
             ? WebSidebarButton(
                 label: 'Pedir cita',
                 icon: Icons.event_available_outlined,
@@ -530,7 +539,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         bottom: false,
         child: body,
       ),
-      floatingActionButton: _currentIndex == 2
+      floatingActionButton: tabIndex == 2
           ? FloatingActionButton.extended(
               onPressed: _openRequestDialog,
               backgroundColor: KeepiColors.skyBlue,
@@ -546,13 +555,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             )
           : null,
       bottomNavigationBar: _BottomNav(
-        currentIndex: _currentIndex,
+        currentIndex: tabIndex,
         onTap: _onPatientNavTap,
       ),
     );
   }
 
-  // ── Home (Dashboard) ─────────────────────────────────────────
   Future<void> _refreshAll() async {
     await _loadCareTimeline();
     await _loadPendingAnalysisRequests();
@@ -571,10 +579,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         slivers: [
           SliverToBoxAdapter(
             child: _TopBar(
-              onNotifs: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              ),
-              onLogout: auth.logout,
+              onNotifs: () => context.push(AppPaths.patientNotifications),
+              onLogout: _handleLogout,
             ),
           ),
           SliverToBoxAdapter(
@@ -619,15 +625,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   recetas: _recetas.length,
                   citas: _myAppointments.length,
                   pendientes: pending.length,
-                  onTapRecetas: () {
-                    setState(() => _currentIndex = 1);
-                    _loadRecetas();
-                  },
-                  onTapConsultas: () {
-                    setState(() => _currentIndex = 2);
-                    _loadPendingAnalysisRequests();
-                  },
-                  onTapPerfil: () => setState(() => _currentIndex = 3),
+                  onTapRecetas: () => _goPatientTab(1),
+                  onTapConsultas: () => _goPatientTab(2),
+                  onTapPerfil: () => _goPatientTab(3),
                 ),
                 const SizedBox(height: 28),
                 _homeTimelineBlock(),
@@ -659,7 +659,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  // ── Recetas tab ──────────────────────────────────────────────
   Widget _buildRecetasTab(AuthProvider auth) {
     final total = _recetas.length;
     final withReminders = _recetas.where((r) => r.remindersEnabled).length;
@@ -672,10 +671,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         slivers: [
           SliverToBoxAdapter(
             child: _TopBar(
-              onNotifs: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              ),
-              onLogout: auth.logout,
+              onNotifs: () => context.push(AppPaths.patientNotifications),
+              onLogout: _handleLogout,
             ),
           ),
           SliverToBoxAdapter(
@@ -722,7 +719,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  // ── Consultas tab ────────────────────────────────────────────
   Widget _buildConsultasTab(AuthProvider auth) {
     final appts = _myAppointments;
     final reqs = _pendingAnalysisRequests;
@@ -735,10 +731,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         slivers: [
           SliverToBoxAdapter(
             child: _TopBar(
-              onNotifs: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              ),
-              onLogout: auth.logout,
+              onNotifs: () => context.push(AppPaths.patientNotifications),
+              onLogout: _handleLogout,
             ),
           ),
           SliverToBoxAdapter(
@@ -791,10 +785,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       slivers: [
         SliverToBoxAdapter(
           child: _TopBar(
-            onNotifs: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            ),
-            onLogout: auth.logout,
+            onNotifs: () => context.push(AppPaths.patientNotifications),
+            onLogout: _handleLogout,
           ),
         ),
         const SliverFillRemaining(
@@ -815,7 +807,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  // ── Cards ────────────────────────────────────────────────────
   Widget _buildAppointmentCard(AppointmentDto a) {
     final start = a.appointmentDate?.toLocal() ?? DateTime.now();
     final end = a.endDate?.toLocal() ?? start.add(const Duration(minutes: 30));
@@ -845,7 +836,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         title: 'Consulta médica',
         detail: a.reason.isEmpty ? 'Consulta' : a.reason,
         icon: Icons.event_available_outlined,
-        // Agregamos el botón si necesita respuesta
         actionLabel: needsResponse ? 'Responder Propuesta' : null,
         onAction: needsResponse ? () => _openResponseDialog(a) : null,
       ),
@@ -876,9 +866,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   TOP BAR
-// ────────────────────────────────────────────────────────────────
 
 class _TopBar extends StatelessWidget {
   const _TopBar({required this.onNotifs, required this.onLogout});
@@ -939,9 +927,7 @@ class _IconPill extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   HERO SECTIONS
-// ────────────────────────────────────────────────────────────────
 
 class _HomeHero extends StatelessWidget {
   const _HomeHero({
@@ -1139,9 +1125,7 @@ class _RecetasHero extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   PRESCRIPTION CARD
-// ────────────────────────────────────────────────────────────────
 
 class _PrescriptionCard extends StatelessWidget {
   const _PrescriptionCard({
@@ -1478,9 +1462,7 @@ class _ReminderToggle extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   STATS STRIP
-// ────────────────────────────────────────────────────────────────
 
 class _StatItem {
   const _StatItem({required this.value, required this.label, this.accent = false});
@@ -1560,9 +1542,7 @@ class _StatCell extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   SECTION DIVIDER
-// ────────────────────────────────────────────────────────────────
 
 class _SectionDivider extends StatelessWidget {
   const _SectionDivider({required this.tag, required this.count});
@@ -1611,9 +1591,7 @@ class _SectionDivider extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   DOSSIER CARD (Cita / Solicitud)
-// ────────────────────────────────────────────────────────────────
 
 class _DossierCard extends StatelessWidget {
   const _DossierCard({
@@ -1854,9 +1832,7 @@ class _DossierAction extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   NEXT APPOINTMENT CARD (dashboard)
-// ────────────────────────────────────────────────────────────────
 
 class _NextAppointmentCard extends StatelessWidget {
   const _NextAppointmentCard({
@@ -2131,9 +2107,7 @@ class _NextAppointmentCard extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   PENDING COMPACT CARD (dashboard)
-// ────────────────────────────────────────────────────────────────
 
 class _PendingCompactCard extends StatelessWidget {
   const _PendingCompactCard({required this.request, required this.onTap});
@@ -2206,9 +2180,7 @@ class _PendingCompactCard extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   SHORTCUTS STRIP (dashboard)
-// ────────────────────────────────────────────────────────────────
 
 class _ShortcutsStrip extends StatelessWidget {
   const _ShortcutsStrip({
@@ -2355,9 +2327,7 @@ class _ShortcutTile extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   STATE WIDGETS (loading / error / empty)
-// ────────────────────────────────────────────────────────────────
 
 class _LoadingBox extends StatelessWidget {
   const _LoadingBox();
@@ -2559,9 +2529,7 @@ class _InlineEmpty extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
 //   BOTTOM NAV
-// ────────────────────────────────────────────────────────────────
 
 class _BottomNav extends StatelessWidget {
   const _BottomNav({required this.currentIndex, required this.onTap});

@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data'; // <-- Agregado para manejar Uint8List (Web)
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -12,9 +12,9 @@ class PrescriptionService {
 
   Future<PrescriptionDraftDto> createDraft({
     required String patientId,
-    File? file,           // <-- Ahora es opcional
-    Uint8List? fileBytes, // <-- Nuevo para soportar Web
-    String? fileName,     // <-- Nuevo para soportar Web
+    File? file,
+    Uint8List? fileBytes,
+    String? fileName,
   }) async {
     
     if (file == null && fileBytes == null) {
@@ -26,13 +26,11 @@ class PrescriptionService {
     };
 
     if (fileBytes != null) {
-      // ✅ VERSIÓN WEB: Adjuntamos el archivo desde la memoria (bytes)
       formDataMap['file'] = MultipartFile.fromBytes(
         fileBytes,
         filename: fileName ?? 'documento_escaneado.png',
       );
     } else if (file != null) {
-      // ✅ VERSIÓN MÓVIL: Adjuntamos el archivo desde su ruta física
       formDataMap['file'] = await MultipartFile.fromFile(
         file.path,
         filename: file.path.split('/').last,

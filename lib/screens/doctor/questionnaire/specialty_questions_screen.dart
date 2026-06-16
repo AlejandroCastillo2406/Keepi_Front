@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../models/questionnaire_models.dart';
+import '../../../router/app_paths.dart';
+import '../../../router/router_extras.dart';
 import '../../../services/questionnaire_service.dart';
 import '_widgets.dart';
-import 'question_editor_screen.dart';
 
 class SpecialtyQuestionsScreen extends StatefulWidget {
   const SpecialtyQuestionsScreen({
@@ -89,29 +91,27 @@ class _SpecialtyQuestionsScreenState extends State<SpecialtyQuestionsScreen> {
   }
 
   Future<void> _edit(Question q) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => QuestionEditorScreen(
-          service: widget.service,
-          specialties: widget.specialties,
-          initial: q,
-          presetSpecialtyId: widget.specialty.id,
-        ),
+    final changed = await context.push<bool>(
+      AppPaths.doctorQuestionEditor,
+      extra: QuestionEditorExtra(
+        service: widget.service,
+        specialties: widget.specialties,
+        initial: q,
+        presetSpecialtyId: widget.specialty.id,
       ),
     );
     if (changed == true) _load();
   }
 
   Future<void> _duplicate(Question q) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => QuestionEditorScreen(
-          service: widget.service,
-          specialties: widget.specialties,
-          initial: q,
-          presetSpecialtyId: widget.specialty.id,
-          forceDuplicate: true,
-        ),
+    final changed = await context.push<bool>(
+      AppPaths.doctorQuestionEditor,
+      extra: QuestionEditorExtra(
+        service: widget.service,
+        specialties: widget.specialties,
+        initial: q,
+        presetSpecialtyId: widget.specialty.id,
+        forceDuplicate: true,
       ),
     );
     if (changed == true) _load();
@@ -148,13 +148,12 @@ class _SpecialtyQuestionsScreenState extends State<SpecialtyQuestionsScreen> {
   }
 
   Future<void> _newQuestion() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => QuestionEditorScreen(
-          service: widget.service,
-          specialties: widget.specialties,
-          presetSpecialtyId: widget.specialty.id,
-        ),
+    final changed = await context.push<bool>(
+      AppPaths.doctorQuestionEditor,
+      extra: QuestionEditorExtra(
+        service: widget.service,
+        specialties: widget.specialties,
+        presetSpecialtyId: widget.specialty.id,
       ),
     );
     if (changed == true) _load();
@@ -169,7 +168,7 @@ class _SpecialtyQuestionsScreenState extends State<SpecialtyQuestionsScreen> {
         title: Text(widget.specialty.name),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(

@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -22,10 +22,10 @@ import '../../widgets/ios_fab.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/document_alert_tile.dart';
 import '../../widgets/document_replacement_banner.dart';
+import '../../router/app_auth_actions.dart';
+import '../../router/app_paths.dart';
 import '../../widgets/home_added_search_section.dart';
 import '../common/storage_choice_flow.dart';
-import 'folder_contents_screen.dart';
-import 'settings_screen.dart';
 
 /// Duración estándar para transiciones suaves estilo iOS.
 const Duration _kIOSTransitionDuration = Duration(milliseconds: 380);
@@ -297,6 +297,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _handleLogout() => AppAuthActions.logout(context);
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -347,11 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
               splashFactory: InkRipple.splashFactory,
             ),
             onPressed: () async {
-              await Navigator.of(context).push(
-                CupertinoPageRoute<void>(
-                  builder: (context) => const SettingsScreen(),
-                ),
-              );
+              await context.push(AppPaths.userSettings);
               if (context.mounted) _loadSettings();
             },
           ),
@@ -362,10 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
               foregroundColor: KeepiColors.slate,
               splashFactory: InkRipple.splashFactory,
             ),
-            onPressed: () async {
-              await auth.logout();
-              if (context.mounted) {}
-            },
+            onPressed: () => _handleLogout(),
           ),
         ],
         backgroundColor: Colors.transparent,
@@ -568,12 +563,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         analysisLimit: _analysisLimit,
                         onReplaceAlert: _replaceAlertDocument,
                         onFolderTap: (folder) {
-                          Navigator.of(context).push(
-                            CupertinoPageRoute<void>(
-                              builder: (context) => FolderContentsScreen(
-                                folderId: folder.id,
-                                folderName: folder.name,
-                              ),
+                          context.push(
+                            AppPaths.userFolder(
+                              folder.id,
+                              name: folder.name,
                             ),
                           );
                         },
@@ -594,14 +587,10 @@ class _HomeScreenState extends State<HomeScreen> {
         userName: auth.name ?? 'Usuario',
         onNotifications: () {},
         onSettings: () async {
-          await Navigator.of(context).push(
-            CupertinoPageRoute<void>(
-              builder: (context) => const SettingsScreen(),
-            ),
-          );
+          await context.push(AppPaths.userSettings);
           if (context.mounted) _loadSettings();
         },
-        onLogout: auth.logout,
+        onLogout: _handleLogout,
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

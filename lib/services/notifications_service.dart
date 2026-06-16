@@ -52,6 +52,7 @@ class AppNotificationDto {
   String? get appointmentId => payload['appointment_id']?.toString();
   String? get analysisRequestId => payload['analysis_request_id']?.toString();
   String? get questionnaireInvitationId => payload['invitation_id']?.toString();
+  String? get patientIdFromPayload => payload['patient_id']?.toString();
   bool get isQuestionnaireCompleted =>
       payload['type']?.toString() == 'questionnaire_completed' ||
       type == 'questionnaire_completed';

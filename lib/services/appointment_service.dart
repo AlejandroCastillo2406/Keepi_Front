@@ -13,6 +13,7 @@ class AppointmentDto {
     this.endDate,
     required this.createdAt,
     this.patientName,
+    this.attendanceStatus,
   });
 
   final String id;
@@ -24,6 +25,7 @@ class AppointmentDto {
   final DateTime? endDate;
   final DateTime createdAt;
   final String? patientName;
+  final String? attendanceStatus;
 
   factory AppointmentDto.fromJson(Map<String, dynamic> json) {
     return AppointmentDto(
@@ -36,6 +38,7 @@ class AppointmentDto {
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
       patientName: json['patient_name'] as String?,
+      attendanceStatus: json['attendance_status'] as String?,
     );
   }
 }
@@ -53,7 +56,6 @@ class AppointmentService {
     return e.toString();
   }
 
-  // --- 1. LECTURA DE DATOS ---
 
   Future<List<AppointmentDto>> fetchMine() async {
     final res = await _api.dio.get<List<dynamic>>(ApiEndpoints.appointmentsMine);
@@ -83,7 +85,6 @@ class AppointmentService {
     return list.map((e) => AppointmentDto.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  // --- 2. ACCIONES DEL DOCTOR ---
 
   Future<AppointmentDto> createDoctorAppointment({
     required String patientId,
@@ -122,7 +123,6 @@ class AppointmentService {
     return AppointmentDto.fromJson(res.data ?? const {});
   }
 
-  // --- NUEVA FUNCIÓN DE CANCELAR ---
   Future<void> cancelAppointment({
     required String appointmentId,
   }) async {
@@ -149,7 +149,17 @@ class AppointmentService {
     return AppointmentDto.fromJson(res.data ?? const {});
   }
 
-  // --- 3. ACCIONES DEL PACIENTE ---
+  Future<AppointmentDto> recordAttendance({
+    required String appointmentId,
+    required String status,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.appointmentAttendance(appointmentId),
+      data: {'status': status},
+    );
+    return AppointmentDto.fromJson(res.data ?? const {});
+  }
+
 
   Future<AppointmentDto> patientRequestAppointment({
     required String doctorId,

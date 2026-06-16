@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/web_layout.dart';
 import '../../core/decorative_background.dart';
 import '../../providers/auth_provider.dart';
-import 'register_screen.dart';
+import '../../router/app_paths.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -35,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final ok = await auth.login(_emailController.text.trim(), _passwordController.text);
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      setState(() => _isLoading = false);
     } else {
       setState(() => _isLoading = false);
     }
@@ -331,11 +332,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         if (expandFooter) const Spacer() else const SizedBox(height: 24),
         TextButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RegisterScreen()),
-            );
-          },
+          onPressed: () => context.push(AppPaths.register),
           child: RichText(
             text: TextSpan(
               style: theme.textTheme.bodyMedium?.copyWith(

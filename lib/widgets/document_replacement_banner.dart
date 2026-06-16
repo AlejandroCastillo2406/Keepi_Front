@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_theme.dart';
-import '../screens/doctor/analysis_document_viewer_screen.dart';
+import '../router/app_navigation.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
 import '../services/drive_structure_service.dart';
@@ -145,14 +145,11 @@ Future<void> _openKeepiDocument(
   };
   final url = DoctorService(api).getMobileDocumentUrl(documentId);
   if (!context.mounted) return;
-  await Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => AnalysisDocumentViewerScreen(
-        url: url,
-        title: title,
-        headers: headers,
-      ),
-    ),
+  await AppNavigation.pushDocumentViewer(
+    context,
+    url: url,
+    title: title,
+    headers: headers,
   );
 }
 

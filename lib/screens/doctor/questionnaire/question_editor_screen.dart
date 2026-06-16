@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../models/questionnaire_models.dart';
@@ -130,7 +131,7 @@ class _QuestionEditorScreenState extends State<QuestionEditorScreen> {
         );
       }
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      context.pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -166,7 +167,7 @@ class _QuestionEditorScreenState extends State<QuestionEditorScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         actions: [
           Padding(

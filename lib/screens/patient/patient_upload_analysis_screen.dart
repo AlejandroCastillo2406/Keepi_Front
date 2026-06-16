@@ -1,5 +1,6 @@
 import 'package:http_parser/http_parser.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -74,7 +75,6 @@ class _PatientUploadAnalysisScreenState extends State<PatientUploadAnalysisScree
         data: formData
       );
       
-      // --- EL BLINDAJE COMIENZA AQUÍ ---
       print("RESPUESTA DEL SERVIDOR (UPLOAD): ${uploadRes.data}");
       
       // Extraemos el ID buscando 'document_id' o 'id' y lo convertimos a String sí o sí
@@ -85,7 +85,6 @@ class _PatientUploadAnalysisScreenState extends State<PatientUploadAnalysisScree
         // Si sigue siendo nulo, lanzamos un error claro en lugar de romper la app
         throw Exception('El servidor no envió el ID. Respuesta: $responseData');
       }
-      // --- FIN DEL BLINDAJE ---
 
       // 3. Vinculamos el documento
       await svc.completeAnalysisRequest(
@@ -98,7 +97,7 @@ class _PatientUploadAnalysisScreenState extends State<PatientUploadAnalysisScree
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('¡Estudio enviado con éxito al doctor!'), backgroundColor: Colors.green),
       );
-      Navigator.pop(context, true); 
+      context.pop(true); 
 
     } on DioException catch (e) {
       if (mounted) {
@@ -156,7 +155,6 @@ class _PatientUploadAnalysisScreenState extends State<PatientUploadAnalysisScree
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- TARJETA DE INSTRUCCIONES ---
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -190,7 +188,6 @@ class _PatientUploadAnalysisScreenState extends State<PatientUploadAnalysisScree
               const Text("Tu Archivo", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: KeepiColors.slate)),
               const SizedBox(height: 16),
 
-              // --- ZONA DE SUBIDA ---
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -244,7 +241,6 @@ class _PatientUploadAnalysisScreenState extends State<PatientUploadAnalysisScree
 
               const SizedBox(height: 24),
 
-              // --- BOTÓN FINAL DE ENVÍO ---
               SizedBox(
                 height: 56,
                 child: ElevatedButton(

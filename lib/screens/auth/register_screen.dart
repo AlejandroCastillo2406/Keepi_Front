@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../core/roles.dart';
 import '../../providers/auth_provider.dart';
+import '../../router/app_paths.dart';
 import '../doctor/doctor_scheduling_settings_screen.dart';
-import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -47,14 +48,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     if (ok && context.mounted) {
       if (_registerAsDoctor) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const DoctorSchedulingSettingsScreen(canSkip: true),
-          ),
-        );
-      }
-      if (context.mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        await context.push(AppPaths.doctorSchedulingSettingsPath(canSkip: true));
       }
     }
   }
@@ -82,7 +76,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         alignment: Alignment.centerLeft,
                         child: IconButton(
                           icon: const Icon(Icons.arrow_back_ios_rounded),
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => context.pop(),
                           style: IconButton.styleFrom(
                             foregroundColor: KeepiColors.slate,
                           ),
@@ -393,11 +387,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const Spacer(),
                       TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          );
-                        },
+                        onPressed: () => context.go(AppPaths.login),
                         child: RichText(
                           text: TextSpan(
                             style: theme.textTheme.bodyMedium?.copyWith(

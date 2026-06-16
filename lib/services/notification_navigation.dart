@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../screens/doctor/analysis_document_viewer_screen.dart';
+import '../core/roles.dart';
+import '../providers/auth_provider.dart';
+import '../router/app_navigation.dart';
+import '../router/app_paths.dart';
 import '../widgets/document_replacement_banner.dart';
 import 'api_client.dart';
 import 'doctor_service.dart';
+import '../widgets/questionnaire_notification_detail_sheet.dart';
 import 'notifications_service.dart';
 
 /// Navegación al abrir notificaciones (bandeja in-app o push).
@@ -85,14 +90,70 @@ class NotificationNavigation {
     final url = svc.getMobileDocumentUrl(documentId);
 
     if (!context.mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AnalysisDocumentViewerScreen(
-          url: url,
-          title: title ?? 'Análisis',
-          headers: headers,
-        ),
-      ),
+    await AppNavigation.pushDocumentViewer(
+      context,
+      url: url,
+      title: title ?? 'Análisis',
+      headers: headers,
     );
+  }
+
+  static bool isQuestionnaireCompleted(Map<String, dynamic> data) {
+    return data['type']?.toString() == 'questionnaire_completed';
+  }
+
+  static AppNotificationDto notificationFromPushData(
+    Map<String, dynamic> data, {
+    String? fallbackTitle,
+    String? fallbackBody,
+  }) {
+    return AppNotificationDto(
+      id: data['notification_id']?.toString() ?? '',
+      title: data['title']?.toString() ?? fallbackTitle ?? 'Notificación',
+      message: data['body']?.toString() ?? fallbackBody ?? '',
+      type: data['type']?.toString() ?? 'info',
+      read: true,
+      payload: Map<String, dynamic>.from(data),
+      createdAt: DateTime.now().toIso8601String(),
+    );
+  }
+
+  static Future<void> openQuestionnaireCompletedDetail(
+    BuildContext context, {
+    required AppNotificationDto notification,
+  }) {
+    return showQuestionnaireNotificationDetailSheet(
+      context,
+      notification: notification,
+    );
+  }
+
+  /// Navega a la pantalla relevante al abrir una push de cita.
+  static void navigateForAppointmentPush(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    if (!context.mounted) return;
+    final auth = context.read<AuthProvider>();
+    final role = auth.roleName;
+    final type = data['type']?.toString() ?? '';
+    final action = data['action']?.toString() ?? '';
+    final appointmentId = data['appointment_id']?.toString();
+
+    if (role == AppRole.doctor) {
+      if (type == 'appointment_pending_approval' ||
+          action == 'doctor_approve' ||
+          action == 'doctor_review') {
+        context.go(AppPaths.doctorAgenda);
+        return;
+      }
+      if (appointmentId != null && appointmentId.isNotEmpty) {
+        context.push(AppPaths.doctorConsultation(appointmentId));
+      }
+      return;
+    }
+    if (role == AppRole.patient && type.startsWith('appointment_')) {
+      context.go(AppPaths.patientConsultas);
+    }
   }
 }

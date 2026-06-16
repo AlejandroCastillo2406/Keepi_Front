@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../screens/doctor/analysis_document_viewer_screen.dart';
+import '../router/app_navigation.dart';
 import 'api_client.dart';
 import 'doctor_service.dart';
 import 'drive_structure_service.dart';
@@ -91,15 +91,13 @@ class DocumentFileOpener {
       }
 
       if (preferInAppWebView) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => AnalysisDocumentViewerScreen(
-              url: viewUrl,
-              title: file.name,
-              headers: headers,
-              mimeType: mimeType,
-            ),
-          ),
+        await AppNavigation.pushDocumentViewer(
+          context,
+          url: viewUrl,
+          title: file.name,
+          headers: headers,
+          mimeType: mimeType,
+          s3Path: isS3Path(file.id) ? file.id : null,
         );
         return;
       }

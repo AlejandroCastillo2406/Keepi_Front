@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../core/app_theme.dart';
 import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
+import '../router/app_navigation.dart';
 import '../services/prescription_service.dart';
 import '../services/questionnaire_service.dart';
 import '../widgets/doctor_event_note_section.dart';
@@ -35,6 +35,7 @@ class TimelineEventDetailSheet extends StatefulWidget {
     final isAppointment = event.eventType.toLowerCase() == 'appointment';
     return showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => DraggableScrollableSheet(
@@ -71,33 +72,15 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
       'Accept': '*/*',
     };
 
-    bool isPdf = url.toLowerCase().contains('.pdf');
-    Navigator.push(
+    AppNavigation.pushDocumentViewer(
       context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: KeepiColors.surfaceBg,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 1,
-            title: Text(title, style: const TextStyle(color: KeepiColors.slate, fontSize: 16), overflow: TextOverflow.ellipsis),
-            iconTheme: const IconThemeData(color: KeepiColors.slate),
-          ),
-          body: isPdf 
-              ? SfPdfViewer.network(url, headers: headers)
-              : InteractiveViewer(
-                  minScale: 1.0,
-                  maxScale: 4.0,
-                  child: Center(child: Image.network(url, headers: headers)),
-                ),
-        ),
-      ),
+      url: url,
+      title: title,
+      headers: headers,
     );
   }
 
-  // ==========================================
   // APERTURA EXTERNA (PARA RECETAS EN S3)
-  // ==========================================
   Future<void> _openScanFromTimeline(String rawId) async {
     if (rawId.isEmpty) return;
     final svc = PrescriptionService(context.read<ApiClient>());
@@ -269,9 +252,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
           );
   }
 
-  // =======================================================================
-  // DISEÑO INTELIGENTE PARA ANÁLISIS
-  // =======================================================================
+
   Widget _buildAnalysisDetailCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
       future: DoctorService(context.read<ApiClient>()).fetchPatientAnalysisRequests(widget.patientId).catchError((e) => []),
@@ -470,9 +451,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     );
   }
 
-  // =======================================================================
   // FICHA CLÍNICA (ANTECEDENTES)
-  // =======================================================================
   Widget _buildClinicalIntakeDetailCard(TimelineEvent event) {
     final invitationId = event.clinicalIntakeInvitationId;
     if (invitationId == null || invitationId.isEmpty) {
@@ -603,9 +582,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     );
   }
 
-  // =======================================================================
-  // DISEÑO PARA CUESTIONARIOS
-  // =======================================================================
+
   Widget _buildQuestionnaireDetailCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
       future: QuestionnaireService(context.read<ApiClient>()).fetchPatientResponses(widget.patientId).catchError((e) => []),
@@ -729,9 +706,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     );
   }
 
-  // =======================================================================
-  // DISEÑO PARA CITA
-  // =======================================================================
+
   Widget _buildAppointmentDetailCard(TimelineEvent event) {
     DateTime dt = DateTime.now();
     try {
@@ -822,9 +797,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     );
   }
 
-  // =======================================================================
-  // DISEÑO PREMIUM DE LA RECETA
-  // =======================================================================
+
   Widget _buildPremiumPrescriptionCard(TimelineEvent event) {
     return FutureBuilder<List<dynamic>>(
       future: PrescriptionService(context.read<ApiClient>()).fetchMine().catchError((e) => []),

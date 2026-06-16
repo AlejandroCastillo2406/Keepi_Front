@@ -4,6 +4,7 @@ import '../models/consultation_context.dart';
 import '../models/prior_document_item.dart';
 import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
+import '../providers/consultation_bootstrap_provider.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
 import 'scheduling_service.dart';
@@ -13,7 +14,6 @@ class DoctorService {
   DoctorService(this._api);
   final ApiClient _api;
 
-  // --- MÉTODOS EXISTENTES ---
 
   Future<CreatePatientResult> createPatient({
     required String email,
@@ -45,7 +45,6 @@ class DoctorService {
         .toList();
   }
 
-  // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
 
   /// [DOCTOR] Crea una nueva solicitud para un paciente.
   Future<Map<String, dynamic>> fetchTimelineDoctorNote({
@@ -80,10 +79,6 @@ class DoctorService {
     DateTime? expiresAt,
     String? doctorNote,
   }) async {
-    // 1. RASTREADOR ANTES DE ENVIAR
-    print("🛑 [DEBUG] INICIANDO POST A ANALYSIS-REQUESTS...");
-    print("🛑 [DEBUG] BASE URL DE ESTE CLIENTE: ${_api.dio.options.baseUrl}");
-    print("🛑 [DEBUG] DATOS: patient_id: $patientId");
 
     try {
       final payload = <String, dynamic>{
@@ -105,24 +100,19 @@ class DoctorService {
       if (note != null && note.isNotEmpty) {
         payload['doctor_note'] = note;
       }
-      final response = await _api.dio.post(
+      await _api.dio.post(
         '/api/v1/analysis-requests/',
         data: payload,
       );
-      // 2. RASTREADOR DE ÉXITO REAL
-      print("✅ [DEBUG] RESPUESTA REAL DEL SERVIDOR: ${response.statusCode}");
-      print("✅ [DEBUG] DATA DEVUELTA: ${response.data}");
     } catch (e) {
-      // 3. RASTREADOR DE ERROR OCULTO
-      print("❌ [DEBUG] ERROR EXPLOSIVO DE DIO: $e");
-      rethrow; // <-- Esto asegura que la pantalla roja sepa del error
+      rethrow;
     }
   }
 
   /// [PACIENTE] Obtiene sus solicitudes de análisis pendientes.
   Future<List<AnalysisRequestDto>> fetchMyPendingRequests() async {
     final res = await _api.dio
-        .get<dynamic>('/api/v1/analysis-requests/me'); // <--- AÑADIDO: /api/v1
+        .get<dynamic>('/api/v1/analysis-requests/me');
     final data = res.data;
     if (data is! List) return [];
     return data
@@ -135,7 +125,7 @@ class DoctorService {
   Future<List<AnalysisRequestDto>> fetchPatientAnalysisRequests(
       String patientId) async {
     final res = await _api.dio.get<dynamic>(
-        '/api/v1/analysis-requests/patient/$patientId'); // <--- AÑADIDO: /api/v1
+        '/api/v1/analysis-requests/patient/$patientId');
     final data = res.data;
     if (data is! List) return [];
     return data
@@ -149,6 +139,26 @@ class DoctorService {
       '/api/v1/doctors/patients/$patientId/consultation-context',
     );
     return ConsultationContext.fromJson(res.data ?? const {});
+  }
+
+  Future<PatientProfileBootstrapData> fetchPatientProfileBootstrap(
+    String patientId,
+  ) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.doctorPatientProfileBootstrap(patientId),
+    );
+    return PatientProfileBootstrapData.fromJson(res.data ?? const {});
+  }
+
+  Future<ConsultationBootstrapData> fetchConsultationBootstrap({
+    required String patientId,
+    required String appointmentId,
+  }) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/api/v1/doctors/patients/$patientId/consultation-bootstrap',
+      queryParameters: {'appointment_id': appointmentId},
+    );
+    return ConsultationBootstrapData.fromJson(res.data ?? const {});
   }
 
   Future<ConsultationContext> upsertClinicalProfile({
@@ -257,14 +267,13 @@ class DoctorService {
     required String documentId,
   }) async {
     await _api.dio.patch(
-      '/api/v1/analysis-requests/$requestId/complete', // <--- AÑADIDO: /api/v1
+      '/api/v1/analysis-requests/$requestId/complete',
       queryParameters: {
         'document_id': documentId,
       },
     );
   }
 
-  // --- UTILIDADES ---
 
   Future<ScheduleAppointmentResult> scheduleAppointment({
     required String patientId,
@@ -289,9 +298,6 @@ class DoctorService {
     );
   }
 
-  // --- NUEVOS MÉTODOS PARA SOLICITUD DE ANÁLISIS ---
-
-  // --- UTILIDADES ---
 
   static String messageFromDio(Object e) {
     if (e is! DioException) return e.toString();
@@ -304,7 +310,6 @@ class DoctorService {
   }
 }
 
-// --- MODELOS DE DATOS ---
 
 class CreatePatientResult {
   final String id, email, name;
@@ -340,6 +345,44 @@ class PatientListItem {
       name: json['name'] as String,
       mustChangePassword: json['must_change_password'] as bool? ?? false,
       createdAt: json['created_at'] as String?,
+    );
+  }
+}
+
+/// Datos del endpoint profile-bootstrap (contexto + timeline + análisis + cuestionarios).
+class PatientProfileBootstrapData {
+  const PatientProfileBootstrapData({
+    required this.context,
+    required this.timeline,
+    required this.analysisRequests,
+    required this.questionnaireResponses,
+  });
+
+  final ConsultationContext context;
+  final List<TimelineEvent> timeline;
+  final List<AnalysisRequestDto> analysisRequests;
+  final List<Map<String, dynamic>> questionnaireResponses;
+
+  factory PatientProfileBootstrapData.fromJson(Map<String, dynamic> json) {
+    final timelineRaw = json['timeline'] as List<dynamic>? ?? [];
+    final analysisRaw = json['analysis_requests'] as List<dynamic>? ?? [];
+    final questionnaireRaw =
+        json['questionnaire_responses'] as List<dynamic>? ?? [];
+    return PatientProfileBootstrapData(
+      context: ConsultationContext.fromJson(
+        Map<String, dynamic>.from(json['context'] as Map? ?? const {}),
+      ),
+      timeline: timelineRaw
+          .map((e) => TimelineEvent.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      analysisRequests: analysisRaw
+          .map((e) =>
+              AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      questionnaireResponses: questionnaireRaw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(),
     );
   }
 }

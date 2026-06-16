@@ -4,12 +4,10 @@ import '../core/api_endpoints.dart';
 import '../models/questionnaire_models.dart';
 import 'api_client.dart';
 
-/// Cliente HTTP del módulo Cuestionarios de salud (solo doctor).
 class QuestionnaireService {
   QuestionnaireService(this._api);
   final ApiClient _api;
 
-  // ─── Specialties ───
 
   Future<List<Specialty>> fetchSpecialties() async {
     final res = await _api.dio.get<dynamic>(ApiEndpoints.questionnaireSpecialties);
@@ -40,7 +38,6 @@ class QuestionnaireService {
     return _parseQuestions(res.data);
   }
 
-  // ─── Questions CRUD ───
 
   Future<Question> createQuestion({
     String? specialtyId,
@@ -119,7 +116,6 @@ class QuestionnaireService {
     return Question.fromJson(res.data!);
   }
 
-  // ─── Templates ───
 
   Future<List<TemplateSummary>> fetchTemplates() async {
     final res = await _api.dio.get<dynamic>(ApiEndpoints.questionnaireTemplates);
@@ -305,7 +301,6 @@ class QuestionnaireService {
     return InvitationSummary.fromJson(res.data!);
   }
 
-  // ─── Respuestas del Paciente ───
 
   /// Obtiene las respuestas de los cuestionarios de un paciente específico.
   Future<List<dynamic>> fetchPatientResponses(String patientId) async {
@@ -324,7 +319,6 @@ class QuestionnaireService {
     }
   }
 
-// --- NUEVO: Extracción de KPIs de Salud CORREGIDO ---
   Future<Map<String, dynamic>?> getLatestPatientKPIs(String patientId) async {
     try {
       final responses = await fetchPatientResponses(patientId);
@@ -386,7 +380,6 @@ class QuestionnaireService {
     }
   }
   
-  // ─── EXTRACCIÓN OCR CON IA ───
 
   /// Envía imágenes al backend para extraer preguntas médicas limpias usando AWS Textract + Claude
   Future<List<Map<String, dynamic>>> extractQuestionsFromImages(List<File> images) async {
@@ -420,7 +413,6 @@ class QuestionnaireService {
     }
   }
 
-  // ────────────────────────────────────────
 
   List<Question> _parseQuestions(dynamic data) {
     if (data is! List) return const [];

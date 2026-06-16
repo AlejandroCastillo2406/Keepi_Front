@@ -1,8 +1,12 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../core/app_theme.dart';
-import '../screens/common/global_search_screen.dart';
+import '../core/roles.dart';
+import '../providers/auth_provider.dart';
+import '../router/app_paths.dart';
+import '../router/router_extras.dart';
 import '../services/doctor_service.dart';
 
 /// Barra de búsqueda en Home: al pulsar abre la pantalla dedicada de búsqueda.
@@ -11,69 +15,81 @@ class HomeAddedSearchSection extends StatelessWidget {
     super.key,
     this.patients,
     this.onDoctorOpenAgenda,
+    this.compact = false,
   });
 
   final List<PatientListItem>? patients;
   final VoidCallback? onDoctorOpenAgenda;
+  /// Versión baja para el header web (mejor área de clic).
+  final bool compact;
 
   void _openSearch(BuildContext context) {
-    Navigator.of(context).push(
-      CupertinoPageRoute<void>(
-        builder: (_) => GlobalSearchScreen(
-          patients: patients,
-          onDoctorOpenAgenda: onDoctorOpenAgenda,
-        ),
+    final role = context.read<AuthProvider>().roleName;
+    final path =
+        role == AppRole.doctor ? AppPaths.doctorSearch : AppPaths.userSearch;
+    context.push(
+      path,
+      extra: GlobalSearchExtra(
+        patients: patients,
+        onDoctorOpenAgenda: onDoctorOpenAgenda,
+      ),
+    );
+  }
+
+  InputDecoration _decoration() {
+    return InputDecoration(
+      hintText: 'Buscar citas, documentos, análisis…',
+      hintStyle: TextStyle(
+        color: KeepiColors.slateLight.withValues(alpha: 0.9),
+        fontSize: compact ? 14 : 15,
+        fontWeight: FontWeight.w500,
+      ),
+      isDense: compact,
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: compact ? 11 : 14,
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      prefixIcon: Icon(
+        Icons.search_rounded,
+        color: KeepiColors.slateLight.withValues(alpha: 0.8),
+        size: compact ? 20 : 22,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(compact ? 12 : 14),
+        borderSide: const BorderSide(color: KeepiColors.cardBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(compact ? 12 : 14),
+        borderSide: const BorderSide(color: KeepiColors.cardBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(compact ? 12 : 14),
+        borderSide: const BorderSide(color: KeepiColors.skyBlue, width: 1.5),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final field = TextField(
+      readOnly: true,
+      showCursor: false,
+      enableInteractiveSelection: false,
+      mouseCursor: SystemMouseCursors.click,
+      onTap: () => _openSearch(context),
+      onSubmitted: (_) => _openSearch(context),
+      decoration: _decoration(),
+    );
+
+    if (compact) {
+      return field;
+    }
+
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openSearch(context),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: KeepiColors.cardBorder.withValues(alpha: 0.8),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: KeepiColors.slate.withValues(alpha: 0.04),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.search_rounded,
-                size: 22,
-                color: KeepiColors.slateLight.withValues(alpha: 0.9),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Buscar citas, documentos y análisis…',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: KeepiColors.slateLight,
-                      ),
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: KeepiColors.slateLight.withValues(alpha: 0.8),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: field,
     );
   }
 }

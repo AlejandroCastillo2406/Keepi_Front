@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_theme.dart';
 import '../core/roles.dart';
 import '../providers/auth_provider.dart';
-import '../screens/doctor/analysis_document_viewer_screen.dart';
-import '../screens/doctor/doctor_request_analysis_screen.dart';
-import '../screens/doctor/doctor_upload_analysis_for_patient_screen.dart';
+import '../router/app_navigation.dart';
+import '../router/app_paths.dart';
 import '../services/api_client.dart';
 import '../services/appointment_service.dart';
 import '../services/doctor_service.dart';
@@ -161,14 +161,11 @@ class SearchResultNavigation {
           'Authorization': 'Bearer $token',
         'Accept': '*/*',
       };
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AnalysisDocumentViewerScreen(
-            url: url,
-            title: item.title,
-            headers: headers,
-          ),
-        ),
+      await AppNavigation.pushDocumentViewer(
+        context,
+        url: url,
+        title: item.title,
+        headers: headers,
       );
       return;
     }
@@ -176,23 +173,16 @@ class SearchResultNavigation {
     if (isDoctor && item.patientId != null && item.patientId!.isNotEmpty) {
       final status = (request?.status ?? item.status ?? '').toLowerCase();
       if (status == 'pending' || status == 'pendiente') {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DoctorUploadAnalysisForPatientScreen(
-              requestId: item.id,
-              description: item.title,
-              patientName: patientName,
-            ),
+        await context.push(
+          AppPaths.doctorUploadAnalysis(
+            item.patientId!,
+            item.id,
+            description: item.title,
           ),
         );
       } else {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DoctorRequestAnalysisScreen(
-              patientId: item.patientId!,
-              patientName: patientName,
-            ),
-          ),
+        await context.push(
+          AppPaths.doctorRequestAnalysis(item.patientId!),
         );
       }
       return;

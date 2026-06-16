@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/web_layout.dart';
 import '../../core/decorative_background.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
@@ -18,10 +20,13 @@ class GlobalSearchScreen extends StatefulWidget {
     super.key,
     this.patients,
     this.onDoctorOpenAgenda,
+    this.embedded = false,
   });
 
   final List<PatientListItem>? patients;
   final VoidCallback? onDoctorOpenAgenda;
+  /// Dentro del shell web del doctor (sin AppBar duplicado).
+  final bool embedded;
 
   @override
   State<GlobalSearchScreen> createState() => _GlobalSearchScreenState();
@@ -193,7 +198,7 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
       patients: widget.patients,
       onDoctorOpenAgenda: widget.onDoctorOpenAgenda != null
           ? () {
-              Navigator.of(context).pop();
+              context.pop();
               widget.onDoctorOpenAgenda!();
             }
           : null,
@@ -203,38 +208,45 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final webEmbedded = widget.embedded && isWebWide(context);
 
-    return Scaffold(
-      backgroundColor: KeepiColors.surfaceBg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: KeepiColors.slate),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Buscar',
-          style: TextStyle(
-            color: KeepiColors.slate,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
+    final content = DecorativeBackground(
+      blobOpacity: 0.15,
+      child: SafeArea(
+        top: !webEmbedded,
+        child: RefreshIndicator(
+          color: KeepiColors.orange,
+          onRefresh: () => _runSearch(
+            query: _controller.text.trim().isEmpty ? null : _controller.text,
           ),
-        ),
-      ),
-      body: DecorativeBackground(
-        blobOpacity: 0.15,
-        child: SafeArea(
-          top: false,
-          child: RefreshIndicator(
-            color: KeepiColors.orange,
-            onRefresh: () => _runSearch(
-              query: _controller.text.trim().isEmpty ? null : _controller.text,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              webEmbedded ? 28 : 24,
+              webEmbedded ? 20 : 8,
+              webEmbedded ? 28 : 24,
+              32,
             ),
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-              children: [
+            children: [
+              if (webEmbedded)
+                Row(
+                  children: [
+                    Text(
+                      'Buscar',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: KeepiColors.slate,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () => context.pop(),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('Cerrar'),
+                    ),
+                  ],
+                )
+              else
                 Text(
                   'Citas, documentos y análisis que has añadido',
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -242,51 +254,51 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
                     height: 1.35,
                   ),
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  onChanged: _onQueryChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por nombre, motivo, categoría…',
-                    filled: true,
-                    fillColor: Colors.white,
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      color: KeepiColors.slateLight,
+              const SizedBox(height: 14),
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                onChanged: _onQueryChanged,
+                decoration: InputDecoration(
+                  hintText: 'Buscar por nombre, motivo, categoría…',
+                  filled: true,
+                  fillColor: Colors.white,
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: KeepiColors.slateLight,
+                  ),
+                  suffixIcon: _controller.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 20),
+                          onPressed: () {
+                            _controller.clear();
+                            _runSearch(query: null);
+                          },
+                        ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: KeepiColors.cardBorder.withValues(alpha: 0.8),
                     ),
-                    suffixIcon: _controller.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 20),
-                            onPressed: () {
-                              _controller.clear();
-                              _runSearch(query: null);
-                            },
-                          ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: KeepiColors.cardBorder.withValues(alpha: 0.8),
-                      ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: KeepiColors.cardBorder.withValues(alpha: 0.8),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: KeepiColors.cardBorder.withValues(alpha: 0.8),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: KeepiColors.orange,
-                        width: 1.5,
-                      ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: KeepiColors.orange,
+                      width: 1.5,
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
+              ),
+              const SizedBox(height: 12),
+              SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
@@ -391,7 +403,34 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
             ),
           ),
         ),
+    );
+
+    if (webEmbedded) {
+      return ColoredBox(
+        color: KeepiColors.surfaceBg,
+        child: content,
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: KeepiColors.surfaceBg,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: KeepiColors.slate),
+          onPressed: () => context.pop(),
+        ),
+        title: const Text(
+          'Buscar',
+          style: TextStyle(
+            color: KeepiColors.slate,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
       ),
+      body: content,
     );
   }
 }

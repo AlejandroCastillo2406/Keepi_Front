@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../models/questionnaire_models.dart';
+import '../../../router/app_paths.dart';
+import '../../../router/router_extras.dart';
 import '../../../services/questionnaire_service.dart';
 import '_widgets.dart';
 
@@ -104,7 +107,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
         _selected.map((q) => q.id).toList(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      context.pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -115,19 +118,16 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
   }
 
   Future<void> _openPicker() async {
-    final selectedIds = _selected.map((e) => e.id).toSet();
-    final result = await Navigator.of(context).push<List<Question>>(
-      MaterialPageRoute(
-        builder: (_) => _QuestionPickerScreen(
-          service: widget.service,
-          specialties: widget.specialties,
-          initiallySelected: selectedIds,
-          initialSpecialtyId: _specialtyId,
-        ),
+    final result = await context.push<List<Question>>(
+      AppPaths.doctorQuestionPicker,
+      extra: QuestionPickerExtra(
+        service: widget.service,
+        specialties: widget.specialties,
+        initialSelection: _selected,
+        initialSpecialtyId: _specialtyId,
       ),
     );
     if (result == null) return;
-    // mantener orden existente; agregar nuevos al final
     final existingIds = _selected.map((e) => e.id).toSet();
     final merged = <Question>[..._selected];
     for (final q in result) {
@@ -156,7 +156,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
         title: Text(_isEditing ? 'Editar plantilla' : 'Nueva plantilla'),
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         actions: [
           Padding(
@@ -414,8 +414,9 @@ class _TemplateQuestionTile extends StatelessWidget {
   }
 }
 
-class _QuestionPickerScreen extends StatefulWidget {
-  const _QuestionPickerScreen({
+class QuestionPickerScreen extends StatefulWidget {
+  const QuestionPickerScreen({
+    super.key,
     required this.service,
     required this.specialties,
     required this.initiallySelected,
@@ -428,10 +429,10 @@ class _QuestionPickerScreen extends StatefulWidget {
   final String? initialSpecialtyId;
 
   @override
-  State<_QuestionPickerScreen> createState() => _QuestionPickerScreenState();
+  State<QuestionPickerScreen> createState() => _QuestionPickerScreenState();
 }
 
-class _QuestionPickerScreenState extends State<_QuestionPickerScreen> {
+class _QuestionPickerScreenState extends State<QuestionPickerScreen> {
   final TextEditingController _search = TextEditingController();
   late Set<String> _selected;
   String? _scopeSpecialtyId;
@@ -510,7 +511,7 @@ class _QuestionPickerScreenState extends State<_QuestionPickerScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         actions: [
           Padding(
@@ -521,7 +522,7 @@ class _QuestionPickerScreenState extends State<_QuestionPickerScreen> {
                     .map((id) => _byId[id])
                     .whereType<Question>()
                     .toList();
-                Navigator.of(context).pop(result);
+                context.pop(result);
               },
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),

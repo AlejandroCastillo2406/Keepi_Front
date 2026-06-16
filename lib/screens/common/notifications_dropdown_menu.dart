@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/care_event_style.dart';
 import '../../core/app_theme.dart';
+import '../../providers/auth_provider.dart';
+import '../../router/app_paths.dart';
 import '../../services/api_client.dart';
 import '../../services/notification_navigation.dart';
 import '../../services/notifications_service.dart';
-import 'notifications_screen.dart';
 
 
 class NotificationBellMenu extends StatefulWidget {
@@ -76,7 +79,7 @@ class _NotificationBellMenuState extends State<NotificationBellMenu> {
 
 class _NotificationsDropdownContent extends StatefulWidget {
   final VoidCallback onClose;
-  final VoidCallback? onViewAll; // NUEVO
+  final VoidCallback? onViewAll;
   
   const _NotificationsDropdownContent({required this.onClose, this.onViewAll});
 
@@ -197,8 +200,8 @@ class _NotificationsDropdownContentState extends State<_NotificationsDropdownCon
                 if (widget.onViewAll != null) {
                   widget.onViewAll!();
                 } else {
-                  // Fallback por si acaso
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen()));
+                  final role = context.read<AuthProvider>().roleName;
+                  context.push(AppPaths.notificationsForRole(role));
                 }
               },
               child: Container(
@@ -265,8 +268,9 @@ class _NotificationsDropdownContentState extends State<_NotificationsDropdownCon
               }
               if (n.isQuestionnaireCompleted) {
                 widget.onClose();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Cuestionario completado por el paciente.'))
+                NotificationNavigation.openQuestionnaireCompletedDetail(
+                  context,
+                  notification: n,
                 );
                 return;
               }
@@ -319,11 +323,11 @@ class _DropdownNotifCard extends StatelessWidget {
   final VoidCallback onTap;
 
   ({String tag, Color color, IconData icon}) _meta() {
-    if (data.isAnalysisRequestCompleted) return (tag: 'ANÁLISIS', color: KeepiColors.orange, icon: Icons.biotech_outlined);
-    if (data.isQuestionnaireCompleted) return (tag: 'CUESTIONARIO', color: KeepiColors.orange, icon: Icons.assignment_turned_in_outlined);
-    if (data.appointmentId != null) return (tag: 'CITA', color: KeepiColors.skyBlue, icon: Icons.event_available_outlined);
-    if (data.prescriptionId != null) return (tag: 'RECETA', color: const Color(0xFF7C3AED), icon: Icons.medication_outlined);
-    return (tag: 'AVISO', color: KeepiColors.slate, icon: Icons.info_outline_rounded);
+    return (
+      tag: NotificationEventStyle.tagFor(data),
+      color: NotificationEventStyle.colorFor(data),
+      icon: NotificationEventStyle.iconFor(data),
+    );
   }
 
   String get _dateStamp {
@@ -389,7 +393,7 @@ class _DropdownNotifCard extends StatelessWidget {
               Container(
                 margin: const EdgeInsets.only(top: 14),
                 width: 10, height: 10, 
-                decoration: BoxDecoration(color: KeepiColors.orange, shape: BoxShape.circle)
+                decoration: BoxDecoration(color: m.color, shape: BoxShape.circle)
               ),
             ]
           ],
