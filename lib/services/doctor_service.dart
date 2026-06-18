@@ -35,6 +35,10 @@ class DoctorService {
     );
   }
 
+  Future<void> deletePatient(String patientId) async {
+    await _api.dio.delete<void>(ApiEndpoints.doctorsPatient(patientId));
+  }
+
   Future<List<PatientListItem>> fetchMyPatients() async {
     final res = await _api.dio.get<dynamic>(ApiEndpoints.doctorsPatients);
     final data = res.data;
@@ -192,10 +196,13 @@ class DoctorService {
     final response =
         await _api.dio.get('/api/v1/doctors/patients/$patientId/timeline');
     final List<dynamic> data = response.data as List<dynamic>;
-    return data
-        .map((json) =>
-            TimelineEvent.fromJson(Map<String, dynamic>.from(json as Map)))
-        .toList();
+    return sortTimelineNewestFirst(
+      data.map(
+        (json) => TimelineEvent.fromJson(
+          Map<String, dynamic>.from(json as Map),
+        ),
+      ),
+    );
   }
 
   /// [PACIENTE] Historial y próximos pasos (misma fuente que ve el médico en el timeline).
@@ -237,10 +244,13 @@ class DoctorService {
     final response = await _api.dio.get<dynamic>('/api/v1/patient/timeline');
     final data = response.data;
     if (data is! List) return [];
-    return data
-        .map((json) =>
-            TimelineEvent.fromJson(Map<String, dynamic>.from(json as Map)))
-        .toList();
+    return sortTimelineNewestFirst(
+      data.map(
+        (json) => TimelineEvent.fromJson(
+          Map<String, dynamic>.from(json as Map),
+        ),
+      ),
+    );
   }
 
   /// URL de descarga/visualización para abrir un documento dentro de WebView.
@@ -356,30 +366,39 @@ class PatientProfileBootstrapData {
     required this.timeline,
     required this.analysisRequests,
     required this.questionnaireResponses,
+    this.questionnairePending = const [],
   });
 
   final ConsultationContext context;
   final List<TimelineEvent> timeline;
   final List<AnalysisRequestDto> analysisRequests;
   final List<Map<String, dynamic>> questionnaireResponses;
+  final List<Map<String, dynamic>> questionnairePending;
 
   factory PatientProfileBootstrapData.fromJson(Map<String, dynamic> json) {
     final timelineRaw = json['timeline'] as List<dynamic>? ?? [];
     final analysisRaw = json['analysis_requests'] as List<dynamic>? ?? [];
     final questionnaireRaw =
         json['questionnaire_responses'] as List<dynamic>? ?? [];
+    final pendingRaw = json['questionnaire_pending'] as List<dynamic>? ?? [];
     return PatientProfileBootstrapData(
       context: ConsultationContext.fromJson(
         Map<String, dynamic>.from(json['context'] as Map? ?? const {}),
       ),
-      timeline: timelineRaw
-          .map((e) => TimelineEvent.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList(),
+      timeline: sortTimelineNewestFirst(
+        timelineRaw.map(
+          (e) => TimelineEvent.fromJson(Map<String, dynamic>.from(e as Map)),
+        ),
+      ),
       analysisRequests: analysisRaw
           .map((e) =>
               AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
       questionnaireResponses: questionnaireRaw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(),
+      questionnairePending: pendingRaw
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList(),

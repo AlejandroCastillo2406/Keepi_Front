@@ -7,6 +7,7 @@ import '../../core/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../router/app_paths.dart';
 import '../../services/api_client.dart';
+import '../../services/appointment_service.dart';
 import '../../services/notification_navigation.dart';
 import '../../services/notifications_service.dart';
 
@@ -132,6 +133,62 @@ class _NotificationsDropdownContentState extends State<_NotificationsDropdownCon
 
   Future<void> _openAppointmentPrompt(AppNotificationDto n) async {
     widget.onClose();
+    final appointmentId = n.appointmentId;
+    if (appointmentId == null || appointmentId.isEmpty) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (auth.roleName == 'DOCTOR' &&
+        NotificationNavigation.isDoctorWebAppointmentPending(n)) {
+      await NotificationNavigation.openDoctorPendingAppointmentReview(
+        context,
+        appointmentId: appointmentId,
+      );
+      return;
+    }
+
+    if (auth.roleName == 'DOCTOR') {
+      if (context.mounted) context.go(AppPaths.doctorAgenda);
+      return;
+    }
+
+    final String? action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Propuesta de Cita'),
+        content: Text(n.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('reject'),
+            child: const Text('Rechazar', style: TextStyle(color: Colors.red)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('accept'),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == null || !context.mounted) return;
+    try {
+      await AppointmentService(context.read<ApiClient>()).patientRespondProposal(
+        appointmentId: appointmentId,
+        action: action,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            action == 'accept' ? 'Cita confirmada' : 'Cita rechazada',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppointmentService.messageFromDio(e))),
+      );
+    }
   }
 
   @override

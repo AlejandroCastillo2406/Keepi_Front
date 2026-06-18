@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +22,7 @@ import '../../utils/patient_expediente_export.dart';
 import '../../widgets/doctor_clinical_profile_editor.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
 import '../../widgets/patient_care_timeline.dart';
+import '../../widgets/patient_scheduling_link_dialog.dart';
 import '../../router/app_paths.dart';
 import '../../widgets/profile_settings_widgets.dart';
 import 'doctor_patient_profile_screen.dart';
@@ -168,15 +171,23 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   }
 
   void _applyDictationText(String text) {
-    if (text.trim().isNotEmpty) {
-      _dictationHeardThisSession = true;
-    }
+    if (text.trim().isEmpty) return;
+    _dictationHeardThisSession = true;
     final combined = '$_dictationPrefix$text';
     if (_notesCtrl.text == combined) return;
     _notesCtrl.value = TextEditingValue(
       text: combined,
       selection: TextSelection.collapsed(offset: combined.length),
     );
+  }
+
+  Future<void> _endDictationFromEngine() async {
+    if (!_isDictating) return;
+    await _dictation.stop();
+    if (!mounted) return;
+    final heard = _dictationHeardThisSession ||
+        _notesCtrl.text.trim().length > _dictationPrefix.trim().length;
+    _finishDictationSession(forceNoSpeechCheck: !heard);
   }
 
   Future<void> _toggleDictation() async {
@@ -193,20 +204,32 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       _dictationPrefix = '$_dictationPrefix ';
     }
 
+    setState(() => _isDictating = true);
+
     final error = await _dictation.start(
       onTranscript: (text, {required isFinal}) {
         if (!mounted) return;
-        _applyDictationText(text);
+        setState(() => _applyDictationText(text));
       },
       onStatus: (status) {
         if (!mounted) return;
-        if (status == 'doneNoResult') {
-          _finishDictationSession(forceNoSpeechCheck: true);
+        if (status == SpeechToText.listeningStatus) {
+          setState(() => _isDictating = true);
           return;
         }
-        if (status == SpeechToText.notListeningStatus ||
-            status == SpeechToText.doneStatus) {
-          _finishDictationSession(forceNoSpeechCheck: true);
+        if (status == 'notListening') {
+          unawaited(_dictation.stop());
+          _finishDictationSession(
+            forceNoSpeechCheck: !_dictationHeardThisSession,
+          );
+          return;
+        }
+        if (status == 'doneNoResult') {
+          _endDictationFromEngine();
+          return;
+        }
+        if (status == SpeechToText.doneStatus) {
+          _endDictationFromEngine();
         }
       },
       onError: (message) {
@@ -227,13 +250,12 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     if (!mounted) return;
 
     if (error != null) {
+      setState(() => _isDictating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error)),
       );
       return;
     }
-
-    setState(() => _isDictating = true);
   }
 
   Future<void> _startBootstrap({bool forceRefresh = false}) async {
@@ -376,6 +398,14 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     );
   }
 
+  Future<void> _openSchedulingLink() async {
+    await PatientSchedulingLinkDialog.show(
+      context,
+      patientId: _patientId,
+      patientName: _context?.patientName ?? widget.patientName,
+    );
+  }
+
   List<AnalysisRequestDto> get _pendingAnalysis => _analysisRequests
       .where((r) => r.status == 'pending' && (r.documentId ?? '').isEmpty)
       .toList();
@@ -506,11 +536,190 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   }
 
   String _whenLabel() {
+    final parts = _consultationDateTimeParts();
+    if (parts.date.isEmpty && parts.time.isEmpty) return '';
+    if (parts.time.isEmpty) return parts.date;
+    if (parts.date.isEmpty) return parts.time;
+    return '${parts.date} · ${parts.time}';
+  }
+
+  ({String date, String time}) _consultationDateTimeParts() {
     final dt = _effectiveAppointment.appointmentDate?.toLocal();
-    if (dt == null) return '';
+    if (dt == null) {
+      final ev = _event;
+      if (ev != null && ev.date.trim().isNotEmpty) {
+        return (date: ev.date.trim(), time: ev.time.trim());
+      }
+      return (date: '', time: '');
+    }
+    final date =
+        '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day}/${dt.month}/${dt.year} · $h:$m';
+    var time = '$h:$m';
+    final end = _effectiveAppointment.endDate?.toLocal();
+    if (end != null) {
+      final eh = end.hour.toString().padLeft(2, '0');
+      final em = end.minute.toString().padLeft(2, '0');
+      time = '$time – $eh:$em';
+    }
+    return (date: date, time: time);
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status) {
+      case 'scheduled':
+        return Icons.check_circle_outline;
+      case 'canceled':
+        return Icons.cancel_outlined;
+      case 'pending_patient_approval':
+      case 'pending_doctor_approval':
+      case 'pending_doctor_proposal':
+        return Icons.hourglass_top_rounded;
+      default:
+        return Icons.info_outline_rounded;
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'scheduled':
+        return KeepiColors.green;
+      case 'canceled':
+        return Colors.red.shade700;
+      case 'pending_patient_approval':
+      case 'pending_doctor_approval':
+      case 'pending_doctor_proposal':
+        return KeepiColors.orange;
+      default:
+        return KeepiColors.slateLight;
+    }
+  }
+
+  Widget _referenceSeparator() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Container(
+        width: 2,
+        height: 2,
+        decoration: BoxDecoration(
+          color: KeepiColors.slateLight.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+
+  Widget _referenceDatum({
+    required IconData icon,
+    required String text,
+    Color? iconColor,
+    Color? textColor,
+    int? maxLines,
+    TextOverflow? overflow,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 15,
+          color: iconColor ?? KeepiColors.orange,
+        ),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          maxLines: maxLines ?? 1,
+          overflow: overflow ?? TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: textColor ?? KeepiColors.slate,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _consultationReason() {
+    final fromAppt = _effectiveAppointment.reason.trim();
+    if (fromAppt.isNotEmpty) return fromAppt;
+    final ev = _event;
+    if (ev != null) {
+      final sub = (ev.subtitle ?? '').trim();
+      if (sub.isNotEmpty) return sub;
+      final desc = ev.description.trim();
+      if (desc.isNotEmpty) return desc;
+    }
+    return 'Consulta médica';
+  }
+
+  String _appointmentStatusLabel(String status) {
+    switch (status) {
+      case 'scheduled':
+        return 'Confirmada';
+      case 'pending_patient_approval':
+        return 'Pendiente del paciente';
+      case 'pending_doctor_approval':
+        return 'Pendiente del médico';
+      case 'pending_doctor_proposal':
+        return 'Propuesta pendiente';
+      default:
+        return status.replaceAll('_', ' ');
+    }
+  }
+
+  Widget _buildConsultationReferenceCard() {
+    final dateTime = _consultationDateTimeParts();
+    final reason = _consultationReason();
+    final status = _appointmentStatusLabel(_effectiveAppointment.status);
+    final statusColor = _statusColor(_effectiveAppointment.status);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (dateTime.date.isNotEmpty) ...[
+                _referenceDatum(
+                  icon: Icons.calendar_today_outlined,
+                  text: dateTime.date,
+                ),
+                if (dateTime.time.isNotEmpty) _referenceSeparator(),
+              ],
+              if (dateTime.time.isNotEmpty) ...[
+                _referenceDatum(
+                  icon: Icons.schedule_rounded,
+                  text: dateTime.time,
+                ),
+                _referenceSeparator(),
+              ],
+              _referenceDatum(
+                icon: _statusIcon(_effectiveAppointment.status),
+                text: status,
+                iconColor: statusColor,
+                textColor: statusColor,
+              ),
+            ],
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(width: 14),
+            Expanded(
+              child: _ConsultationReferenceReason(text: reason),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Future<void> _persistClinicalProfile({
@@ -894,6 +1103,11 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
               ),
               IconButton(
                 onPressed: _saving ? null : _toggleDictation,
+                style: IconButton.styleFrom(
+                  backgroundColor: _isDictating
+                      ? KeepiColors.orangeSoft
+                      : Colors.transparent,
+                ),
                 icon: Icon(
                   _isDictating ? Icons.mic_rounded : Icons.mic_none_rounded,
                   color: _isDictating ? KeepiColors.orange : KeepiColors.slateLight,
@@ -905,6 +1119,12 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
               ),
             ],
           ),
+          if (_isDictating) ...[
+            const SizedBox(height: 10),
+            _DictationListeningBanner(
+              heardSpeech: _dictationHeardThisSession,
+            ),
+          ],
           const SizedBox(height: 10),
           SizedBox(
             height: 120,
@@ -1054,6 +1274,8 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _buildConsultationReferenceCard(),
+        const SizedBox(height: 16),
         _buildVitalsBar(),
         const SizedBox(height: 16),
         _buildClinicalNotesCard(),
@@ -1145,7 +1367,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
               ),
               _buildPatientSummaryHeader(ctx: ctx, stats: stats, wide: wide),
               const SizedBox(height: 22),
-              const DoctorSectionTitle(tag: 'ACCIONES RÁPIDAS', count: 6),
+              const DoctorSectionTitle(tag: 'ACCIONES RÁPIDAS', count: 7),
               const SizedBox(height: 12),
               DoctorWebQuickActionsRow(
                 hasPendingUpload: pending.isNotEmpty,
@@ -1158,6 +1380,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
                     widget.onOpenAssignPrescription ?? () {},
                 onOpenSchedule: widget.onOpenSchedule ?? () {},
                 onOpenQuestionnaire: widget.onOpenQuestionnaire ?? () {},
+                onGenerateSchedulingLink: _openSchedulingLink,
               ),
               const SizedBox(height: 26),
               DoctorPatientTabBar(
@@ -1235,6 +1458,229 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
           padding: EdgeInsets.fromLTRB(pad, 12, pad, 0),
           child: _buildShell(),
         ),
+      ),
+    );
+  }
+}
+
+class _ConsultationReferenceReason extends StatefulWidget {
+  const _ConsultationReferenceReason({required this.text});
+
+  final String text;
+
+  @override
+  State<_ConsultationReferenceReason> createState() =>
+      _ConsultationReferenceReasonState();
+}
+
+class _ConsultationReferenceReasonState
+    extends State<_ConsultationReferenceReason> {
+  bool _expanded = false;
+  bool _overflows = false;
+  final GlobalKey _textKey = GlobalKey();
+
+  static const _textStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    color: KeepiColors.slate,
+  );
+
+  @override
+  void didUpdateWidget(covariant _ConsultationReferenceReason oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _expanded = false;
+      _overflows = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflow());
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflow());
+  }
+
+  void _checkOverflow() {
+    if (!mounted || _expanded) return;
+    final renderBox = _textKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+
+    final painter = TextPainter(
+      text: TextSpan(text: widget.text, style: _textStyle),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+    )..layout(maxWidth: renderBox.size.width);
+
+    final next = painter.didExceedMaxLines;
+    if (next != _overflows && mounted) {
+      setState(() => _overflows = next);
+    }
+  }
+
+  void _toggleExpanded() {
+    if (!_overflows && !_expanded) return;
+    setState(() => _expanded = !_expanded);
+    if (!_expanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflow());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: (_overflows || _expanded) ? _toggleExpanded : null,
+      borderRadius: BorderRadius.circular(6),
+      child: Row(
+        crossAxisAlignment:
+            _expanded ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.subject_rounded,
+            size: 15,
+            color: KeepiColors.orange,
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              widget.text,
+              key: _textKey,
+              maxLines: _expanded ? null : 1,
+              overflow:
+                  _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              style: _textStyle,
+            ),
+          ),
+          if (_overflows || _expanded) ...[
+            const SizedBox(width: 2),
+            Icon(
+              _expanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+              size: 18,
+              color: KeepiColors.slateLight,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DictationListeningBanner extends StatefulWidget {
+  const _DictationListeningBanner({required this.heardSpeech});
+
+  final bool heardSpeech;
+
+  @override
+  State<_DictationListeningBanner> createState() =>
+      _DictationListeningBannerState();
+}
+
+class _DictationListeningBannerState extends State<_DictationListeningBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: KeepiColors.orangeSoft.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: KeepiColors.orange.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        children: [
+          ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.12).animate(
+              CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+            ),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: KeepiColors.orange,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: KeepiColors.orange.withValues(alpha: 0.35),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 18),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.heardSpeech
+                      ? 'Escuchando lo que dices…'
+                      : 'Escuchando… habla ahora',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: KeepiColors.slate,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Se detiene tras 3 segundos de silencio',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: KeepiColors.slateLight,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.heardSpeech)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: KeepiColors.green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: KeepiColors.green.withValues(alpha: 0.4),
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.graphic_eq_rounded, size: 14, color: KeepiColors.green),
+                  SizedBox(width: 4),
+                  Text(
+                    'Voz',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: KeepiColors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

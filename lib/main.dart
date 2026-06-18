@@ -64,7 +64,14 @@ class KeepiApp extends StatelessWidget {
       providers: [
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider<AuthProvider>(
-          create: (_) => AuthProvider(prefs, api, authService),
+          create: (_) {
+            final auth = AuthProvider(prefs, api, authService);
+            api.bindAuthHandlers(
+              refreshToken: auth.tryRefreshToken,
+              onSessionExpired: auth.logout,
+            );
+            return auth;
+          },
         ),
         ChangeNotifierProvider<ConsultationBootstrapProvider>(
           create: (_) => ConsultationBootstrapProvider(),
@@ -119,7 +126,27 @@ class _KeepiRouterAppState extends State<_KeepiRouterApp> {
       routerConfig: _router!,
       builder: (context, child) {
         if (showSplash) return const _SplashScreen();
-        return _webAwareBuilder(context, child);
+        final content = _webAwareBuilder(context, child);
+        if (!auth.isRefreshingToken) return content;
+        return Stack(
+          children: [
+            content,
+            ModalBarrier(
+              dismissible: false,
+              color: Colors.black.withValues(alpha: 0.18),
+            ),
+            const Center(
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: KeepiColors.orange,
+                ),
+              ),
+            ),
+          ],
+        );
       },
     );
   }

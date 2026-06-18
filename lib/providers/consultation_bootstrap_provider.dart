@@ -32,9 +32,11 @@ class ConsultationBootstrapData {
       context: ConsultationContext.fromJson(
         Map<String, dynamic>.from(json['context'] as Map? ?? const {}),
       ),
-      timeline: timelineRaw
-          .map((e) => TimelineEvent.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList(),
+      timeline: sortTimelineNewestFirst(
+        timelineRaw.map(
+          (e) => TimelineEvent.fromJson(Map<String, dynamic>.from(e as Map)),
+        ),
+      ),
       analysisRequests: analysisRaw
           .map((e) =>
               AnalysisRequestDto.fromJson(Map<String, dynamic>.from(e as Map)))

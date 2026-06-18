@@ -573,6 +573,7 @@ class DoctorWebQuickActionsRow extends StatelessWidget {
     required this.onOpenAssignPrescription,
     required this.onOpenSchedule,
     required this.onOpenQuestionnaire,
+    required this.onGenerateSchedulingLink,
   });
 
   final bool hasPendingUpload;
@@ -582,6 +583,7 @@ class DoctorWebQuickActionsRow extends StatelessWidget {
   final VoidCallback onOpenAssignPrescription;
   final VoidCallback onOpenSchedule;
   final VoidCallback onOpenQuestionnaire;
+  final VoidCallback onGenerateSchedulingLink;
 
   @override
   Widget build(BuildContext context) {
@@ -618,8 +620,14 @@ class DoctorWebQuickActionsRow extends StatelessWidget {
         onTap: onOpenSchedule,
       ),
       _WebQuickActionTile(
+        icon: Icons.link_rounded,
+        label: 'Link agenda web',
+        accent: const Color(0xFF0284C7),
+        onTap: onGenerateSchedulingLink,
+      ),
+      _WebQuickActionTile(
         icon: Icons.quiz_outlined,
-        label: 'Enviar cuestionario',
+        label: 'Enviar ficha clínica',
         accent: KeepiColors.skyBlue,
         onTap: onOpenQuestionnaire,
       ),

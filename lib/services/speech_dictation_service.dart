@@ -1,37 +1,49 @@
 import 'dart:ui' show PlatformDispatcher;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, kDebugMode;
 import 'package:speech_to_text/speech_to_text.dart';
 
-/// Dictado por voz para campos de texto (Web Speech API en navegador).
-/// No fija un idioma: en web deja que el motor del navegador infiera español/inglés.
+import 'web_speech_engine.dart';
+
+/// Dictado por voz: Web Speech API en navegador, speech_to_text en móvil/desktop.
 class SpeechDictationService {
   SpeechDictationService();
 
+  static const silenceCutoff = Duration(seconds: 3);
+
   final SpeechToText _speech = SpeechToText();
+  final WebSpeechEngine _web = WebSpeechEngine();
+
   bool _initialized = false;
   bool _listening = false;
+  bool _sessionActive = false;
 
-  bool get isListening => _listening;
-  bool get isInitialized => _initialized;
+  void Function(String status)? _statusHandler;
+  void Function(String message)? _errorHandler;
+  void Function(String text, {required bool isFinal})? _transcriptHandler;
 
-  Future<String?> initialize({
-    void Function(String status)? onStatus,
-    void Function(String message)? onError,
-  }) async {
+  bool get isListening =>
+      kIsWeb ? _web.isActive : (_listening || _speech.isListening);
+  bool get isInitialized => kIsWeb ? WebSpeechEngine.isSupported : _initialized;
+
+  Future<String?> initialize() async {
+    if (kIsWeb) {
+      if (!WebSpeechEngine.isSupported) {
+        return 'Dictado no disponible. Usa Chrome o Edge, HTTPS y permite el micrófono.';
+      }
+      return null;
+    }
+
     if (_initialized) return null;
 
     final ok = await _speech.initialize(
-      onStatus: (status) {
-        if (status == SpeechToText.doneStatus ||
-            status == SpeechToText.notListeningStatus) {
-          _listening = false;
-        }
-        onStatus?.call(status);
-      },
+      onStatus: _handleNativeStatus,
       onError: (error) {
         _listening = false;
-        onError?.call(error.errorMsg);
+        if (kDebugMode) {
+          debugPrint('Speech dictation error: ${error.errorMsg}');
+        }
+        _errorHandler?.call(error.errorMsg);
       },
     );
 
@@ -40,17 +52,28 @@ class SpeechDictationService {
       return 'No se pudo iniciar el dictado por voz en este dispositivo.';
     }
     if (!_speech.isAvailable) {
-      return 'Dictado no disponible. Usa Chrome o Edge y permite el micrófono.';
+      return 'Dictado no disponible en este dispositivo.';
     }
     return null;
   }
 
-  /// En web: null → sin `lang` fijo (detección automática del motor de Google).
-  /// En móvil: coincide con el idioma del sistema sin forzar español.
-  Future<String?> _resolveLocaleHint() async {
-    if (kIsWeb) return null;
+  void _handleNativeStatus(String status) {
+    if (status == SpeechToText.listeningStatus) {
+      _listening = true;
+    } else if (status == SpeechToText.doneStatus || status == 'doneNoResult') {
+      _listening = false;
+      _sessionActive = false;
+    }
+    _statusHandler?.call(status);
+  }
 
+  Future<String?> _resolveLocaleHint() async {
     final userTag = PlatformDispatcher.instance.locale.toLanguageTag();
+    if (kIsWeb) {
+      final lang = userTag.toLowerCase().split('-').first;
+      return lang == 'es' ? 'es-ES' : 'en-US';
+    }
+
     try {
       final locales = await _speech.locales();
       if (locales.isEmpty) return userTag;
@@ -73,50 +96,145 @@ class SpeechDictationService {
     }
   }
 
+  Future<String?> _startWeb() async {
+    final locale = await _resolveLocaleHint();
+    _listening = true;
+
+    return _web.start(
+      localeId: locale ?? 'es-ES',
+      onTranscript: (text, {required isFinal}) {
+        _transcriptHandler?.call(text, isFinal: isFinal);
+      },
+      onStatus: (status) {
+        if (status == 'listening') {
+          _listening = true;
+        } else if (status == 'notListening' ||
+            status == 'done' ||
+            status == 'doneNoResult') {
+          _listening = false;
+          _sessionActive = false;
+        }
+        _statusHandler?.call(status);
+      },
+      onError: (message) {
+        _listening = false;
+        _sessionActive = false;
+        _errorHandler?.call(message);
+      },
+    );
+  }
+
+  Future<bool> _waitUntilListening({
+    Duration timeout = const Duration(milliseconds: 2000),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (_speech.isListening || _listening) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    return _speech.isListening || _listening;
+  }
+
+  Future<String?> _startNative() async {
+    if (!_sessionActive) return null;
+
+    final locale = await _resolveLocaleHint();
+
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          final words = result.recognizedWords.trim();
+          if (words.isEmpty) return;
+          _transcriptHandler?.call(
+            words,
+            isFinal: result.finalResult,
+          );
+        },
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+          localeId: locale,
+          listenFor: const Duration(minutes: 5),
+          pauseFor: silenceCutoff,
+        ),
+      );
+    } catch (e) {
+      _listening = false;
+      _sessionActive = false;
+      return 'No se pudo iniciar el dictado: $e';
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final listening = await _waitUntilListening();
+    if (!listening) {
+      _listening = false;
+      _sessionActive = false;
+      return 'No se pudo iniciar el reconocimiento de voz.';
+    }
+
+    _listening = true;
+    return null;
+  }
+
   Future<String?> start({
     required void Function(String text, {required bool isFinal}) onTranscript,
     void Function(String status)? onStatus,
     void Function(String message)? onError,
   }) async {
-    if (_listening) return null;
+    if (_sessionActive && isListening) return null;
 
-    final initError = await initialize(onStatus: onStatus, onError: onError);
-    if (initError != null) return initError;
+    _transcriptHandler = onTranscript;
+    _statusHandler = onStatus;
+    _errorHandler = onError;
+    _sessionActive = true;
 
-    final locale = await _resolveLocaleHint();
+    final initError = await initialize();
+    if (initError != null) {
+      _sessionActive = false;
+      return initError;
+    }
 
-    _listening = true;
-    await _speech.listen(
-      onResult: (result) {
-        onTranscript(
-          result.recognizedWords,
-          isFinal: result.finalResult,
-        );
-      },
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.dictation,
-        partialResults: true,
-        cancelOnError: false,
-        localeId: locale,
-        listenFor: const Duration(minutes: 10),
-        pauseFor: const Duration(seconds: 4),
-      ),
-    );
-    return null;
+    if (kIsWeb) {
+      final error = await _startWeb();
+      if (error != null) {
+        _sessionActive = false;
+        _listening = false;
+      }
+      return error;
+    }
+
+    return _startNative();
   }
 
   Future<void> stop() async {
-    if (!_listening) return;
-    await _speech.stop();
+    _sessionActive = false;
     _listening = false;
+    if (kIsWeb) {
+      await _web.stop();
+      return;
+    }
+    if (_speech.isListening) {
+      await _speech.stop();
+    }
   }
 
   Future<void> cancel() async {
-    await _speech.cancel();
+    _sessionActive = false;
     _listening = false;
+    if (kIsWeb) {
+      await _web.stop();
+      return;
+    }
+    await _speech.cancel();
   }
 
   void dispose() {
+    _sessionActive = false;
+    if (kIsWeb) {
+      _web.dispose();
+      return;
+    }
     _speech.stop();
   }
 }

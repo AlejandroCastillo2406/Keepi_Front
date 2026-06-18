@@ -74,6 +74,26 @@ class AvailabilitySlotDto {
   }
 }
 
+class PatientSchedulingLinkDto {
+  PatientSchedulingLinkDto({
+    required this.schedulingLink,
+    required this.patientName,
+    this.message = '',
+  });
+
+  final String schedulingLink;
+  final String patientName;
+  final String message;
+
+  factory PatientSchedulingLinkDto.fromJson(Map<String, dynamic> json) {
+    return PatientSchedulingLinkDto(
+      schedulingLink: json['scheduling_link'] as String? ?? '',
+      patientName: json['patient_name'] as String? ?? '',
+      message: json['message'] as String? ?? '',
+    );
+  }
+}
+
 class SchedulingService {
   SchedulingService(this._api);
 
@@ -153,5 +173,14 @@ class SchedulingService {
           .toList(),
       message: data['message'] as String?,
     );
+  }
+
+  Future<PatientSchedulingLinkDto> generatePatientSchedulingLink(
+    String patientId,
+  ) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.doctorPatientSchedulingLink(patientId),
+    );
+    return PatientSchedulingLinkDto.fromJson(res.data ?? const {});
   }
 }

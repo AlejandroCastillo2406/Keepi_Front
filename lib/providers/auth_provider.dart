@@ -25,6 +25,7 @@ class AuthProvider with ChangeNotifier {
   static const _keyMustChangePassword = 'keepi_must_change_password';
 
   bool _isLoading = true;
+  bool _isRefreshingToken = false;
   bool _isLoggedIn = false;
   String? _accessToken;
   String? _refreshToken;
@@ -36,6 +37,7 @@ class AuthProvider with ChangeNotifier {
   String? _error;
 
   bool get isLoading => _isLoading;
+  bool get isRefreshingToken => _isRefreshingToken;
   bool get isLoggedIn => _isLoggedIn;
   String? get accessToken => _accessToken;
   String? get userId => _userId;
@@ -235,6 +237,10 @@ class AuthProvider with ChangeNotifier {
   Future<bool> tryRefreshToken() async {
     final refresh = _refreshToken ?? _prefs.getString(_keyRefreshToken);
     if (refresh == null || refresh.isEmpty) return false;
+
+    _isRefreshingToken = true;
+    notifyListeners();
+
     try {
       final res = await _authService.refresh(refresh);
       await _prefs.setString(_keyAccessToken, res.accessToken);
@@ -254,6 +260,9 @@ class AuthProvider with ChangeNotifier {
       return true;
     } catch (_) {
       return false;
+    } finally {
+      _isRefreshingToken = false;
+      notifyListeners();
     }
   }
 }

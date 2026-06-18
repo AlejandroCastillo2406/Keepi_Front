@@ -185,64 +185,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final isDoctor = authProv.roleName == 'DOCTOR';
     final appointmentSvc = Provider.of<AppointmentService>(context, listen: false);
 
-    if (isDoctor) {
-      final bool? confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.edit_calendar_outlined, color: KeepiColors.orange),
-              SizedBox(width: 8),
-              Text('Solicitud de Cita', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: Text('${n.message}\n\n¿Deseas asignar una fecha ahora?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Después', style: TextStyle(color: KeepiColors.slateLight))),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: KeepiColors.orange),
-              onPressed: () => Navigator.of(ctx).pop(true), 
-              child: const Text('Asignar Fecha', style: TextStyle(fontWeight: FontWeight.bold))
-            ),
-          ],
-        ),
+    if (isDoctor &&
+        NotificationNavigation.isDoctorWebAppointmentPending(n)) {
+      await NotificationNavigation.openDoctorPendingAppointmentReview(
+        context,
+        appointmentId: appointmentId,
+        onChanged: _load,
       );
+      return;
+    }
 
-      if (confirm == true) {
-        try {
-          final dt = await _pickDateTime();
-          if (dt == null) return;
-          
-          if (!mounted) return;
-          showDialog(
-            context: context, 
-            barrierDismissible: false, 
-            builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange))
-          );
+    if (isDoctor) {
+      return;
+    }
 
-          await appointmentSvc.doctorProposeTime(
-            appointmentId: appointmentId,
-            proposedStartAt: dt,
-            durationMinutes: 30, 
-          );
-          
-          if (!mounted) return;
-          Navigator.pop(context); 
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fecha propuesta enviada al paciente.')),
-          );
-          await _load();
-        } catch (e) {
-          if (!mounted) return;
-          Navigator.pop(context); 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppointmentService.messageFromDio(e))),
-          );
-        }
-      }
-    } else {
-      final String? action = await showDialog<String>(
+    final String? action = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Row(
@@ -296,33 +253,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           );
         }
       }
-    }
-  }
-
-  Future<DateTime?> _pickDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) => Theme(
-        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
-        child: child!,
-      ),
-    );
-    if (date == null || !mounted) return null;
-    
-    final time = await showTimePicker(
-      context: context, 
-      initialTime: const TimeOfDay(hour: 9, minute: 0),
-      builder: (context, child) => Theme(
-        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: KeepiColors.orange)),
-        child: child!,
-      ),
-    );
-    if (time == null) return null;
-    
-    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
   Widget _buildProfessionalCalendarCard(String dateStr, Color color) {
@@ -404,7 +334,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         if (itemsToDisplay.isEmpty) {
           if (n.message.isNotEmpty) {
             itemsToDisplay = n.message.split('\n').where((e) => e.trim().isNotEmpty).toList();
-          } else {
+    } else {
             itemsToDisplay = ["Receta registrada en el historial"];
           }
         }
@@ -502,10 +432,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                );
+            ),
+          ],
+        ),
+      );
               }),
               const SizedBox(height: 8),
               SizedBox(
@@ -755,7 +685,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                      final svc = DoctorService(api);
                      String backendUrl = svc.getMobileDocumentUrl(docId);
                      
-                     if (!mounted) return;
+          if (!mounted) return;
                      _openBackendDocument(backendUrl, "Archivo de análisis");
                   } else {
                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se encontró el archivo adjunto en el servidor.')));
@@ -860,13 +790,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    final authProv = Provider.of<AuthProvider>(context, listen: false);
+    final appointmentId = n.appointmentId;
+    if (authProv.roleName == 'DOCTOR' &&
+        appointmentId != null &&
+        appointmentId.isNotEmpty &&
+        NotificationNavigation.isDoctorWebAppointmentPending(n)) {
+      NotificationNavigation.openDoctorPendingAppointmentReview(
+        context,
+        appointmentId: appointmentId,
+        onChanged: _load,
+      );
+      return;
+    }
+
     bool isAppointment = n.appointmentId != null;
     bool isPrescription = n.prescriptionId != null;
     bool isAnalysis = n.isAnalysisRequestCompleted;
     bool isReplaced = n.isDocumentReplaced;
     
     // Extracción de ID robusta:
-    final authProv = Provider.of<AuthProvider>(context, listen: false);
     final payloadData = NotificationNavigation.dataFromNotification(n);
     String patientId = payloadData['patientId']?.toString() 
                     ?? payloadData['patient_id']?.toString() 
@@ -1087,19 +1030,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final unread = _items.where((n) => !n.read).length;
 
     return RefreshIndicator(
-      color: KeepiColors.orange,
-      onRefresh: _load,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
+          color: KeepiColors.orange,
+          onRefresh: _load,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
           SliverToBoxAdapter(child: _NotifTopBar(onBack: _handleBack)),
-          SliverToBoxAdapter(child: _NotifHero(total: _items.length, unread: unread)),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(22, 4, 22, 40),
-            sliver: SliverToBoxAdapter(child: _bodyBlock()),
+              SliverToBoxAdapter(child: _NotifHero(total: _items.length, unread: unread)),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(22, 4, 22, 40),
+                sliver: SliverToBoxAdapter(child: _bodyBlock()),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -1388,7 +1331,7 @@ class _NotifCard extends StatelessWidget {
   final VoidCallback onTap;
 
   ({String tag, Color color, IconData icon, String actionHint}) _meta() {
-    return (
+      return (
       tag: NotificationEventStyle.tagFor(data),
       color: NotificationEventStyle.colorFor(data),
       icon: NotificationEventStyle.iconFor(data),

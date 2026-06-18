@@ -7,7 +7,6 @@ import '../../models/questionnaire_models.dart';
 import '../../services/api_client.dart';
 import '../../services/doctor_service.dart';
 import '../../services/questionnaire_service.dart';
-import 'questionnaire/questionnaire_invite_picker_block.dart';
 
 class CreatePatientScreen extends StatefulWidget {
   const CreatePatientScreen({
@@ -32,84 +31,42 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   bool _submitting = false;
-  bool _loadingQuestionnaires = true;
-  String? _questionnaireError;
-  List<TemplateSummary> _templates = [];
-  List<Question> _globalQuestions = [];
-  final Set<String> _selectedTemplateIds = <String>{};
-  final Set<String> _selectedQuestionIds = <String>{};
-  bool _useDynamicQuestionnaire = false;
-  bool _enableClinicalIntake = false;
+  bool _loadingTemplates = true;
+  bool _enableClinicalIntake = true;
   bool _collectPriorDocuments = false;
+  bool _enableQuestionnaire = false;
+  List<TemplateSummary> _templates = const [];
+  String? _selectedTemplateId;
 
-  bool get _willSendQuestionnaire =>
-      _useDynamicQuestionnaire ||
-      _selectedTemplateIds.isNotEmpty ||
-      _selectedQuestionIds.isNotEmpty;
-
-  bool get _willSendIntakeOnly =>
-      _enableClinicalIntake && !_willSendQuestionnaire;
-
-  bool get _willSendLink => _enableClinicalIntake || _willSendQuestionnaire;
+  bool get _willSendInvite =>
+      _enableClinicalIntake || _collectPriorDocuments || _enableQuestionnaire;
 
   String get _submitButtonLabel {
-    if (!_willSendLink) return 'Crear paciente';
-    if (_willSendIntakeOnly) return 'Crear paciente y enviar ficha';
-    if (_enableClinicalIntake && _willSendQuestionnaire) {
-      return 'Crear paciente y enviar ficha + cuestionario';
-    }
-    return 'Crear paciente y enviar cuestionario';
+    if (!_willSendInvite) return 'Crear paciente';
+    return 'Crear paciente y enviar enlace';
   }
+
+  List<TemplateSummary> get _usableTemplates =>
+      _templates.where((t) => t.totalQuestions > 0).toList();
 
   @override
   void initState() {
     super.initState();
-    _loadQuestionnaires();
+    _loadTemplates();
   }
 
-  Future<void> _loadQuestionnaires() async {
-    final svc = QuestionnaireService(widget.api);
-    setState(() {
-      _loadingQuestionnaires = true;
-      _questionnaireError = null;
-    });
+  Future<void> _loadTemplates() async {
     try {
-      final results = await Future.wait([
-        svc.fetchTemplates(),
-        svc.fetchGlobalQuestions(status: QuestionStatusFilter.active),
-      ]);
+      final list = await QuestionnaireService(widget.api).fetchTemplates();
       if (!mounted) return;
       setState(() {
-        _templates = results[0] as List<TemplateSummary>;
-        _globalQuestions = results[1] as List<Question>;
-        _loadingQuestionnaires = false;
+        _templates = list;
+        _loadingTemplates = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _questionnaireError = DoctorService.messageFromDio(e);
-        _loadingQuestionnaires = false;
-      });
+      setState(() => _loadingTemplates = false);
     }
-  }
-
-  void _setDynamicQuestionnaire(bool value) {
-    setState(() {
-      _useDynamicQuestionnaire = value;
-      if (value) {
-        _selectedTemplateIds.clear();
-        _selectedQuestionIds.clear();
-      }
-    });
-  }
-
-  void _setEnableClinicalIntake(bool value) {
-    setState(() {
-      _enableClinicalIntake = value;
-      if (!value) {
-        _collectPriorDocuments = false;
-      }
-    });
   }
 
   @override
@@ -119,8 +76,38 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
     super.dispose();
   }
 
+  String? _validateInvitationOptions() {
+    if (!_willSendInvite) return null;
+    if (!_enableClinicalIntake &&
+        !_collectPriorDocuments &&
+        !_enableQuestionnaire) {
+      return 'Activa al menos una opción en la invitación web.';
+    }
+    if (_enableQuestionnaire) {
+      if (_usableTemplates.isEmpty) {
+        return 'No tienes plantillas con preguntas. Créalas en Ajustes → Cuestionarios.';
+      }
+      if (_selectedTemplateId == null || _selectedTemplateId!.isEmpty) {
+        return 'Selecciona una plantilla de cuestionario.';
+      }
+    }
+    return null;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final inviteError = _validateInvitationOptions();
+    if (inviteError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(inviteError),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.orange.shade900,
+        ),
+      );
+      return;
+    }
+
     setState(() => _submitting = true);
     final doctorSvc = DoctorService(widget.api);
     final questionnaireSvc = QuestionnaireService(widget.api);
@@ -131,29 +118,15 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
       );
 
       InvitationSendResult? invite;
-      final collectPrior =
-          _enableClinicalIntake && _collectPriorDocuments;
-
-      if (_willSendIntakeOnly) {
-        invite = await questionnaireSvc.sendIntakeOnlyInvitation(
+      if (_willSendInvite) {
+        final templateIds = _enableQuestionnaire && _selectedTemplateId != null
+            ? [_selectedTemplateId!]
+            : <String>[];
+        invite = await questionnaireSvc.sendClinicalInvitation(
           patientId: created.id,
-          collectPriorDocuments: collectPrior,
-        );
-      } else if (_useDynamicQuestionnaire) {
-        invite = await questionnaireSvc.sendInvitationBatch(
-          patientId: created.id,
-          useDynamicQuestionnaire: true,
-          collectPriorDocuments: collectPrior,
           enableClinicalIntake: _enableClinicalIntake,
-        );
-      } else if (_selectedTemplateIds.isNotEmpty ||
-          _selectedQuestionIds.isNotEmpty) {
-        invite = await questionnaireSvc.sendInvitationBatch(
-          patientId: created.id,
-          templateIds: _selectedTemplateIds.toList(),
-          questionIds: _selectedQuestionIds.toList(),
-          collectPriorDocuments: collectPrior,
-          enableClinicalIntake: _enableClinicalIntake,
+          templateIds: templateIds,
+          collectPriorDocuments: _collectPriorDocuments,
         );
       }
 
@@ -163,22 +136,12 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
         snackMsg = 'Paciente creado: ${created.email}';
       } else if (!invite.emailSent) {
         snackMsg =
-            'Paciente creado. El correo no se envió: ${invite.emailError ?? "revisa SES en el servidor"}. '
-            'Puedes copiar el link desde la respuesta de la API o reintentar.';
+            'Paciente creado. El correo no se envió: ${invite.emailError ?? "revisa SES en el servidor"}.';
         if (invite.publicLink.isNotEmpty) {
           snackMsg += ' Link: ${invite.publicLink}';
         }
-      } else if (_willSendIntakeOnly) {
-        snackMsg =
-            'Paciente creado. Se envió por correo el enlace para completar la ficha clínica.';
-      } else if (_useDynamicQuestionnaire) {
-        snackMsg = _enableClinicalIntake
-            ? 'Paciente creado. Se envió el enlace con ficha clínica y cuestionario IA.'
-            : 'Paciente creado. Se envió el enlace del cuestionario dinámico (IA).';
       } else {
-        snackMsg = _enableClinicalIntake
-            ? 'Paciente creado. Se envió el enlace con ficha clínica y cuestionario.'
-            : 'Paciente creado. Se envió el enlace del cuestionario.';
+        snackMsg = 'Paciente creado. Se envió el enlace por correo.';
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -222,287 +185,242 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
     }
   }
 
-  Widget _buildForm(ThemeData theme, bool showPriorDocsHint) {
+  Widget _invitationSwitch({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Color activeColor,
+    required ValueChanged<bool>? onChanged,
+  }) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          color: KeepiColors.slate,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(
+          fontSize: 12.5,
+          color: KeepiColors.slateLight,
+          height: 1.4,
+        ),
+      ),
+      value: value,
+      activeColor: activeColor,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildForm(ThemeData theme) {
+    final anyInviteOn = _willSendInvite;
+
     return WebContentFrame(
-          maxWidth: 720,
-          padding: EdgeInsets.fromLTRB(
-            widget.embedded ? 28 : 20,
-            widget.embedded ? 8 : 16,
-            widget.embedded ? 28 : 20,
-            20,
-          ),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              children: [
-                Text(
-                  'Datos de contacto',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: KeepiColors.slate,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Solo nombre y correo aquí. Teléfono, antecedentes y el resto '
-                  'los completa el paciente en el enlace temporal.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: KeepiColors.slateLight,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _nameCtrl,
-                  textInputAction: TextInputAction.next,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre completo',
-                    hintText: 'Como aparecerá en la app',
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 14),
-                TextFormField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.done,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo electrónico',
-                    hintText: 'ejemplo@correo.com',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Requerido';
-                    if (!v.contains('@')) return 'Correo no válido';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 22),
-                Text(
-                  'Invitación web',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: KeepiColors.slate,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Activa ficha clínica, cuestionario o las dos. Si solo activas la ficha, '
-                  'el paciente no verá preguntas de cuestionario.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: KeepiColors.slateLight,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _enableClinicalIntake
-                          ? KeepiColors.green.withValues(alpha: 0.45)
-                          : KeepiColors.cardBorder,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'Ficha clínica previa',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: KeepiColors.slate,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Datos, antecedentes, alergias y medicamentos en el enlace. '
-                          'Opcionalmente puedes pedir documentos previos y combinar con cuestionario.',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: KeepiColors.slateLight,
-                            height: 1.4,
-                          ),
-                        ),
-                        value: _enableClinicalIntake,
-                        activeColor: KeepiColors.green,
-                        onChanged:
-                            _submitting ? null : _setEnableClinicalIntake,
-                      ),
-                      if (_enableClinicalIntake) ...[
-                        const Divider(height: 1),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            'Documentos médicos previos',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: KeepiColors.slate,
-                            ),
-                          ),
-                          subtitle: const Text(
-                            'Tras completar la ficha, el paciente podrá subir análisis, '
-                            'laboratorios o informes anteriores (opcional).',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: KeepiColors.slateLight,
-                              height: 1.4,
-                            ),
-                          ),
-                          value: _collectPriorDocuments,
-                          activeColor: KeepiColors.skyBlue,
-                          onChanged: _submitting
-                              ? null
-                              : (v) =>
-                                  setState(() => _collectPriorDocuments = v),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (showPriorDocsHint) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: KeepiColors.skyBlueSoft,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: KeepiColors.skyBlue.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.upload_file_rounded,
-                          color: KeepiColors.skyBlue,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Los documentos se piden justo después de la ficha clínica, '
-                            'antes del cuestionario (si lo envías).',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: KeepiColors.slate,
-                              height: 1.45,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Text(
-                  'Cuestionario (opcional)',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: KeepiColors.slate,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _useDynamicQuestionnaire
-                          ? KeepiColors.orange.withValues(alpha: 0.45)
-                          : KeepiColors.cardBorder,
-                    ),
-                  ),
-                  child: SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      'Cuestionario dinámico con IA',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      'AWS Bedrock adapta cada pregunta según la respuesta anterior. '
-                      'Máximo 10 preguntas. Al activarlo, las plantillas quedan deshabilitadas.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: KeepiColors.slateLight,
-                        height: 1.4,
-                      ),
-                    ),
-                    value: _useDynamicQuestionnaire,
-                    activeColor: KeepiColors.orange,
-                    onChanged: _submitting ? null : _setDynamicQuestionnaire,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                QuestionnaireInvitePickerBlock(
-                  title: 'Plantillas y preguntas',
-                  description:
-                      'Selecciona plantillas y/o preguntas globales. '
-                      'No disponible si activas el cuestionario dinámico.',
-                  loading: _loadingQuestionnaires,
-                  error: _questionnaireError,
-                  templates: _templates,
-                  globalQuestions: _globalQuestions,
-                  selectedTemplateIds: _selectedTemplateIds,
-                  selectedQuestionIds: _selectedQuestionIds,
-                  enabled: !_useDynamicQuestionnaire,
-                  onRetry: _loadQuestionnaires,
-                  onToggleTemplate: (id, value) {
-                    setState(() {
-                      if (value) {
-                        _selectedTemplateIds.add(id);
-                      } else {
-                        _selectedTemplateIds.remove(id);
-                      }
-                    });
-                  },
-                  onToggleQuestion: (id, value) {
-                    setState(() {
-                      if (value) {
-                        _selectedQuestionIds.add(id);
-                      } else {
-                        _selectedQuestionIds.remove(id);
-                      }
-                    });
-                  },
-                ),
-                const SizedBox(height: 22),
-                FilledButton(
-                  onPressed: _submitting ? null : _submit,
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(_submitButtonLabel),
-                ),
-              ],
+      maxWidth: 720,
+      padding: EdgeInsets.fromLTRB(
+        widget.embedded ? 28 : 20,
+        widget.embedded ? 8 : 16,
+        widget.embedded ? 28 : 20,
+        20,
+      ),
+      child: Form(
+        key: _formKey,
+        child: ListView(
+          children: [
+            Text(
+              'Datos de contacto',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: KeepiColors.slate,
+              ),
             ),
-          ),
-        );
+            const SizedBox(height: 6),
+            Text(
+              'Solo nombre y correo aquí. Teléfono, antecedentes y el resto '
+              'los completa el paciente en el enlace web.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: KeepiColors.slateLight,
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _nameCtrl,
+              textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nombre completo',
+                hintText: 'Como aparecerá en la app',
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.done,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Correo electrónico',
+                hintText: 'ejemplo@correo.com',
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Requerido';
+                if (!v.contains('@')) return 'Correo no válido';
+                return null;
+              },
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Invitación web',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: KeepiColors.slate,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Activa solo lo que necesites. El paciente recibe un enlace con '
+              'ficha clínica, documentos y/o cuestionario, según elijas.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: KeepiColors.slateLight,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: anyInviteOn
+                      ? KeepiColors.green.withValues(alpha: 0.45)
+                      : KeepiColors.cardBorder,
+                ),
+              ),
+              child: Column(
+                children: [
+                  _invitationSwitch(
+                    title: 'Ficha clínica previa',
+                    subtitle:
+                        'Datos, antecedentes, alergias y medicamentos.',
+                    value: _enableClinicalIntake,
+                    activeColor: KeepiColors.green,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(() => _enableClinicalIntake = v),
+                  ),
+                  const Divider(height: 1),
+                  _invitationSwitch(
+                    title: 'Documentos médicos previos',
+                    subtitle:
+                        'El paciente podrá subir análisis, laboratorios o informes (opcional).',
+                    value: _collectPriorDocuments,
+                    activeColor: KeepiColors.skyBlue,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(() => _collectPriorDocuments = v),
+                  ),
+                  const Divider(height: 1),
+                  _invitationSwitch(
+                    title: 'Cuestionario',
+                    subtitle:
+                        'El paciente responderá una plantilla que elijas.',
+                    value: _enableQuestionnaire,
+                    activeColor: KeepiColors.orange,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(() {
+                              _enableQuestionnaire = v;
+                              if (!v) _selectedTemplateId = null;
+                              else if (_selectedTemplateId == null &&
+                                  _usableTemplates.length == 1) {
+                                _selectedTemplateId = _usableTemplates.first.id;
+                              }
+                            }),
+                  ),
+                  if (_enableQuestionnaire) ...[
+                    const SizedBox(height: 8),
+                    if (_loadingTemplates)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    else if (_usableTemplates.isEmpty)
+                      Text(
+                        'No tienes plantillas con preguntas. Créalas en Ajustes → Cuestionarios.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: KeepiColors.slateLight,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        value: _selectedTemplateId,
+                        decoration: const InputDecoration(
+                          labelText: 'Plantilla',
+                          helperText: 'Solo puedes elegir una plantilla.',
+                          border: OutlineInputBorder(),
+                        ),
+                        isExpanded: true,
+                        items: _usableTemplates
+                            .map(
+                              (t) => DropdownMenuItem(
+                                value: t.id,
+                                child: Text(
+                                  '${t.name} (${t.totalQuestions} preguntas)',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _submitting
+                            ? null
+                            : (v) => setState(() => _selectedTemplateId = v),
+                        validator: (_) => null,
+                      ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            FilledButton(
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_submitButtonLabel),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final showPriorDocsHint =
-        _enableClinicalIntake && _collectPriorDocuments;
 
     if (widget.embedded) {
       return EmbeddedWebPage(
         title: 'Nuevo paciente',
         onBack: _submitting ? null : _handleClose,
-        child: SafeArea(child: _buildForm(theme, showPriorDocsHint)),
+        child: SafeArea(child: _buildForm(theme)),
       );
     }
 
@@ -515,7 +433,7 @@ class _CreatePatientScreenState extends State<CreatePatientScreen> {
         ),
         title: const Text('Nuevo paciente'),
       ),
-      body: SafeArea(child: _buildForm(theme, showPriorDocsHint)),
+      body: SafeArea(child: _buildForm(theme)),
     );
   }
 }

@@ -14,11 +14,13 @@ class PatientProfileSnapshot {
     required this.questionnaireResponses,
     required this.loadedAt,
     this.clinicalContext,
+    this.questionnairePending = const [],
   });
 
   final List<AnalysisRequestDto> analysisRequests;
   final List<TimelineEvent> timeline;
   final List<Map<String, dynamic>> questionnaireResponses;
+  final List<Map<String, dynamic>> questionnairePending;
   final ConsultationContext? clinicalContext;
   final DateTime loadedAt;
 
@@ -27,6 +29,7 @@ class PatientProfileSnapshot {
       analysisRequests: data.analysisRequests,
       timeline: data.timeline,
       questionnaireResponses: data.questionnaireResponses,
+      questionnairePending: data.questionnairePending,
       clinicalContext: data.context,
       loadedAt: DateTime.now(),
     );
@@ -138,6 +141,16 @@ class PatientsCacheProvider extends ChangeNotifier {
 
   void invalidatePatient(String patientId) {
     invalidateProfile(patientId);
+  }
+
+  void removePatient(String patientId) {
+    final list = _patients;
+    if (list == null) return;
+    final next = list.where((p) => p.id != patientId).toList(growable: false);
+    if (next.length == list.length) return;
+    _patients = next;
+    _profiles.remove(patientId);
+    notifyListeners();
   }
 
   void clear() {

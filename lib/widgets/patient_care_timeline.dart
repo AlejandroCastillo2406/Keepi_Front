@@ -66,13 +66,16 @@ class PatientCareTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     if (events.isEmpty) return const SizedBox.shrink();
 
+    final ordered = sortTimelineNewestFirst(events);
     final widgets = <Widget>[];
-    for (var i = 0; i < events.length; i++) {
-      final e = events[i];
+    for (var i = 0; i < ordered.length; i++) {
+      final e = ordered[i];
       final dt = DateTime.tryParse(e.occurredAt) ?? DateTime.now();
 
-      final prev = i > 0 ? (DateTime.tryParse(events[i - 1].occurredAt) ?? dt) : null;
-      final next = i < events.length - 1 ? (DateTime.tryParse(events[i + 1].occurredAt) ?? dt) : null;
+      final prev = i > 0 ? (DateTime.tryParse(ordered[i - 1].occurredAt) ?? dt) : null;
+      final next = i < ordered.length - 1
+          ? (DateTime.tryParse(ordered[i + 1].occurredAt) ?? dt)
+          : null;
 
       final isFirstInMonth = prev == null || prev.month != dt.month || prev.year != dt.year;
       final isLastInMonth = next == null || next.month != dt.month || next.year != dt.year;
@@ -106,7 +109,7 @@ class PatientCareTimeline extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showSectionHeader) _Header(title: title, subtitle: subtitle, count: events.length),
+        if (showSectionHeader) _Header(title: title, subtitle: subtitle, count: ordered.length),
         if (showSectionHeader) const SizedBox(height: 10),
         ...widgets,
       ],

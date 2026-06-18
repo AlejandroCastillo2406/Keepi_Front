@@ -7,9 +7,8 @@ import '../../../models/questionnaire_models.dart';
 import '../../../services/api_client.dart';
 import '../../../services/doctor_service.dart';
 import '../../../services/questionnaire_service.dart';
-import 'questionnaire_invite_picker_block.dart';
 
-/// Envía un cuestionario de salud por link al paciente en cualquier momento.
+/// Reenvía el enlace web al paciente (ficha, documentos y/o cuestionario).
 class SendQuestionnaireScreen extends StatefulWidget {
   const SendQuestionnaireScreen({
     super.key,
@@ -33,68 +32,81 @@ class SendQuestionnaireScreen extends StatefulWidget {
 }
 
 class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
-  bool _loadingQuestionnaires = true;
-  String? _questionnaireError;
-  List<TemplateSummary> _templates = [];
-  List<Question> _globalQuestions = [];
-  final Set<String> _selectedTemplateIds = <String>{};
-  final Set<String> _selectedQuestionIds = <String>{};
   bool _submitting = false;
+  bool _loadingTemplates = true;
+  bool _enableClinicalIntake = true;
+  bool _collectPriorDocuments = false;
+  bool _enableQuestionnaire = false;
+  List<TemplateSummary> _templates = const [];
+  String? _selectedTemplateId;
+
+  List<TemplateSummary> get _usableTemplates =>
+      _templates.where((t) => t.totalQuestions > 0).toList();
+
+  bool get _willSendInvite =>
+      _enableClinicalIntake || _collectPriorDocuments || _enableQuestionnaire;
 
   @override
   void initState() {
     super.initState();
-    _loadQuestionnaires();
+    _loadTemplates();
   }
 
-  Future<void> _loadQuestionnaires() async {
-    final svc = QuestionnaireService(widget.api);
-    setState(() {
-      _loadingQuestionnaires = true;
-      _questionnaireError = null;
-    });
+  Future<void> _loadTemplates() async {
     try {
-      final results = await Future.wait([
-        svc.fetchTemplates(),
-        svc.fetchGlobalQuestions(status: QuestionStatusFilter.active),
-      ]);
+      final list = await QuestionnaireService(widget.api).fetchTemplates();
       if (!mounted) return;
       setState(() {
-        _templates = results[0] as List<TemplateSummary>;
-        _globalQuestions = results[1] as List<Question>;
-        _loadingQuestionnaires = false;
+        _templates = list;
+        _loadingTemplates = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _questionnaireError = DoctorService.messageFromDio(e);
-        _loadingQuestionnaires = false;
-      });
+      setState(() => _loadingTemplates = false);
     }
   }
 
-  bool get _hasSelection =>
-      _selectedTemplateIds.isNotEmpty || _selectedQuestionIds.isNotEmpty;
+  String? _validateOptions() {
+    if (!_willSendInvite) {
+      return 'Activa al menos una opción para enviar el enlace.';
+    }
+    if (_enableQuestionnaire) {
+      if (_usableTemplates.isEmpty) {
+        return 'No tienes plantillas con preguntas.';
+      }
+      if (_selectedTemplateId == null) {
+        return 'Selecciona una plantilla de cuestionario.';
+      }
+    }
+    return null;
+  }
 
   Future<void> _submit() async {
-    if (!_hasSelection || _submitting) return;
+    if (_submitting) return;
+    final err = _validateOptions();
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+
     setState(() => _submitting = true);
     final questionnaireSvc = QuestionnaireService(widget.api);
     try {
-      final invite = await questionnaireSvc.sendInvitationBatch(
+      final templateIds = _enableQuestionnaire && _selectedTemplateId != null
+          ? [_selectedTemplateId!]
+          : <String>[];
+      final invite = await questionnaireSvc.sendClinicalInvitation(
         patientId: widget.patientId,
-        templateIds: _selectedTemplateIds.toList(),
-        questionIds: _selectedQuestionIds.toList(),
+        enableClinicalIntake: _enableClinicalIntake,
+        templateIds: templateIds,
+        collectPriorDocuments: _collectPriorDocuments,
       );
       if (!mounted) return;
-      final String snackMsg;
-      if (!invite.emailSent) {
-        snackMsg =
-            'El correo no se envió: ${invite.emailError ?? "revisa SES en el servidor"}. '
-            'El cuestionario quedó registrado; revisa logs o reintenta.';
-      } else {
-        snackMsg = 'Cuestionario enviado por correo a ${widget.patientEmail ?? "el paciente"}.';
-      }
+      final snackMsg = invite.emailSent
+          ? 'Enlace enviado por correo.'
+          : 'El correo no se envió: ${invite.emailError ?? "revisa SES"}.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(snackMsg),
@@ -133,98 +145,139 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
     }
   }
 
+  Widget _switchTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Color color,
+    required ValueChanged<bool>? onChanged,
+  }) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+      value: value,
+      activeColor: color,
+      onChanged: onChanged,
+    );
+  }
+
   Widget _buildForm(ThemeData theme) {
     return Padding(
-          padding: EdgeInsets.fromLTRB(
-            widget.embedded ? 28 : 20,
-            widget.embedded ? 8 : 16,
-            widget.embedded ? 28 : 20,
-            20,
+      padding: EdgeInsets.fromLTRB(
+        widget.embedded ? 28 : 20,
+        widget.embedded ? 8 : 16,
+        widget.embedded ? 28 : 20,
+        20,
+      ),
+      child: ListView(
+        children: [
+          Text(
+            widget.patientName,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: KeepiColors.slate,
+            ),
           ),
-          child: ListView(
-            children: [
-              Text(
-                widget.patientName,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: KeepiColors.slate,
-                  letterSpacing: -0.3,
+          if ((widget.patientEmail ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              widget.patientEmail!.trim(),
+              style: theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slateLight),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Text(
+            'Activa solo lo que necesites. Todo va en un solo enlace.',
+            style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slateLight),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: KeepiColors.cardBorder),
+            ),
+            child: Column(
+              children: [
+                _switchTile(
+                  title: 'Ficha clínica previa',
+                  subtitle: 'Datos, antecedentes, alergias y medicamentos.',
+                  value: _enableClinicalIntake,
+                  color: KeepiColors.green,
+                  onChanged: _submitting ? null : (v) => setState(() => _enableClinicalIntake = v),
                 ),
-              ),
-              if ((widget.patientEmail ?? '').trim().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  widget.patientEmail!.trim(),
-                  style: theme.textTheme.bodyMedium?.copyWith(color: KeepiColors.slateLight),
+                const Divider(height: 1),
+                _switchTile(
+                  title: 'Documentos médicos previos',
+                  subtitle: 'Subida opcional de estudios o informes.',
+                  value: _collectPriorDocuments,
+                  color: KeepiColors.skyBlue,
+                  onChanged: _submitting ? null : (v) => setState(() => _collectPriorDocuments = v),
                 ),
+                const Divider(height: 1),
+                _switchTile(
+                  title: 'Cuestionario',
+                  subtitle: 'Una plantilla de preguntas preparada por ti.',
+                  value: _enableQuestionnaire,
+                  color: KeepiColors.orange,
+                  onChanged: _submitting
+                      ? null
+                      : (v) => setState(() {
+                            _enableQuestionnaire = v;
+                            if (!v) {
+                              _selectedTemplateId = null;
+                            } else if (_selectedTemplateId == null &&
+                                _usableTemplates.length == 1) {
+                              _selectedTemplateId = _usableTemplates.first.id;
+                            }
+                          }),
+                ),
+                if (_enableQuestionnaire && !_loadingTemplates && _usableTemplates.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _selectedTemplateId,
+                    decoration: const InputDecoration(
+                      labelText: 'Plantilla',
+                      helperText: 'Solo una plantilla por envío.',
+                      border: OutlineInputBorder(),
+                    ),
+                    isExpanded: true,
+                    items: _usableTemplates
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t.id,
+                            child: Text('${t.name} (${t.totalQuestions} preguntas)'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _submitting ? null : (v) => setState(() => _selectedTemplateId = v),
+                  ),
+                ],
               ],
-              const SizedBox(height: 14),
-              Text(
-                'El paciente recibirá un enlace seguro para responder. Puedes reenviar otro cuestionario cuando lo necesites.',
-                style: theme.textTheme.bodySmall?.copyWith(color: KeepiColors.slateLight, height: 1.4),
-              ),
-              const SizedBox(height: 20),
-              QuestionnaireInvitePickerBlock(
-                title: 'Contenido del cuestionario',
-                description:
-                    'Marca al menos una plantilla o una pregunta global. Se generará un solo link con todo el lote.',
-                loading: _loadingQuestionnaires,
-                error: _questionnaireError,
-                templates: _templates,
-                globalQuestions: _globalQuestions,
-                selectedTemplateIds: _selectedTemplateIds,
-                selectedQuestionIds: _selectedQuestionIds,
-                onRetry: _loadQuestionnaires,
-                onToggleTemplate: (id, value) {
-                  setState(() {
-                    if (value) {
-                      _selectedTemplateIds.add(id);
-                    } else {
-                      _selectedTemplateIds.remove(id);
-                    }
-                  });
-                },
-                onToggleQuestion: (id, value) {
-                  setState(() {
-                    if (value) {
-                      _selectedQuestionIds.add(id);
-                    } else {
-                      _selectedQuestionIds.remove(id);
-                    }
-                  });
-                },
-              ),
-              const SizedBox(height: 22),
-              FilledButton(
-                onPressed: (_submitting || !_hasSelection) ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Enviar por correo'),
-              ),
-            ],
+            ),
           ),
-        );
+          const SizedBox(height: 22),
+          FilledButton(
+            onPressed: _submitting ? null : _submit,
+            child: Text(_submitting ? 'Enviando…' : 'Enviar enlace por correo'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     if (widget.embedded) {
       return EmbeddedWebPage(
-        title: 'Enviar cuestionario',
+        title: 'Enviar ficha clínica',
         onBack: _submitting ? null : _handleClose,
         child: SafeArea(child: _buildForm(theme)),
       );
     }
-
     return Scaffold(
       backgroundColor: KeepiColors.surfaceBg,
       appBar: AppBar(
@@ -232,7 +285,7 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
           icon: const Icon(Icons.close_rounded),
           onPressed: _submitting ? null : _handleClose,
         ),
-        title: const Text('Enviar cuestionario'),
+        title: const Text('Enviar ficha clínica'),
       ),
       body: SafeArea(child: _buildForm(theme)),
     );

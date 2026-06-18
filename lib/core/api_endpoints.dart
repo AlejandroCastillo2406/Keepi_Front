@@ -16,6 +16,10 @@ class ApiEndpoints {
   static String get authMe => _path(Config.pathAuthMe);
   static String get authChangePassword => _path(Config.pathAuthChangePassword);
   static String get doctorsPatients => _path(Config.pathDoctorsPatients);
+  static String doctorsPatient(String patientId) {
+    final base = Config.pathDoctorsPatients.replaceAll(RegExp(r'/+$'), '');
+    return _path('$base/$patientId');
+  }
   static String get authGoogleMobileAuthorize =>
       _path(Config.pathAuthGoogleMobileAuthorize);
   static String get authGoogleCallback => _path(Config.pathAuthGoogleCallback);
@@ -98,6 +102,10 @@ class ApiEndpoints {
       _path('/appointments/$id/doctor/approve');
   static String appointmentDoctorReject(String id) =>
       _path('/appointments/$id/doctor/reject');
+  static String appointmentDoctorReschedule(String id) =>
+      _path('/appointments/$id/doctor/reschedule');
+  static String appointmentDoctorReassignCanceled(String id) =>
+      _path('/appointments/$id/doctor/reassign-canceled');
   static String appointmentAttendance(String id) =>
       _path('/appointments/$id/attendance');
 
@@ -135,10 +143,12 @@ class ApiEndpoints {
       _path('/questionnaire/templates/$templateId/questions');
   static String get questionnaireInvitations =>
       _path('/questionnaire/invitations');
-  static String get questionnaireInvitationsDynamic =>
-      _path('/questionnaire/invitations/dynamic');
   static String questionnaireInvitationById(String invitationId) =>
       _path('/questionnaire/invitations/$invitationId');
+  static String questionnaireInvitationQuestions(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId/questions');
+  static String questionnaireInvitationSubmit(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId/submit');
   static String get questionnaireExtractOcr =>
       _path('/questionnaire/extract-ocr');
   static String questionnairePatientResponses(String patientId) =>
@@ -150,10 +160,10 @@ class ApiEndpoints {
       _path('/doctors/patients/$patientId/consultation-bootstrap');
   static String doctorPatientProfileBootstrap(String patientId) =>
       _path('/doctors/patients/$patientId/profile-bootstrap');
+  static String doctorPatientAppointments(String patientId) =>
+      _path('/doctors/patients/$patientId/appointments');
+  static String doctorPatientSchedulingLink(String patientId) =>
+      _path('/doctors/patients/$patientId/scheduling-link');
   static String questionnairePublicByToken(String token) =>
       _path('/questionnaire/public/$token');
-  static String questionnairePublicSubmitByToken(String token) =>
-      _path('/questionnaire/public/$token/submit');
-  static String questionnairePublicDynamicAnswerByToken(String token) =>
-      _path('/questionnaire/public/$token/dynamic/answer');
 }

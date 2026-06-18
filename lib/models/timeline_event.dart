@@ -64,3 +64,17 @@ class TimelineEvent {
 
   String? get s3Url => null;
 }
+
+/// Orden estándar: del evento más reciente al más antiguo.
+List<TimelineEvent> sortTimelineNewestFirst(Iterable<TimelineEvent> events) {
+  final list = List<TimelineEvent>.from(events);
+  list.sort((a, b) {
+    final da = DateTime.tryParse(a.occurredAt);
+    final db = DateTime.tryParse(b.occurredAt);
+    if (da == null && db == null) return 0;
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return db.compareTo(da);
+  });
+  return list;
+}

@@ -43,6 +43,68 @@ class AppointmentDto {
   }
 }
 
+class ConsultationScheduleDayDto {
+  ConsultationScheduleDayDto({
+    required this.weekday,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  final int weekday;
+  final String startTime;
+  final String endTime;
+
+  factory ConsultationScheduleDayDto.fromJson(Map<String, dynamic> json) {
+    return ConsultationScheduleDayDto(
+      weekday: json['weekday'] as int? ?? 0,
+      startTime: json['start_time'] as String? ?? '',
+      endTime: json['end_time'] as String? ?? '',
+    );
+  }
+}
+
+class ConsultationScheduleDto {
+  ConsultationScheduleDto({
+    required this.slotDurationMinutes,
+    required this.days,
+  });
+
+  final int slotDurationMinutes;
+  final List<ConsultationScheduleDayDto> days;
+
+  factory ConsultationScheduleDto.fromJson(Map<String, dynamic> json) {
+    final rawDays = json['days'] as List<dynamic>? ?? [];
+    return ConsultationScheduleDto(
+      slotDurationMinutes: json['slot_duration_minutes'] as int? ?? 30,
+      days: rawDays
+          .map((e) => ConsultationScheduleDayDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class DoctorCalendarDto {
+  DoctorCalendarDto({
+    required this.appointments,
+    required this.consultationSchedule,
+  });
+
+  final List<AppointmentDto> appointments;
+  final ConsultationScheduleDto consultationSchedule;
+
+  factory DoctorCalendarDto.fromJson(Map<String, dynamic> json) {
+    final rawAppointments = json['appointments'] as List<dynamic>? ?? [];
+    return DoctorCalendarDto(
+      appointments: rawAppointments
+          .map((e) => AppointmentDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      consultationSchedule: ConsultationScheduleDto.fromJson(
+        json['consultation_schedule'] as Map<String, dynamic>? ?? const {},
+      ),
+    );
+  }
+}
+
 class AppointmentService {
   AppointmentService(this._api);
   final ApiClient _api;
@@ -70,19 +132,31 @@ class AppointmentService {
     return AppointmentDto.fromJson(res.data ?? const {});
   }
 
-  Future<List<AppointmentDto>> fetchDoctorCalendar({
+  Future<DoctorCalendarDto> fetchDoctorCalendar({
     required DateTime from,
     required DateTime to,
   }) async {
-    final res = await _api.dio.get<List<dynamic>>(
+    final res = await _api.dio.get<Map<String, dynamic>>(
       ApiEndpoints.appointmentsDoctorCalendar,
       queryParameters: {
         'start_at': from.toUtc().toIso8601String(),
         'end_at': to.toUtc().toIso8601String(),
       },
     );
+    return DoctorCalendarDto.fromJson(res.data ?? const {});
+  }
+
+
+  Future<List<AppointmentDto>> fetchDoctorPatientAppointments(
+    String patientId,
+  ) async {
+    final res = await _api.dio.get<List<dynamic>>(
+      ApiEndpoints.doctorPatientAppointments(patientId),
+    );
     final list = res.data ?? [];
-    return list.map((e) => AppointmentDto.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => AppointmentDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
 
@@ -145,6 +219,36 @@ class AppointmentService {
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.appointmentDoctorReject(appointmentId),
+    );
+    return AppointmentDto.fromJson(res.data ?? const {});
+  }
+
+  Future<AppointmentDto> doctorRescheduleWebAppointment({
+    required String appointmentId,
+    required DateTime proposedStartAt,
+    int durationMinutes = 30,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.appointmentDoctorReschedule(appointmentId),
+      data: {
+        'proposed_start_at': proposedStartAt.toUtc().toIso8601String(),
+        'duration_minutes': durationMinutes,
+      },
+    );
+    return AppointmentDto.fromJson(res.data ?? const {});
+  }
+
+  Future<AppointmentDto> doctorReassignCanceledAppointment({
+    required String appointmentId,
+    required DateTime proposedStartAt,
+    int durationMinutes = 30,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.appointmentDoctorReassignCanceled(appointmentId),
+      data: {
+        'proposed_start_at': proposedStartAt.toUtc().toIso8601String(),
+        'duration_minutes': durationMinutes,
+      },
     );
     return AppointmentDto.fromJson(res.data ?? const {});
   }

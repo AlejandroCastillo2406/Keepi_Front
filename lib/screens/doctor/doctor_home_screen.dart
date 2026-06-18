@@ -22,6 +22,7 @@ import '../../services/scheduling_service.dart';
 import '../common/storage_choice_flow.dart';
 import '../../widgets/doctor_note_field.dart';
 import '../../widgets/doctor_appointment_slot_picker.dart';
+import '../../widgets/doctor_pending_appointment_review_sheet.dart';
 import 'doctor_calendar_tab.dart';
 import 'documentos_screen.dart';
 import '../../widgets/home_added_search_section.dart';
@@ -85,6 +86,8 @@ bool _canConfirmAttendance(AppointmentDto a, int slotMinutes) {
   if (end == null) return false;
   return DateTime.now().isAfter(end);
 }
+
+bool _isConfirmedAppointment(AppointmentDto a) => a.status == 'scheduled';
 
 //   PANTALLA
 
@@ -204,8 +207,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         schedSvc.fetchSettings(),
       ]);
       if (!mounted) return;
+      final calendar = results[0] as DoctorCalendarDto;
       setState(() {
-        _agenda = results[0] as List<AppointmentDto>;
+        _agenda = calendar.appointments;
         _slotDurationMinutes =
             (results[1] as SchedulingSettingsDto).slotDurationMinutes;
         _loadingAgenda = false;
@@ -256,6 +260,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     final now = DateTime.now();
     return _agenda
         .where((a) =>
+            _isConfirmedAppointment(a) &&
             a.appointmentDate != null &&
             _sameDay(a.appointmentDate!.toLocal(), now))
         .toList()
@@ -265,6 +270,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   List<AppointmentDto> get _upcomingAppointments {
     final now = DateTime.now();
     return _agenda.where((a) {
+      if (!_isConfirmedAppointment(a)) return false;
       final d = a.appointmentDate?.toLocal();
       return d != null && d.isAfter(now);
     }).toList()
@@ -278,106 +284,38 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           a.status == 'pending_doctor_approval')
       .length;
 
-  AppointmentDto? get _nextAppointment {
-    final today = _todaysAppointments;
-    final current = _currentTodayAppointment(today);
-    if (current != null) return current;
-
+  AppointmentDto? get _featuredNextAppointment {
     final now = DateTime.now();
-    if (today.isNotEmpty) return null;
-
-    final todayStart = DateTime(now.year, now.month, now.day);
     final candidates = _agenda
-        .where((a) =>
-            a.appointmentDate != null &&
-            a.status != 'canceled')
+        .where((a) => _isConfirmedAppointment(a) && a.appointmentDate != null)
         .toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
     for (final a in candidates) {
-      final d = a.appointmentDate!.toLocal();
-      if (d.isBefore(todayStart)) continue;
-      if (d.isAfter(now)) return a;
+      final end = _appointmentSlotEnd(a, _slotDurationMinutes);
+      if (end != null && end.isAfter(now)) return a;
     }
     return null;
   }
+
+  AppointmentDto? get _nextAppointment => _featuredNextAppointment;
 
   List<AppointmentDto> get _dashboardUpcoming {
+    final featured = _featuredNextAppointment;
     final now = DateTime.now();
-    final seen = <String>{};
-    final result = <AppointmentDto>[];
-    void add(AppointmentDto a) {
-      if (a.status == 'canceled') return;
-      if (seen.add(a.id)) result.add(a);
-    }
-
-    for (final a in _todaysAppointments) {
-      final d = a.appointmentDate!.toLocal();
-      if (d.isAfter(now)) add(a);
-    }
-    for (final a in _upcomingAppointments) {
-      add(a);
-    }
-    return result.take(6).toList();
-  }
-
-  /// Cita en curso: el momento actual cae dentro de [inicio, fin del slot].
-  AppointmentDto? _currentTodayAppointment(List<AppointmentDto> today) {
-    final now = DateTime.now();
-    for (final a in today) {
-      if (a.status == 'canceled') continue;
-      final start = a.appointmentDate?.toLocal();
-      if (start == null) continue;
-      final end = _appointmentSlotEnd(a, _slotDurationMinutes);
-      if (end == null) continue;
-      if (!now.isBefore(start) && now.isBefore(end)) return a;
-    }
-    return null;
-  }
-
-  bool _hasUpcomingTodayAppointments(List<AppointmentDto> today) {
-    final now = DateTime.now();
-    return today.any((a) {
-      if (a.status == 'canceled') return false;
-      final start = a.appointmentDate?.toLocal();
-      return start != null && start.isAfter(now);
-    });
-  }
-
-  String _emptyFeaturedTodayMessage(List<AppointmentDto> today) {
-    if (_hasUpcomingTodayAppointments(today)) {
-      return 'No hay cita en curso ahora.';
-    }
-    return 'No hay más citas próximas para hoy';
-  }
-
-  ({int attended, int canceled, int noShows, int rate}) get _activityStats {
-    final now = DateTime.now();
-    final todayScheduled = _todaysAppointments.where((a) {
-      return a.status == 'scheduled' && a.appointmentDate != null;
-    });
-    final attended = todayScheduled
-        .where((a) => a.attendanceStatus == 'attended')
-        .length;
-    final noShows = todayScheduled
-        .where((a) => a.attendanceStatus == 'no_show')
-        .length;
-    final canceled = _agenda
-        .where((a) => a.status == 'canceled')
+    return _agenda
         .where((a) {
-          final d = a.appointmentDate?.toLocal();
-          if (d == null) return false;
-          return _sameDay(d, now) || now.difference(d).inDays.abs() <= 7;
+          if (!_isConfirmedAppointment(a) || a.appointmentDate == null) {
+            return false;
+          }
+          if (featured != null && a.id == featured.id) return false;
+          final end = _appointmentSlotEnd(a, _slotDurationMinutes);
+          return end != null && end.isAfter(now);
         })
-        .length;
-    final resolved = attended + noShows;
-    final rate = resolved == 0 ? 0 : ((attended / resolved) * 100).round();
-    return (
-      attended: attended,
-      canceled: canceled,
-      noShows: noShows,
-      rate: rate,
-    );
+        .toList()
+      ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
   }
+
+  static const _noScheduledAppointmentsMessage = 'No hay citas agendadas.';
 
   List<PatientListItem> get _filteredPatients {
     final q = _patientQuery.trim().toLowerCase();
@@ -559,6 +497,98 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     }
   }
 
+  Future<void> _openGlobalScheduleAppointment() async {
+    var patients = _patients;
+    if (patients.isEmpty) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
+        ),
+      );
+      try {
+        patients =
+            await DoctorService(context.read<ApiClient>()).fetchMyPatients();
+        if (mounted) Navigator.pop(context);
+      } catch (_) {
+        if (mounted) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error al cargar la lista de pacientes')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (patients.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aún no tienes pacientes registrados para agendar.'),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final selectedPatient = await showModalBottomSheet<PatientListItem>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.only(top: 16),
+          child: Column(
+            children: [
+              const Text(
+                'Selecciona un paciente',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: KeepiColors.slate,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: patients.length,
+                  itemBuilder: (context, index) {
+                    final p = patients[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: KeepiColors.skyBlueSoft,
+                        child: Text(
+                          p.name.isNotEmpty
+                              ? p.name[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: KeepiColors.skyBlue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        p.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(p.email),
+                      onTap: () => Navigator.pop(ctx, p),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selectedPatient == null || !mounted) return;
+    await _scheduleAppointment(selectedPatient);
+  }
+
   PatientListItem? _patientForAppointment(AppointmentDto a) {
     final match =
         _patients.where((p) => p.id == a.patientId).toList(growable: false);
@@ -595,6 +625,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Future<void> _openAgendaAppointment(AppointmentDto a) async {
+    if (a.status == 'pending_doctor_approval' ||
+        a.status == 'pending_patient_approval' ||
+        a.status == 'pending_doctor_proposal') {
+      await DoctorPendingAppointmentReviewSheet.show(
+        context,
+        appointmentId: a.id,
+        onChanged: _loadAgenda,
+      );
+      return;
+    }
     await _openConsultation(a);
   }
 
@@ -637,6 +677,63 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
 
   Future<void> _openSendQuestionnaire(PatientListItem p) async {
     await context.push(AppPaths.doctorSendQuestionnaire(p.id));
+  }
+
+  Future<void> _deletePatient(PatientListItem p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Desactivar paciente'),
+        content: Text(
+          '¿Desactivar a ${p.name}? Dejará de aparecer en tu lista, pero su historial se conserva.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Desactivar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: KeepiColors.orange),
+      ),
+    );
+
+    try {
+      await DoctorService(context.read<ApiClient>()).deletePatient(p.id);
+      if (!mounted) return;
+      Navigator.pop(context);
+      context.read<PatientsCacheProvider>().removePatient(p.id);
+      setState(() {
+        _patients = _patients.where((x) => x.id != p.id).toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${p.name} desactivado'),
+          backgroundColor: KeepiColors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(DoctorService.messageFromDio(e)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _openPatientActions(PatientListItem p) async {
@@ -801,7 +898,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         bridge: _sessionBridge,
         child: WebAppShell(
           brandTitle: auth.name ?? 'Doctor',
-          brandSubtitle: 'KEEPI',
           navItems: _doctorWebNav,
           currentIndex: tabIndex,
           onNavTap: _onDoctorNavTap,
@@ -891,20 +987,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
             },
             onOpenConsultation: () => _openConsultation(nextAppt),
           )
-        else if (_todaysAppointments.isNotEmpty)
-          _EmptyNextAppointmentCard(
-            message: _emptyFeaturedTodayMessage(_todaysAppointments),
-          )
         else
-          const _EmptyNextAppointmentCard(),
+          _EmptyNextAppointmentCard(
+            message: _noScheduledAppointmentsMessage,
+          ),
         const SizedBox(height: 18),
-        _StatsStrip(
-          items: [
-            _StatItem(value: _patients.length, label: 'PACIENTES'),
-            _StatItem(value: _todaysAppointments.length, label: 'CITAS HOY'),
-            _StatItem(
-                value: pending, label: 'POR CONFIRMAR', accent: pending > 0),
-          ],
+        _HomeTopActionsStrip(
+          onNewPatient: _openCreatePatient,
+          onScheduleAppointment: _openGlobalScheduleAppointment,
         ),
         const SizedBox(height: 22),
         if (_patientsError != null)
@@ -918,7 +1008,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         if (upcomingList.isNotEmpty) ...[
           _SectionDivider(tag: 'PRÓXIMAS CITAS', count: upcomingList.length),
           const SizedBox(height: 14),
-          for (final a in upcomingList)
+          for (final a in upcomingList.take(6))
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _AgendaCard(
@@ -969,10 +1059,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
 
   Widget _buildWebHomeTab(AuthProvider auth) {
     final today = _todaysAppointments;
-    final featuredToday = _currentTodayAppointment(today);
-    final restOfToday = featuredToday == null
+    final featured = _featuredNextAppointment;
+    final restOfToday = featured == null
         ? today
-        : today.where((a) => a.id != featuredToday.id).toList();
+        : today.where((a) => a.id != featured.id).toList();
     final upcoming = _dashboardUpcoming
         .where((a) {
           final d = a.appointmentDate?.toLocal();
@@ -996,7 +1086,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       });
     final loadingFirst = _loadingAgenda && _agenda.isEmpty;
     final pending = _pendingConfirmCount;
-    final stats = _activityStats;
 
     return RefreshIndicator(
       color: KeepiColors.orange,
@@ -1016,22 +1105,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                       name: auth.name ?? 'Doctor',
                     ),
                     const SizedBox(height: 20),
-                    _StatsStrip(
-                      items: [
-                        _StatItem(
-                          value: _todaysAppointments.length,
-                          label: 'CITAS HOY',
-                        ),
-                        _StatItem(
-                          value: pending,
-                          label: 'POR CONFIRMAR',
-                          accent: pending > 0,
-                        ),
-                        _StatItem(
-                          value: _patients.length,
-                          label: 'PACIENTES',
-                        ),
-                      ],
+                    _HomeTopActionsStrip(
+                      onNewPatient: _openCreatePatient,
+                      onScheduleAppointment: _openGlobalScheduleAppointment,
                     ),
                     const SizedBox(height: 28),
                     Row(
@@ -1065,42 +1141,43 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                                   message: _agendaError!,
                                   onRetry: _loadAgenda,
                                 )
-                              else if (today.isEmpty && upcoming.isEmpty)
+                              else if (featured == null &&
+                                  today.isEmpty &&
+                                  upcoming.isEmpty)
                                 const _InlineEmpty(
                                   icon: Icons.event_available_outlined,
                                   message:
-                                      'Sin citas programadas. Revisa la agenda o crea una nueva.',
+                                      'No hay citas agendadas. Revisa la agenda o crea una nueva.',
                                 )
                               else ...[
-                                if (featuredToday != null)
+                                if (featured != null)
                                   _NextAppointmentHero(
                                     compact: true,
                                     featured: true,
-                                    appointment: featuredToday,
-                                    patient:
-                                        _patientForAppointment(featuredToday),
+                                    appointment: featured,
+                                    patient: _patientForAppointment(featured),
                                     slotDurationMinutes: _slotDurationMinutes,
                                     markingAttendance: _markingAttendanceIds
-                                        .contains(featuredToday.id),
+                                        .contains(featured.id),
                                     onMarkAttendance: _markAttendance,
                                     onOpenProfile: () {
                                       final p =
-                                          _patientForAppointment(featuredToday);
+                                          _patientForAppointment(featured);
                                       if (p != null) {
                                         _openPatientProfileDialog(p);
                                       }
                                     },
                                     onOpenConsultation: () =>
-                                        _openConsultation(featuredToday),
+                                        _openConsultation(featured),
                                   )
-                                else if (today.isNotEmpty)
+                                else
                                   _EmptyNextAppointmentCard(
                                     message:
-                                        _emptyFeaturedTodayMessage(today),
+                                        _noScheduledAppointmentsMessage,
                                     featured: true,
                                   ),
                                 if (restOfToday.isNotEmpty) ...[
-                                  if (featuredToday != null || today.isNotEmpty)
+                                  if (featured != null || today.isNotEmpty)
                                     const SizedBox(height: 16),
                                   _SectionDivider(
                                     tag: 'MÁS HOY',
@@ -1163,11 +1240,22 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                               else if (_agendaError != null)
                                 const SizedBox.shrink()
                               else
-                                _ActivitySummaryPanel(
-                                  rate: stats.rate,
-                                  attended: stats.attended,
-                                  canceled: stats.canceled,
-                                  noShows: stats.noShows,
+                                _StatsStrip(
+                                  items: [
+                                    _StatItem(
+                                      value: _todaysAppointments.length,
+                                      label: 'CITAS HOY',
+                                    ),
+                                    _StatItem(
+                                      value: pending,
+                                      label: 'POR CONFIRMAR',
+                                      accent: pending > 0,
+                                    ),
+                                    _StatItem(
+                                      value: _patients.length,
+                                      label: 'PACIENTES',
+                                    ),
+                                  ],
                                 ),
                               if (pendingList.isNotEmpty) ...[
                                 const SizedBox(height: 20),
@@ -1269,8 +1357,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _PatientTile(
                         patient: p,
-                        // AQUÍ ESTÁN LOS CAMBIOS:
                         onProfileTap: () => _openPatientProfileDialog(p),
+                        onDeleteTap: () => _deletePatient(p),
                         onArrowTap: () => _openPatientActions(p),
                       ),
                     ),
@@ -1840,130 +1928,6 @@ class _PatientAvatarLarge extends StatelessWidget {
   }
 }
 
-class _ActivitySummaryPanel extends StatelessWidget {
-  const _ActivitySummaryPanel({
-    required this.rate,
-    required this.attended,
-    required this.canceled,
-    required this.noShows,
-  });
-
-  final int rate;
-  final int attended;
-  final int canceled;
-  final int noShows;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: KeepiColors.cardBorder),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 112,
-            decoration: BoxDecoration(
-              color: KeepiColors.skyBlueSoft,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: KeepiColors.cardBorder),
-            ),
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '$rate%',
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w800,
-                    color: KeepiColors.orange,
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Tasa de Asistencia',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: KeepiColors.slateLight,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _ActivityLegendRow(
-            color: KeepiColors.orange,
-            label: 'Atendidos',
-            value: attended,
-          ),
-          const SizedBox(height: 8),
-          _ActivityLegendRow(
-            color: KeepiColors.skyBlue,
-            label: 'Cancelados',
-            value: canceled,
-          ),
-          const SizedBox(height: 8),
-          _ActivityLegendRow(
-            color: KeepiColors.slate,
-            label: 'No asistió',
-            value: noShows,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActivityLegendRow extends StatelessWidget {
-  const _ActivityLegendRow({
-    required this.color,
-    required this.label,
-    required this.value,
-  });
-
-  final Color color;
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: KeepiColors.slateLight,
-            ),
-          ),
-        ),
-        Text(
-          value.toString(),
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: KeepiColors.slate,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _WebPendingCard extends StatelessWidget {
   const _WebPendingCard({
     required this.pending,
@@ -1996,10 +1960,185 @@ class _WebPendingCard extends StatelessWidget {
     }
   }
 
+  String _statusTag(String status) {
+    switch (status) {
+      case 'pending_patient_approval':
+        return 'POR CONFIRMAR';
+      case 'pending_doctor_proposal':
+        return 'SIN FECHA';
+      case 'pending_doctor_approval':
+        return 'POR CONFIRMAR';
+      default:
+        return 'PENDIENTE';
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status) {
+      case 'pending_patient_approval':
+        return Icons.hourglass_top_rounded;
+      case 'pending_doctor_proposal':
+        return Icons.edit_calendar_outlined;
+      case 'pending_doctor_approval':
+      default:
+        return Icons.event_available_outlined;
+    }
+  }
+
+  Color _statusColor(String status) => KeepiColors.orange;
+
+  String _appointmentTime(AppointmentDto a) {
+    final dt = a.appointmentDate?.toLocal();
+    if (dt == null) return 'Sin hora';
+    return '${_weekdaysEsUpper[dt.weekday - 1]} · ${_two(dt.hour)}:${_two(dt.minute)}';
+  }
+
+  Widget _buildDateStamp(AppointmentDto a) {
+    final date = a.appointmentDate?.toLocal();
+    final day = date?.day ?? 0;
+    final monthAbbr = date != null ? _monthsEsUpper[date.month - 1] : '—';
+    return SizedBox(
+      width: 44,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            day > 0 ? _two(day) : '—',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: KeepiColors.slate,
+              height: 1,
+              letterSpacing: -0.8,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            monthAbbr,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: KeepiColors.slateLight,
+              letterSpacing: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusIcon(AppointmentDto a) {
+    final color = _statusColor(a.status);
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.55), width: 1.8),
+      ),
+      child: Icon(_statusIcon(a.status), size: 16, color: color),
+    );
+  }
+
+  Widget _buildPendingBody(AppointmentDto a) {
+    final color = _statusColor(a.status);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              'CITA',
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: KeepiColors.orange,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              width: 2,
+              height: 2,
+              decoration: BoxDecoration(
+                color: KeepiColors.slateLight.withValues(alpha: 0.6),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                _statusTag(a.status),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _patientName(a),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: KeepiColors.slate,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          _statusHint(a.status),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 12,
+            color: KeepiColors.slateLight,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Container(
+              width: 10,
+              height: 1,
+              color: KeepiColors.slate.withValues(alpha: 0.55),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              _appointmentTime(a),
+              style: const TextStyle(
+                fontSize: 12,
+                color: KeepiColors.slate,
+                fontWeight: FontWeight.w600,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final shown = pending.take(3).toList();
-    return Container(
+    final single = pending.length == 1 ? pending.first : null;
+
+    Widget cardContent = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -2049,36 +2188,23 @@ class _WebPendingCard extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _patientName(a),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: KeepiColors.slate,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _statusHint(a.status),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: KeepiColors.slateLight,
-                            ),
-                          ),
-                        ],
-                      ),
+                    _buildDateStamp(a),
+                    const SizedBox(width: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: _buildStatusIcon(a),
                     ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: KeepiColors.slateLight,
-                      size: 20,
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildPendingBody(a)),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: KeepiColors.slateLight,
+                        size: 20,
+                      ),
                     ),
                   ],
                 ),
@@ -2095,6 +2221,19 @@ class _WebPendingCard extends StatelessWidget {
         ],
       ),
     );
+
+    if (single != null) {
+      cardContent = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onOpen(single),
+          borderRadius: BorderRadius.circular(16),
+          child: cardContent,
+        ),
+      );
+    }
+
+    return cardContent;
   }
 }
 
@@ -2193,6 +2332,94 @@ class _StatsStrip extends StatelessWidget {
                 Container(width: 1, color: KeepiColors.cardBorder),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeTopActionsStrip extends StatelessWidget {
+  const _HomeTopActionsStrip({
+    required this.onNewPatient,
+    required this.onScheduleAppointment,
+  });
+
+  final VoidCallback onNewPatient;
+  final VoidCallback onScheduleAppointment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _HomeTopActionCell(
+            icon: Icons.person_add_alt_1_rounded,
+            label: 'NUEVO PACIENTE',
+            onPressed: onNewPatient,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _HomeTopActionCell(
+            icon: Icons.event_available_rounded,
+            label: 'AGENDAR CITA',
+            onPressed: onScheduleAppointment,
+            accent: true,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeTopActionCell extends StatelessWidget {
+  const _HomeTopActionCell({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.accent = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ? KeepiColors.orange : KeepiColors.slate;
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: KeepiColors.cardBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: color,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2302,11 +2529,13 @@ class _PatientTile extends StatelessWidget {
   const _PatientTile({
     required this.patient,
     required this.onProfileTap,
+    required this.onDeleteTap,
     required this.onArrowTap,
   });
 
   final PatientListItem patient;
   final VoidCallback onProfileTap;
+  final VoidCallback onDeleteTap;
   final VoidCallback onArrowTap;
 
   @override
@@ -2434,6 +2663,15 @@ class _PatientTile extends StatelessWidget {
                     ],
                   ),
                 ),
+              ),
+            ),
+            IconButton(
+              onPressed: onDeleteTap,
+              tooltip: 'Desactivar paciente',
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: Colors.red,
+                size: 22,
               ),
             ),
             // ÁREA 2: La flecha (Abre el menú de acciones que ya tenías)
@@ -2599,7 +2837,7 @@ class _PatientActionsSheet extends StatelessWidget {
             _ActionRow(
               icon: Icons.outgoing_mail,
               accent: KeepiColors.skyBlue,
-              title: 'Enviar cuestionario',
+              title: 'Enviar ficha clínica',
               subtitle:
                   'Link por correo con plantillas o preguntas que elijas.',
               onTap: onQuestionnaire,

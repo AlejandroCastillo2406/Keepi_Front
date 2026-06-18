@@ -10,12 +10,15 @@ import '../../models/timeline_event.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patients_cache_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
 import '../../services/timeline_event_opener.dart';
+import 'questionnaire/doctor_answer_questionnaire_screen.dart';
 import '../../utils/patient_expediente_export.dart';
 import '../../widgets/doctor_clinical_profile_editor.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
 import '../../widgets/patient_care_timeline.dart';
+import '../../widgets/patient_scheduling_link_dialog.dart';
 import '../../router/app_navigation.dart';
 import '../../router/app_paths.dart';
 
@@ -71,11 +74,16 @@ class _DoctorPatientProfileScreenState
   List<AnalysisRequestDto> _analysisRequests = [];
   List<TimelineEvent> _timeline = [];
   List<Map<String, dynamic>> _questionnaireResponses = [];
+  List<Map<String, dynamic>> _questionnairePending = [];
   ConsultationContext? _clinicalContext;
   bool _exportingExpediente = false;
   bool _editingProfile = false;
   String? _openingDocumentId;
   late int _webTabIndex;
+  List<AppointmentDto> _patientAppointments = const [];
+  bool _loadingConsultations = false;
+
+  int get _maxTabIndex => widget.embeddedTabPanelsOnly ? 3 : 4;
 
   @override
   bool get wantKeepAlive => widget.embeddedTabPanelsOnly;
@@ -133,6 +141,7 @@ class _DoctorPatientProfileScreenState
           _QuestionnaireGroup(
             invitationId: invId.isEmpty ? null : invId,
             anchor: row.answeredAt,
+            answeredBy: (row.data['answered_by'] ?? '').toString(),
             items: [row.data],
           ),
         );
@@ -145,7 +154,7 @@ class _DoctorPatientProfileScreenState
   void initState() {
     super.initState();
     if (!widget.embeddedTabPanelsOnly) {
-      _webTabIndex = widget.initialTabIndex.clamp(0, 3);
+      _webTabIndex = widget.initialTabIndex.clamp(0, _maxTabIndex);
     }
     final cached =
         context.read<PatientsCacheProvider>().peekProfile(widget.patientId);
@@ -159,13 +168,100 @@ class _DoctorPatientProfileScreenState
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData(force: cached == null);
+      if (!widget.embeddedTabPanelsOnly &&
+          widget.initialTabIndex.clamp(0, _maxTabIndex) == 4) {
+        _handleConsultaTabSelected();
+      }
     });
+  }
+
+  Future<List<AppointmentDto>> _loadPatientAppointments() async {
+    final api = context.read<ApiClient>();
+    return AppointmentService(api).fetchDoctorPatientAppointments(
+      widget.patientId,
+    );
+  }
+
+  Future<void> _openConsultationForAppointment(AppointmentDto appt) async {
+    await context.push(
+      AppPaths.doctorConsultation(
+        appt.id,
+        patientId: widget.patientId,
+        name: widget.patientName,
+        email: widget.patientEmail.isNotEmpty ? widget.patientEmail : null,
+      ),
+    );
+  }
+
+  Future<void> _handleConsultaTabSelected() async {
+    if (widget.embeddedTabPanelsOnly) return;
+
+    setState(() => _loadingConsultations = true);
+    try {
+      final rows = await _loadPatientAppointments();
+      if (!mounted) return;
+
+      if (rows.length == 1) {
+        setState(() => _loadingConsultations = false);
+        await _openConsultationForAppointment(rows.first);
+        return;
+      }
+
+      setState(() {
+        _patientAppointments = rows;
+        _webTabIndex = 4;
+        _loadingConsultations = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingConsultations = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppointmentService.messageFromDio(e)),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _onWebTabSelected(int index) {
+    if (index == 4) {
+      _handleConsultaTabSelected();
+      return;
+    }
+    setState(() => _webTabIndex = index);
+  }
+
+  String _appointmentStatusLabel(String status) {
+    switch (status) {
+      case 'scheduled':
+        return 'Confirmada';
+      case 'pending_patient_approval':
+        return 'Pendiente del paciente';
+      case 'pending_doctor_approval':
+        return 'Pendiente del médico';
+      case 'pending_doctor_proposal':
+        return 'Propuesta pendiente';
+      default:
+        return status.replaceAll('_', ' ');
+    }
+  }
+
+  String _formatAppointmentWhen(AppointmentDto appt) {
+    final dt = appt.appointmentDate?.toLocal();
+    if (dt == null) return 'Sin fecha programada';
+    final dd = dt.day.toString().padLeft(2, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$dd/$mm/${dt.year} · $hh:$min';
   }
 
   void _applyProfileSnapshot(PatientProfileSnapshot snap) {
     _analysisRequests = snap.analysisRequests;
     _timeline = snap.timeline;
     _questionnaireResponses = snap.questionnaireResponses;
+    _questionnairePending = snap.questionnairePending;
     if (snap.clinicalContext != null) {
       _clinicalContext = snap.clinicalContext;
     }
@@ -236,6 +332,14 @@ class _DoctorPatientProfileScreenState
       patientName: widget.patientName,
       event: event,
       onNoteSaved: () => _reloadProfile(),
+    );
+  }
+
+  Future<void> _openSchedulingLink() async {
+    await PatientSchedulingLinkDialog.show(
+      context,
+      patientId: widget.patientId,
+      patientName: widget.patientName,
     );
   }
 
@@ -476,7 +580,7 @@ class _DoctorPatientProfileScreenState
                   wide: constraints.maxWidth >= 900,
                 ),
                 const SizedBox(height: 24),
-                const _SectionTitle(tag: 'ACCIONES RÁPIDAS', count: 6),
+                const _SectionTitle(tag: 'ACCIONES RÁPIDAS', count: 7),
                 const SizedBox(height: 12),
                 DoctorWebQuickActionsRow(
                   hasPendingUpload: pendingList.isNotEmpty,
@@ -488,12 +592,13 @@ class _DoctorPatientProfileScreenState
                   onOpenAssignPrescription: widget.onOpenAssignPrescription,
                   onOpenSchedule: widget.onOpenSchedule,
                   onOpenQuestionnaire: widget.onOpenQuestionnaire,
+                  onGenerateSchedulingLink: _openSchedulingLink,
                 ),
                 const SizedBox(height: 26),
                 DoctorPatientTabBar(
                   selectedIndex: _webTabIndex,
-                  onSelected: (index) =>
-                      setState(() => _webTabIndex = index),
+                  includeConsultationTab: !widget.embeddedTabPanelsOnly,
+                  onSelected: _onWebTabSelected,
                 ),
                 const SizedBox(height: 22),
                 _buildWebTabBody(
@@ -538,6 +643,8 @@ class _DoctorPatientProfileScreenState
         return _buildQuestionnairePanel(questionnaireGroups);
       case 3:
         return _buildHistorialPanel();
+      case 4:
+        return _buildConsultaPanel();
       case 0:
       default:
         return Row(
@@ -681,20 +788,64 @@ class _DoctorPatientProfileScreenState
     );
   }
 
+  Future<void> _openAnswerQuestionnaire(Map<String, dynamic> pending) async {
+    final invitationId = (pending['id'] ?? '').toString();
+    if (invitationId.isEmpty) return;
+    final name =
+        (pending['questionnaire_name'] ?? 'Cuestionario').toString().trim();
+    final answered = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => DoctorAnswerQuestionnaireScreen(
+          invitationId: invitationId,
+          questionnaireName: name,
+          patientName: widget.patientName,
+        ),
+      ),
+    );
+    if (answered == true && mounted) {
+      await _reloadProfile(force: true);
+    }
+  }
+
   Widget _buildQuestionnairePanel(List<_QuestionnaireGroup> questionnaireGroups) {
+    final hasPending = _questionnairePending.isNotEmpty;
+    final hasResponses = _questionnaireResponses.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (hasPending) ...[
+          _SectionTitle(
+            tag: 'CUESTIONARIOS PENDIENTES',
+            count: _questionnairePending.length,
+          ),
+          const SizedBox(height: 12),
+          ..._questionnairePending.map(
+            (pending) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _PendingQuestionnaireCard(
+                data: pending,
+                onAnswer: () => _openAnswerQuestionnaire(pending),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
         _SectionTitle(
           tag: 'RESPUESTAS CUESTIONARIO',
           count: _questionnaireResponses.length,
         ),
         const SizedBox(height: 12),
-        if (_questionnaireResponses.isEmpty)
+        if (!hasResponses && !hasPending)
           const _InlineEmpty(
             icon: Icons.quiz_outlined,
             message:
                 'Este paciente todavía no tiene respuestas de cuestionarios.',
+          )
+        else if (!hasResponses)
+          const _InlineEmpty(
+            icon: Icons.quiz_outlined,
+            message: 'Aún no hay respuestas registradas.',
           )
         else ...[
           ...questionnaireGroups.take(8).toList().asMap().entries.map(
@@ -736,6 +887,76 @@ class _DoctorPatientProfileScreenState
           subtitle: 'Abrir toda la línea de tiempo del paciente.',
           onTap: widget.onOpenTimeline,
         ),
+      ],
+    );
+  }
+
+  Widget _buildConsultaPanel() {
+    if (_loadingConsultations) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
+        ),
+      );
+    }
+
+    if (_patientAppointments.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SectionTitle(tag: 'CONSULTAS', count: 0),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: KeepiColors.cardBorder),
+            ),
+            child: const Text(
+              'Este paciente aún no tiene consultas registradas.',
+              style: TextStyle(color: KeepiColors.slateLight, height: 1.45),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _ActionButton(
+            icon: Icons.event_available_rounded,
+            accent: KeepiColors.orange,
+            title: 'Programar cita',
+            subtitle: 'Agenda una nueva consulta con este paciente.',
+            onTap: widget.onOpenSchedule,
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(tag: 'CONSULTAS', count: _patientAppointments.length),
+        const SizedBox(height: 12),
+        Text(
+          'Elige la consulta que quieres abrir.',
+          style: TextStyle(
+            color: KeepiColors.slateLight.withValues(alpha: 0.95),
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 14),
+        ..._patientAppointments.map((appt) {
+          final reason = appt.reason.trim().isEmpty ? 'Consulta médica' : appt.reason.trim();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _ActionButton(
+              icon: Icons.medical_services_outlined,
+              accent: KeepiColors.orange,
+              title: _formatAppointmentWhen(appt),
+              subtitle: '$reason · ${_appointmentStatusLabel(appt.status)}',
+              onTap: () => _openConsultationForAppointment(appt),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -921,16 +1142,39 @@ class _DoctorPatientProfileScreenState
                           ),
                         ),
                       const SizedBox(height: 18),
+                      if (_questionnairePending.isNotEmpty) ...[
+                        _SectionTitle(
+                          tag: 'CUESTIONARIOS PENDIENTES',
+                          count: _questionnairePending.length,
+                        ),
+                        const SizedBox(height: 12),
+                        ..._questionnairePending.map(
+                          (pending) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _PendingQuestionnaireCard(
+                              data: pending,
+                              onAnswer: () => _openAnswerQuestionnaire(pending),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                      ],
                       _SectionTitle(
                         tag: 'RESPUESTAS CUESTIONARIO',
                         count: _questionnaireResponses.length,
                       ),
                       const SizedBox(height: 12),
-                      if (_questionnaireResponses.isEmpty)
+                      if (_questionnaireResponses.isEmpty &&
+                          _questionnairePending.isEmpty)
                         const _InlineEmpty(
                           icon: Icons.quiz_outlined,
                           message:
                               'Este paciente todavía no tiene respuestas de cuestionarios.',
+                        )
+                      else if (_questionnaireResponses.isEmpty)
+                        const _InlineEmpty(
+                          icon: Icons.quiz_outlined,
+                          message: 'Aún no hay respuestas registradas.',
                         )
                       else
                         ...questionnaireGroups
@@ -961,7 +1205,7 @@ class _DoctorPatientProfileScreenState
                           ),
                         ),
                       const SizedBox(height: 18),
-                      const _SectionTitle(tag: 'ACCIONES RÁPIDAS', count: 5),
+                      const _SectionTitle(tag: 'ACCIONES RÁPIDAS', count: 6),
                       const SizedBox(height: 12),
                       _ActionButton(
                         icon: Icons.timeline_rounded,
@@ -1008,9 +1252,17 @@ class _DoctorPatientProfileScreenState
                       ),
                       const SizedBox(height: 10),
                       _ActionButton(
+                        icon: Icons.link_rounded,
+                        accent: const Color(0xFF0284C7),
+                        title: 'Link agenda web',
+                        subtitle: 'Generar enlace para que el paciente agende en línea.',
+                        onTap: _openSchedulingLink,
+                      ),
+                      const SizedBox(height: 10),
+                      _ActionButton(
                         icon: Icons.outgoing_mail,
                         accent: KeepiColors.skyBlue,
-                        title: 'Enviar cuestionario',
+                        title: 'Enviar ficha clínica',
                         subtitle: 'Compartir preguntas de seguimiento.',
                         onTap: widget.onOpenQuestionnaire,
                       ),
@@ -1409,6 +1661,19 @@ class _QuestionnaireGroupCard extends StatelessWidget {
 
   String get _title => group.displayName(index);
 
+  bool get _answeredByDoctor => group.answeredBy == 'doctor';
+
+  Color get _accentColor =>
+      _answeredByDoctor ? KeepiColors.skyBlue : KeepiColors.orange;
+
+  String get _answeredLabel {
+    final at = _formatAnchor(group.anchor);
+    if (_answeredByDoctor) {
+      return at.isEmpty ? 'Contestado por ti' : 'Contestado por ti: $at';
+    }
+    return at.isEmpty ? 'Respondido por el paciente' : 'Respondido: $at';
+  }
+
   void _openResponsesModal(BuildContext context) {
     showDialog<void>(
       context: context,
@@ -1428,12 +1693,18 @@ class _QuestionnaireGroupCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_formatAnchor(group.anchor).isNotEmpty) ...[
+                if (_formatAnchor(group.anchor).isNotEmpty ||
+                    group.answeredBy.isNotEmpty) ...[
                   Text(
-                    'Respondido: ${_formatAnchor(group.anchor)}',
-                    style: const TextStyle(
+                    _answeredLabel,
+                    style: TextStyle(
                       fontSize: 12.5,
-                      color: KeepiColors.slateLight,
+                      color: _answeredByDoctor
+                          ? KeepiColors.skyBlue
+                          : KeepiColors.slateLight,
+                      fontWeight: _answeredByDoctor
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -1460,13 +1731,16 @@ class _QuestionnaireGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final answeredAt = _formatAnchor(group.anchor);
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: KeepiColors.cardBorder),
+        border: Border.all(
+          color: _answeredByDoctor
+              ? KeepiColors.skyBlue.withValues(alpha: 0.45)
+              : KeepiColors.cardBorder,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1475,14 +1749,16 @@ class _QuestionnaireGroupCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: KeepiColors.orangeSoft,
+              color: _accentColor.withValues(alpha: 0.12),
               shape: BoxShape.circle,
-              border: Border.all(color: KeepiColors.orange, width: 1.4),
+              border: Border.all(color: _accentColor, width: 1.4),
             ),
-            child: const Icon(
-              Icons.quiz_outlined,
+            child: Icon(
+              _answeredByDoctor
+                  ? Icons.medical_services_outlined
+                  : Icons.quiz_outlined,
               size: 18,
-              color: KeepiColors.orange,
+              color: _accentColor,
             ),
           ),
           const SizedBox(width: 12),
@@ -1501,13 +1777,18 @@ class _QuestionnaireGroupCard extends StatelessWidget {
                     height: 1.25,
                   ),
                 ),
-                if (answeredAt.isNotEmpty) ...[
+                if (group.anchor != null || group.answeredBy.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'Respondido: $answeredAt',
-                    style: const TextStyle(
+                    _answeredLabel,
+                    style: TextStyle(
                       fontSize: 12.5,
-                      color: KeepiColors.slateLight,
+                      color: _answeredByDoctor
+                          ? KeepiColors.skyBlue
+                          : KeepiColors.slateLight,
+                      fontWeight: _answeredByDoctor
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                   ),
                 ],
@@ -1518,8 +1799,8 @@ class _QuestionnaireGroupCard extends StatelessWidget {
           OutlinedButton(
             onPressed: () => _openResponsesModal(context),
             style: OutlinedButton.styleFrom(
-              foregroundColor: KeepiColors.orange,
-              side: const BorderSide(color: KeepiColors.orange),
+              foregroundColor: _accentColor,
+              side: BorderSide(color: _accentColor),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -1594,16 +1875,103 @@ class _QuestionAnswerRow extends StatelessWidget {
   }
 }
 
+class _PendingQuestionnaireCard extends StatelessWidget {
+  const _PendingQuestionnaireCard({
+    required this.data,
+    required this.onAnswer,
+  });
+
+  final Map<String, dynamic> data;
+  final VoidCallback onAnswer;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (data['questionnaire_name'] ?? 'Cuestionario').toString();
+    final total = data['total_questions'] as int? ?? 0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: KeepiColors.orangeSoft.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: KeepiColors.orange.withValues(alpha: 0.55),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: KeepiColors.orange, width: 1.4),
+            ),
+            child: const Icon(
+              Icons.pending_actions_rounded,
+              size: 18,
+              color: KeepiColors.orange,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: KeepiColors.slate,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  total > 0
+                      ? 'Pendiente · $total preguntas'
+                      : 'Pendiente de contestar',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: KeepiColors.orange,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: onAnswer,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+            child: const Text(
+              'Contestar',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _QuestionnaireGroup {
   _QuestionnaireGroup({
     this.invitationId,
     required this.anchor,
     required this.items,
+    this.answeredBy = '',
   });
 
   final String? invitationId;
   DateTime? anchor;
   final List<Map<String, dynamic>> items;
+  final String answeredBy;
 
   String displayName(int fallbackIndex) {
     for (final item in items) {

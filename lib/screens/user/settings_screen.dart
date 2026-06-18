@@ -95,9 +95,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           res.authorizationUrl != null &&
           res.authorizationUrl!.isNotEmpty) {
         if (kIsWeb) {
-          final uri = Uri.parse(res.authorizationUrl!);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
+        final uri = Uri.parse(res.authorizationUrl!);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
           }
         } else if (mounted) {
           await context.push(
@@ -333,10 +333,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     final configCount = isDoctor ? 3 : 1;
 
     return RefreshIndicator(
-      onRefresh: _loadConfig,
-      color: KeepiColors.orange,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
+            onRefresh: _loadConfig,
+            color: KeepiColors.orange,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
           isWebWide(context) ? 28 : 22,
           widget.embedded ? 8 : 8,
@@ -346,45 +346,45 @@ class _SettingsScreenState extends State<SettingsScreen>
         child: WebContentFrame(
           maxWidth: kWebContentMaxWidth,
           padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
               ProfileHeroCard(
                 name: auth.name ?? 'Usuario',
                 email: auth.email ?? '',
                 namePrefix: isDoctor ? 'Dr.' : '',
               ),
-              if (_error != null) ...[
+                  if (_error != null) ...[
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: KeepiColors.orangeSoft,
-                    borderRadius: BorderRadius.circular(12),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: KeepiColors.orangeSoft,
+                        borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: KeepiColors.orange.withValues(alpha: 0.3),
                     ),
-                  ),
-                  child: Row(
-                    children: [
+                      ),
+                      child: Row(
+                        children: [
                       const Icon(
                         Icons.error_outline_rounded,
                         color: KeepiColors.orange,
                         size: 22,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _error!,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _error!,
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
                               ?.copyWith(color: KeepiColors.slate),
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
               ],
               if (isDoctor) ...[
                 const SizedBox(height: 26),
@@ -396,8 +396,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ProfileSettingsRow(
                   icon: Icons.quiz_outlined,
                   accent: KeepiColors.skyBlue,
-                  title: 'Cuestionarios de salud',
-                  subtitle:
+                      title: 'Cuestionarios de salud',
+                      subtitle:
                       'Gestiona plantillas y preguntas por especialidad.',
                   onTap: _openQuestionnaireSettings,
                 ),
@@ -432,17 +432,17 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
               if (_switching) ...[
                 const SizedBox(height: 14),
-                const Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: KeepiColors.orange,
-                    ),
-                  ),
-                ),
-              ],
+                    const Center(
+                        child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: KeepiColors.orange,
+                              ),
+                              ),
+                            ),
+                          ],
               const SizedBox(height: 26),
               const ProfileSectionDivider(tag: 'SESIÓN', count: 1),
               const SizedBox(height: 14),
