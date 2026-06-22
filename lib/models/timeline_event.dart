@@ -36,11 +36,28 @@ class TimelineEvent {
 
   bool get isClinicalIntake => eventType == 'clinical_intake';
 
-  /// UUID de invitación cuando `id` es `intake_{uuid}`.
+  bool get isPendingStep => visualState == 'current';
+
+  /// UUID de invitación en eventos `intake_{uuid}` o `intake_req_{uuid}`.
   String? get clinicalIntakeInvitationId {
-    if (!id.startsWith('intake_')) return null;
-    final raw = id.substring('intake_'.length);
-    return raw.isEmpty ? null : raw;
+    for (final prefix in ['intake_req_', 'intake_']) {
+      if (id.startsWith(prefix)) {
+        final raw = id.substring(prefix.length);
+        if (raw.isNotEmpty) return raw;
+      }
+    }
+    return null;
+  }
+
+  /// UUID de invitación en eventos `priordocs_req_{uuid}` o `priordocs_sent_{uuid}`.
+  String? get priorDocsInvitationId {
+    for (final prefix in ['priordocs_req_', 'priordocs_sent_']) {
+      if (id.startsWith(prefix)) {
+        final raw = id.substring(prefix.length);
+        if (raw.isNotEmpty) return raw;
+      }
+    }
+    return null;
   }
 
   factory TimelineEvent.fromJson(Map<String, dynamic> json) {

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/timeline_event.dart';
 import '../router/app_navigation.dart';
 import '../router/app_paths.dart';
+import '../screens/doctor/questionnaire/doctor_answer_invitation_screen.dart';
 import '../services/api_client.dart';
 import '../services/appointment_service.dart';
 import '../services/doctor_service.dart';
@@ -22,6 +23,22 @@ class TimelineEventOpener {
     required TimelineEvent event,
     VoidCallback? onNoteSaved,
   }) async {
+    final pendingInvitationId = _pendingInvitationIdFromEvent(event);
+    if (pendingInvitationId != null) {
+      final label = (event.subtitle ?? event.title).trim();
+      final answered = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => DoctorAnswerInvitationScreen(
+            invitationId: pendingInvitationId,
+            invitationLabel: label.isEmpty ? 'Solicitud pendiente' : label,
+            patientName: patientName,
+          ),
+        ),
+      );
+      if (answered == true) onNoteSaved?.call();
+      return;
+    }
+
     if (event.isPriorDocuments) {
       final pid = event.actionPatientId ?? patientId;
       await context.push<void>(AppPaths.doctorPriorDocuments(pid));
@@ -48,6 +65,17 @@ class TimelineEventOpener {
       event: event,
       onNoteSaved: onNoteSaved,
     );
+  }
+
+  static String? _pendingInvitationIdFromEvent(TimelineEvent event) {
+    if (!event.isPendingStep) return null;
+    if (event.isClinicalIntake && event.id.startsWith('intake_req_')) {
+      return event.clinicalIntakeInvitationId;
+    }
+    if (event.isPriorDocuments && event.id.startsWith('priordocs_req_')) {
+      return event.priorDocsInvitationId;
+    }
+    return null;
   }
 
   static Future<void> openAppointment(
