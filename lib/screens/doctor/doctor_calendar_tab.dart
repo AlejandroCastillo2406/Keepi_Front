@@ -319,18 +319,18 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     if (confirm != true || !mounted) return;
 
     showDialog(
-      context: context,
-      barrierDismissible: false,
+      context: context, 
+      barrierDismissible: false, 
       builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
     );
 
     try {
       final svc = AppointmentService(context.read<ApiClient>());
-      await svc.cancelAppointment(appointmentId: a.id);
-
-      if (mounted) Navigator.pop(context);
-      _load();
-
+      await svc.cancelAppointment(appointmentId: a.id); 
+      
+      if (mounted) Navigator.pop(context); 
+      _load(); 
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cita cancelada correctamente'), backgroundColor: KeepiColors.slate),
@@ -520,32 +520,32 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 RichText(
-                  text: TextSpan(
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      color: KeepiColors.slate,
-                      height: 1.4,
-                    ),
-                    children: [
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 14.5,
+                color: KeepiColors.slate,
+                height: 1.4,
+              ),
+              children: [
                       const TextSpan(text: '¿Asignar la cita a '),
-                      TextSpan(
-                        text: selectedPatient.name,
+                TextSpan(
+                  text: selectedPatient.name,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: KeepiColors.skyBlue,
-                        ),
+                ),
                       ),
                       const TextSpan(text: ' el '),
-                      TextSpan(
-                        text: dateStr,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const TextSpan(text: ' a las '),
-                      TextSpan(
-                        text: timeStr,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const TextSpan(text: '?'),
+                TextSpan(
+                  text: dateStr,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: ' a las '),
+                TextSpan(
+                  text: timeStr,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: '?'),
                     ],
                   ),
                 ),
@@ -595,8 +595,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     }
 
     showDialog(
-      context: context,
-      barrierDismissible: false,
+      context: context, 
+      barrierDismissible: false, 
       builder: (_) => const Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
     );
 
@@ -738,14 +738,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     final webWide = isWebWide(context);
 
     if (webWide) {
-      return SingleChildScrollView(
+    return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(32, 28, 32, 36),
         child: WebContentFrame(
           maxWidth: kWebContentMaxWidth,
           padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
               _buildAgendaHero(),
               const SizedBox(height: 24),
               Row(
@@ -810,7 +810,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   Widget _buildAgendaHero({bool compact = false}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
+            children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -888,8 +888,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       decoration: _softCardDecoration(radius: 16),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
+                children: [
+                  IconButton(
             onPressed: () => setState(() {
               _selectedDay = _selectedDay.subtract(Duration(days: _agendaView == _AgendaView.week ? 7 : 1));
             }),
@@ -898,7 +898,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
             tooltip: 'Día anterior',
           ),
           Container(width: 1, height: 22, color: KeepiColors.cardBorder),
-          IconButton(
+                  IconButton(
             onPressed: () => setState(() {
               _selectedDay = _selectedDay.add(Duration(days: _agendaView == _AgendaView.week ? 7 : 1));
             }),
@@ -1079,11 +1079,11 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() {
+                      setState(() {
             _agendaView = view;
             if (view == _AgendaView.today) _selectedDay = DateTime.now();
-          });
-        },
+                      });
+                    },
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -1407,7 +1407,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          children: [
+            children: [
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1422,7 +1422,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+              const Text(
                     'Resumen real de la semana. Toca un día para abrir su agenda.',
                     style: TextStyle(color: KeepiColors.slateLight, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
@@ -1577,8 +1577,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         const Text(
           'Confirma o reagenda las solicitudes más importantes sin entrar a otro módulo.',
           style: TextStyle(color: KeepiColors.slateLight, fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 16),
         if (loading)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 38),
@@ -2081,21 +2081,21 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: KeepiColors.skyBlue.withValues(alpha: 0.45)),
           boxShadow: _cardShadow(),
-        ),
+      ),
         child: Row(
           children: [
             _softIcon(Icons.event_available_outlined, KeepiColors.skyBlue),
             const SizedBox(width: 16),
             Expanded(
-              child: Column(
+      child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+        children: [
                   Text(when, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: KeepiColors.slate)),
                   if ((a.patientName ?? '').trim().isNotEmpty)
                     Text(a.patientName!.trim(), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: KeepiColors.skyBlue)),
@@ -2160,8 +2160,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
+          children: [
+            Text(
                         dateLabel,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -2335,18 +2335,18 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
-                color: isCanceled ? Colors.grey : KeepiColors.slate,
+                    color: isCanceled ? Colors.grey : KeepiColors.slate,
                 decoration: isCanceled ? TextDecoration.lineThrough : null,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
                     Expanded(
                       child: Text(
                         name,
@@ -2354,8 +2354,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5, color: Color(0xFF1F2937)),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                        ),
+                        const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
@@ -2365,9 +2365,9 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 ),
                 const SizedBox(height: 7),
                 Text(description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: KeepiColors.slateLight, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
+                  ],
+                ),
+              ),
         ],
       ),
     );

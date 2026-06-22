@@ -13,7 +13,7 @@ import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
 import '../../services/timeline_event_opener.dart';
-import 'questionnaire/doctor_answer_questionnaire_screen.dart';
+import 'questionnaire/doctor_answer_invitation_screen.dart';
 import '../../utils/patient_expediente_export.dart';
 import '../../widgets/doctor_clinical_profile_editor.dart';
 import '../../widgets/doctor_patient_web_blocks.dart';
@@ -82,6 +82,8 @@ class _DoctorPatientProfileScreenState
   late int _webTabIndex;
   List<AppointmentDto> _patientAppointments = const [];
   bool _loadingConsultations = false;
+  DateTime? _profileLoadedAt;
+  PatientsCacheProvider? _cacheProvider;
 
   int get _maxTabIndex => widget.embeddedTabPanelsOnly ? 3 : 4;
 
@@ -175,6 +177,57 @@ class _DoctorPatientProfileScreenState
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = context.read<PatientsCacheProvider>();
+    if (_cacheProvider != next) {
+      _cacheProvider?.removeListener(_onPatientsCacheChanged);
+      _cacheProvider = next;
+      _cacheProvider!.addListener(_onPatientsCacheChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _cacheProvider?.removeListener(_onPatientsCacheChanged);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant DoctorPatientProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.patientId != oldWidget.patientId) {
+      _reloadProfile(force: true);
+      return;
+    }
+    if (widget.embeddedTabPanelsOnly &&
+        widget.externalTabIndex == 2 &&
+        oldWidget.externalTabIndex != 2) {
+      _reloadProfile(force: true);
+    }
+  }
+
+  void _onPatientsCacheChanged() {
+    if (!mounted) return;
+    final cached =
+        context.read<PatientsCacheProvider>().peekProfile(widget.patientId);
+    if (cached == null) {
+      if (!_bootstrapping) {
+        _loadData(force: true);
+      }
+      return;
+    }
+    if (_profileLoadedAt == null || cached.loadedAt.isAfter(_profileLoadedAt!)) {
+      setState(() {
+        _applyProfileSnapshot(cached);
+        _loading = false;
+        _bootstrapping = false;
+        _error = null;
+      });
+    }
+  }
+
   Future<List<AppointmentDto>> _loadPatientAppointments() async {
     final api = context.read<ApiClient>();
     return AppointmentService(api).fetchDoctorPatientAppointments(
@@ -230,6 +283,9 @@ class _DoctorPatientProfileScreenState
       return;
     }
     setState(() => _webTabIndex = index);
+    if (index == 2) {
+      _reloadProfile(force: true);
+    }
   }
 
   String _appointmentStatusLabel(String status) {
@@ -262,6 +318,7 @@ class _DoctorPatientProfileScreenState
     _timeline = snap.timeline;
     _questionnaireResponses = snap.questionnaireResponses;
     _questionnairePending = snap.questionnairePending;
+    _profileLoadedAt = snap.loadedAt;
     if (snap.clinicalContext != null) {
       _clinicalContext = snap.clinicalContext;
     }
@@ -624,7 +681,8 @@ class _DoctorPatientProfileScreenState
     if (_bootstrapping &&
         _analysisRequests.isEmpty &&
         _timeline.isEmpty &&
-        _questionnaireResponses.isEmpty) {
+        _questionnaireResponses.isEmpty &&
+        _questionnairePending.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48),
         child: Center(
@@ -792,12 +850,12 @@ class _DoctorPatientProfileScreenState
     final invitationId = (pending['id'] ?? '').toString();
     if (invitationId.isEmpty) return;
     final name =
-        (pending['questionnaire_name'] ?? 'Cuestionario').toString().trim();
+        (pending['questionnaire_name'] ?? 'Invitación pendiente').toString().trim();
     final answered = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => DoctorAnswerQuestionnaireScreen(
+        builder: (_) => DoctorAnswerInvitationScreen(
           invitationId: invitationId,
-          questionnaireName: name,
+          invitationLabel: name,
           patientName: widget.patientName,
         ),
       ),
@@ -816,7 +874,7 @@ class _DoctorPatientProfileScreenState
       children: [
         if (hasPending) ...[
           _SectionTitle(
-            tag: 'CUESTIONARIOS PENDIENTES',
+            tag: 'SOLICITUDES PENDIENTES',
             count: _questionnairePending.length,
           ),
           const SizedBox(height: 12),
@@ -965,7 +1023,8 @@ class _DoctorPatientProfileScreenState
     if (_bootstrapping &&
         _analysisRequests.isEmpty &&
         _timeline.isEmpty &&
-        _questionnaireResponses.isEmpty) {
+        _questionnaireResponses.isEmpty &&
+        _questionnairePending.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48),
         child: Center(
@@ -1144,7 +1203,7 @@ class _DoctorPatientProfileScreenState
                       const SizedBox(height: 18),
                       if (_questionnairePending.isNotEmpty) ...[
                         _SectionTitle(
-                          tag: 'CUESTIONARIOS PENDIENTES',
+                          tag: 'SOLICITUDES PENDIENTES',
                           count: _questionnairePending.length,
                         ),
                         const SizedBox(height: 12),
@@ -1886,8 +1945,23 @@ class _PendingQuestionnaireCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = (data['questionnaire_name'] ?? 'Cuestionario').toString();
+    final name = (data['questionnaire_name'] ?? 'Invitación pendiente').toString();
     final total = data['total_questions'] as int? ?? 0;
+    final enableIntake = data['enable_clinical_intake'] == true;
+    final collectDocs = data['collect_prior_documents'] == true;
+    final hasQuestionnaire = data['has_questionnaire'] == true || total > 0;
+
+    final parts = <String>[];
+    if (enableIntake) parts.add('Ficha clínica');
+    if (hasQuestionnaire && total > 0) {
+      parts.add('$total preguntas');
+    } else if (hasQuestionnaire) {
+      parts.add('Cuestionario');
+    }
+    if (collectDocs) parts.add('Documentos previos');
+    final subtitle = parts.isEmpty
+        ? 'Pendiente de contestar'
+        : 'Pendiente · ${parts.join(' · ')}';
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
@@ -1931,9 +2005,7 @@ class _PendingQuestionnaireCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  total > 0
-                      ? 'Pendiente · $total preguntas'
-                      : 'Pendiente de contestar',
+                  subtitle,
                   style: const TextStyle(
                     fontSize: 12.5,
                     color: KeepiColors.orange,

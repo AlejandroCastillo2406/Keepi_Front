@@ -250,6 +250,45 @@ class QuestionnaireService {
     return InvitationSummary.fromJson(res.data!);
   }
 
+  Future<Map<String, dynamic>> fetchInvitationWorkflowForDoctor(
+    String invitationId,
+  ) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      ApiEndpoints.questionnaireInvitationWorkflow(invitationId),
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  Future<Map<String, dynamic>> submitDoctorIntakeSection({
+    required String invitationId,
+    required String sectionId,
+    required Map<String, dynamic> answers,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.questionnaireInvitationIntake(invitationId),
+      data: {'section_id': sectionId, 'answers': answers},
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
+  Future<void> finishDoctorInvitation(String invitationId) async {
+    await _api.dio.post<void>(
+      ApiEndpoints.questionnaireInvitationFinish(invitationId),
+    );
+  }
+
+  Future<Map<String, dynamic>> uploadDoctorPriorDocument({
+    required String invitationId,
+    required FormData formData,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.questionnaireInvitationPriorDocuments(invitationId),
+      data: formData,
+      options: Options(contentType: 'multipart/form-data'),
+    );
+    return Map<String, dynamic>.from(res.data ?? const {});
+  }
+
   Future<Map<String, dynamic>> fetchInvitationQuestionsForDoctor(
     String invitationId,
   ) async {

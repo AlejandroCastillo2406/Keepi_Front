@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/app_theme.dart';
 import '../../../core/web_layout.dart';
 import '../../../models/questionnaire_models.dart';
+import '../../../providers/patients_cache_provider.dart';
 import '../../../services/api_client.dart';
 import '../../../services/doctor_service.dart';
 import '../../../services/questionnaire_service.dart';
@@ -104,6 +106,7 @@ class _SendQuestionnaireScreenState extends State<SendQuestionnaireScreen> {
         collectPriorDocuments: _collectPriorDocuments,
       );
       if (!mounted) return;
+      context.read<PatientsCacheProvider>().invalidateProfile(widget.patientId);
       final snackMsg = invite.emailSent
           ? 'Enlace enviado por correo.'
           : 'El correo no se envió: ${invite.emailError ?? "revisa SES"}.';

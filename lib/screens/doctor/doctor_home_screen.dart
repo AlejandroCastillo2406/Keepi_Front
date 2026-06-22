@@ -677,6 +677,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
 
   Future<void> _openSendQuestionnaire(PatientListItem p) async {
     await context.push(AppPaths.doctorSendQuestionnaire(p.id));
+    if (!mounted) return;
+    context.read<PatientsCacheProvider>().invalidateProfile(p.id);
   }
 
   Future<void> _deletePatient(PatientListItem p) async {

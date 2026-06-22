@@ -149,6 +149,14 @@ class ApiEndpoints {
       _path('/questionnaire/invitations/$invitationId/questions');
   static String questionnaireInvitationSubmit(String invitationId) =>
       _path('/questionnaire/invitations/$invitationId/submit');
+  static String questionnaireInvitationWorkflow(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId/workflow');
+  static String questionnaireInvitationIntake(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId/intake');
+  static String questionnaireInvitationFinish(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId/finish');
+  static String questionnaireInvitationPriorDocuments(String invitationId) =>
+      _path('/questionnaire/invitations/$invitationId/prior-documents');
   static String get questionnaireExtractOcr =>
       _path('/questionnaire/extract-ocr');
   static String questionnairePatientResponses(String patientId) =>
