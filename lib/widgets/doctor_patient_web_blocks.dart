@@ -3,6 +3,8 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
+import '../models/attendance_kpi.dart';
+import '../widgets/attendance_kpi_panel.dart';
 
 /// Colores del avatar/etiqueta según sexo del paciente.
 class PatientAvatarTheme {
@@ -286,12 +288,14 @@ class DoctorPatientStatsGrid extends StatelessWidget {
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
     required this.timelineEvents,
+    this.attendanceKpi,
   });
 
   final int totalAnalysis;
   final int uploadedAnalysis;
   final int pendingAnalysis;
   final int timelineEvents;
+  final AttendanceKpi? attendanceKpi;
 
   @override
   Widget build(BuildContext context) {
@@ -336,6 +340,14 @@ class DoctorPatientStatsGrid extends StatelessWidget {
             ),
           ],
         ),
+        if (attendanceKpi != null) ...[
+          const SizedBox(height: 10),
+          AttendanceKpiPanel(
+            kpi: attendanceKpi!,
+            compact: true,
+            showTitle: true,
+          ),
+        ],
       ],
     );
   }
@@ -481,6 +493,7 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
     required this.timelineEvents,
+    this.attendanceKpi,
     this.sex,
     this.ageYears,
     this.bloodType,
@@ -502,6 +515,7 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
   final int uploadedAnalysis;
   final int pendingAnalysis;
   final int timelineEvents;
+  final AttendanceKpi? attendanceKpi;
   final String? sex;
   final int? ageYears;
   final String? bloodType;
@@ -539,6 +553,7 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
       uploadedAnalysis: uploadedAnalysis,
       pendingAnalysis: pendingAnalysis,
       timelineEvents: timelineEvents,
+      attendanceKpi: attendanceKpi,
     );
 
     if (wide) {

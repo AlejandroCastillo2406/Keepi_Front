@@ -7,6 +7,7 @@ import '../../core/app_theme.dart';
 import '../../core/web_layout.dart';
 import '../../models/consultation_context.dart';
 import '../../models/timeline_event.dart';
+import '../../models/attendance_kpi.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patients_cache_provider.dart';
 import '../../services/api_client.dart';
@@ -392,6 +393,13 @@ class _DoctorPatientProfileScreenState
     );
   }
 
+  int get _pendingTasksCount {
+    final analysisPending = _analysisRequests
+        .where((r) => r.status.toLowerCase() != 'completed')
+        .length;
+    return analysisPending + _questionnairePending.length;
+  }
+
   Future<void> _openSchedulingLink() async {
     await PatientSchedulingLinkDialog.show(
       context,
@@ -406,6 +414,9 @@ class _DoctorPatientProfileScreenState
     required bool wide,
   }) {
     final ctx = _clinicalContext;
+    final attendanceKpi = ctx != null
+        ? AttendanceKpi.fromStats(ctx.stats)
+        : null;
     return DoctorPatientSummaryHeaderRow(
       name: ctx?.patientName ?? widget.patientName,
       email: ctx?.patientEmail ?? widget.patientEmail,
@@ -417,6 +428,7 @@ class _DoctorPatientProfileScreenState
       uploadedAnalysis: completedCount,
       pendingAnalysis: pendingCount,
       timelineEvents: _timeline.length,
+      attendanceKpi: attendanceKpi,
       onEditAge: () => _editClinicalAge(),
       onEditBloodType: () => _editClinicalBloodType(),
       onEditWeight: () => _editClinicalWeight(),
@@ -632,7 +644,7 @@ class _DoctorPatientProfileScreenState
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildSummaryHeader(
-                  pendingCount: pendingList.length,
+                  pendingCount: _pendingTasksCount,
                   completedCount: completed.length,
                   wide: constraints.maxWidth >= 900,
                 ),
@@ -709,10 +721,8 @@ class _DoctorPatientProfileScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _buildAnalysisPanel(
+              child: _buildPendingTasksPanel(
                 pendingList: pendingList,
-                completed: completed,
-                sectionTag: 'TAREAS PENDIENTES',
                 compact: true,
               ),
             ),
@@ -723,6 +733,78 @@ class _DoctorPatientProfileScreenState
           ],
         );
     }
+  }
+
+  Widget _buildPendingTasksPanel({
+    required List<AnalysisRequestDto> pendingList,
+    bool compact = false,
+  }) {
+    final analysisLimit = compact ? 6 : 12;
+    final invitationLimit = compact ? 4 : 8;
+    final totalCount = pendingList.length + _questionnairePending.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(
+          tag: 'TAREAS PENDIENTES',
+          count: totalCount,
+        ),
+        const SizedBox(height: 12),
+        if (totalCount == 0)
+          const _InlineEmpty(
+            icon: Icons.pending_actions_rounded,
+            message: 'No hay tareas pendientes para este paciente.',
+          )
+        else ...[
+          if (_questionnairePending.isNotEmpty) ...[
+            const _AnalysisSubsectionLabel(
+              label: 'SOLICITUDES CLÍNICAS',
+              hint:
+                  'Ficha clínica, cuestionario o documentos previos por completar.',
+            ),
+            const SizedBox(height: 8),
+            ..._questionnairePending.take(invitationLimit).map(
+                  (pending) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _PendingQuestionnaireCard(
+                      data: pending,
+                      onAnswer: () => _openAnswerQuestionnaire(pending),
+                    ),
+                  ),
+                ),
+            if (_questionnairePending.length > invitationLimit)
+              _AnalysisListFootnote(
+                text:
+                    'Mostrando $invitationLimit de ${_questionnairePending.length} solicitudes.',
+              ),
+            if (pendingList.isNotEmpty) const SizedBox(height: 14),
+          ],
+          if (pendingList.isNotEmpty) ...[
+            const _AnalysisSubsectionLabel(
+              label: 'ANÁLISIS PENDIENTES DE SUBIR',
+              hint:
+                  'El paciente puede traer el reporte en físico; tú puedes subirlo aquí.',
+            ),
+            const SizedBox(height: 8),
+            ...pendingList.take(analysisLimit).map(
+                  (r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _AnalysisCard(
+                      item: r,
+                      isPending: true,
+                      onTap: () => _openDoctorUploadPending(r),
+                    ),
+                  ),
+                ),
+            if (pendingList.length > analysisLimit)
+              _AnalysisListFootnote(
+                text: 'Mostrando $analysisLimit de ${pendingList.length} pendientes.',
+              ),
+          ],
+        ],
+      ],
+    );
   }
 
   Widget _buildAnalysisPanel({
@@ -1081,7 +1163,6 @@ class _DoctorPatientProfileScreenState
         .where((r) => r.status.toLowerCase() != 'completed')
         .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final pendingCount = pendingList.length;
     final questionnaireGroups =
         _buildQuestionnaireGroups(_questionnaireResponses);
 
@@ -1107,72 +1188,37 @@ class _DoctorPatientProfileScreenState
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                     children: [
                       _buildSummaryHeader(
-                        pendingCount: pendingCount,
+                        pendingCount: _pendingTasksCount,
                         completedCount: completed.length,
                         wide: false,
                       ),
                       const SizedBox(height: 22),
-                      _SectionTitle(
-                        tag: 'ANÁLISIS',
-                        count: pendingCount + completed.length,
-                      ),
-                      const SizedBox(height: 12),
-                      if (pendingList.isEmpty && completed.isEmpty)
-                        const _InlineEmpty(
-                          icon: Icons.biotech_outlined,
-                          message:
-                              'Aún no hay análisis solicitados para este paciente.',
-                        )
-                      else ...[
-                        if (pendingList.isNotEmpty) ...[
-                          const _AnalysisSubsectionLabel(
-                            label: 'PENDIENTES DE SUBIR',
-                            hint:
-                                'El paciente puede traer el reporte en físico; tú puedes subirlo aquí.',
-                          ),
-                          const SizedBox(height: 8),
-                          ...pendingList.take(8).map(
-                                (r) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _AnalysisCard(
-                                    item: r,
-                                    isPending: true,
-                                    onTap: () => _openDoctorUploadPending(r),
-                                  ),
-                                ),
-                              ),
-                          if (pendingList.length > 8)
-                            _AnalysisListFootnote(
-                              text:
-                                  'Mostrando 8 de ${pendingList.length} pendientes.',
-                            ),
-                          const SizedBox(height: 14),
-                        ],
-                        if (completed.isNotEmpty) ...[
-                          if (pendingList.isNotEmpty)
-                            const _AnalysisSubsectionLabel(
-                              label: 'SUBIDOS / COMPLETADOS',
-                            ),
-                          if (pendingList.isNotEmpty) const SizedBox(height: 8),
-                          ...completed.take(8).map(
-                                (r) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _AnalysisCard(
-                                    item: r,
-                                    isPending: false,
-                                    isOpening: _openingDocumentId == r.id,
-                                    onTap: () => _openAnalysisDocument(r),
-                                  ),
-                                ),
-                              ),
-                          if (completed.length > 8)
-                            _AnalysisListFootnote(
-                              text:
-                                  'Mostrando los 8 completados más recientes.',
-                            ),
-                        ],
-                      ],
+                      _buildPendingTasksPanel(pendingList: pendingList),
                       const SizedBox(height: 16),
+                      if (completed.isNotEmpty) ...[
+                        _SectionTitle(
+                          tag: 'ANÁLISIS COMPLETADOS',
+                          count: completed.length,
+                        ),
+                        const SizedBox(height: 12),
+                        ...completed.take(8).map(
+                              (r) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _AnalysisCard(
+                                  item: r,
+                                  isPending: false,
+                                  isOpening: _openingDocumentId == r.id,
+                                  onTap: () => _openAnalysisDocument(r),
+                                ),
+                              ),
+                            ),
+                        if (completed.length > 8)
+                          _AnalysisListFootnote(
+                            text:
+                                'Mostrando los 8 completados más recientes.',
+                          ),
+                        const SizedBox(height: 16),
+                      ],
                       _SectionTitle(
                         tag: 'TIMELINE CLÍNICO',
                         count: _timeline.length,
@@ -1201,23 +1247,6 @@ class _DoctorPatientProfileScreenState
                           ),
                         ),
                       const SizedBox(height: 18),
-                      if (_questionnairePending.isNotEmpty) ...[
-                        _SectionTitle(
-                          tag: 'SOLICITUDES PENDIENTES',
-                          count: _questionnairePending.length,
-                        ),
-                        const SizedBox(height: 12),
-                        ..._questionnairePending.map(
-                          (pending) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _PendingQuestionnaireCard(
-                              data: pending,
-                              onAnswer: () => _openAnswerQuestionnaire(pending),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                      ],
                       _SectionTitle(
                         tag: 'RESPUESTAS CUESTIONARIO',
                         count: _questionnaireResponses.length,

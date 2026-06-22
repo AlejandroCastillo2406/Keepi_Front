@@ -9,6 +9,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../../core/app_theme.dart';
 import '../../core/web_layout.dart';
 import '../../models/consultation_context.dart';
+import '../../models/attendance_kpi.dart';
 import '../../models/timeline_event.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/consultation_bootstrap_provider.dart';
@@ -444,6 +445,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       uploadedAnalysis: stats.analysisUploaded,
       pendingAnalysis: stats.analysisPending,
       timelineEvents: stats.timelineEvents,
+      attendanceKpi: AttendanceKpi.fromStats(stats),
       onEditAge: () => _editClinicalAge(),
       onEditBloodType: () => _editClinicalBloodType(),
       onEditWeight: () => _editClinicalWeight(),

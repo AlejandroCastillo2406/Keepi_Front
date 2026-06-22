@@ -48,12 +48,22 @@ class ConsultationStats {
     this.analysisUploaded = 0,
     this.analysisPending = 0,
     this.timelineEvents = 0,
+    this.attendanceAttended = 0,
+    this.attendanceNoShow = 0,
+    this.attendancePending = 0,
+    this.attendanceAttendedPercent = 0,
+    this.attendanceNoShowPercent = 0,
   });
 
   final int analysisRequested;
   final int analysisUploaded;
   final int analysisPending;
   final int timelineEvents;
+  final int attendanceAttended;
+  final int attendanceNoShow;
+  final int attendancePending;
+  final double attendanceAttendedPercent;
+  final double attendanceNoShowPercent;
 
   factory ConsultationStats.fromJson(Map<String, dynamic> json) {
     return ConsultationStats(
@@ -61,6 +71,13 @@ class ConsultationStats {
       analysisUploaded: json['analysis_uploaded'] as int? ?? 0,
       analysisPending: json['analysis_pending'] as int? ?? 0,
       timelineEvents: json['timeline_events'] as int? ?? 0,
+      attendanceAttended: json['attendance_attended'] as int? ?? 0,
+      attendanceNoShow: json['attendance_no_show'] as int? ?? 0,
+      attendancePending: json['attendance_pending'] as int? ?? 0,
+      attendanceAttendedPercent:
+          (json['attendance_attended_percent'] as num?)?.toDouble() ?? 0,
+      attendanceNoShowPercent:
+          (json['attendance_no_show_percent'] as num?)?.toDouble() ?? 0,
     );
   }
 }

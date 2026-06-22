@@ -4,6 +4,8 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../../models/attendance_kpi.dart';
+import '../../widgets/attendance_kpi_panel.dart';
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../core/web_layout.dart';
@@ -314,6 +316,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         .toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
   }
+
+  AttendanceKpi get _attendanceKpi => AttendanceKpi.fromAppointments(
+        _agenda,
+        slotMinutes: _slotDurationMinutes,
+      );
 
   static const _noScheduledAppointmentsMessage = 'No hay citas agendadas.';
 
@@ -994,6 +1001,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
             message: _noScheduledAppointmentsMessage,
           ),
         const SizedBox(height: 18),
+        if (!_loadingAgenda && _agendaError == null) ...[
+          AttendanceKpiPanel(kpi: _attendanceKpi, compact: true),
+          const SizedBox(height: 18),
+        ],
         _HomeTopActionsStrip(
           onNewPatient: _openCreatePatient,
           onScheduleAppointment: _openGlobalScheduleAppointment,
@@ -1259,6 +1270,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                                     ),
                                   ],
                                 ),
+                              if (!_loadingAgenda && _agendaError == null) ...[
+                                const SizedBox(height: 14),
+                                AttendanceKpiPanel(
+                                  kpi: _attendanceKpi,
+                                  compact: true,
+                                ),
+                              ],
                               if (pendingList.isNotEmpty) ...[
                                 const SizedBox(height: 20),
                                 _WebPendingCard(
