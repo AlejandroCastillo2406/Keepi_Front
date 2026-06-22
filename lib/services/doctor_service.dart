@@ -4,6 +4,7 @@ import '../models/consultation_context.dart';
 import '../models/prior_document_item.dart';
 import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
+import '../utils/attendance_kpi.dart';
 import '../providers/consultation_bootstrap_provider.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
@@ -143,6 +144,13 @@ class DoctorService {
       '/api/v1/doctors/patients/$patientId/consultation-context',
     );
     return ConsultationContext.fromJson(res.data ?? const {});
+  }
+
+  Future<AttendanceStatsData> fetchDoctorAttendanceStats() async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/api/v1/doctors/attendance-stats',
+    );
+    return AttendanceStatsData.fromJson(res.data ?? const {});
   }
 
   Future<PatientProfileBootstrapData> fetchPatientProfileBootstrap(

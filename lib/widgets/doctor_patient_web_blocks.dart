@@ -3,8 +3,7 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
-import '../models/attendance_kpi.dart';
-import '../widgets/attendance_kpi_panel.dart';
+import '../utils/attendance_kpi.dart';
 
 /// Colores del avatar/etiqueta según sexo del paciente.
 class PatientAvatarTheme {
@@ -287,15 +286,13 @@ class DoctorPatientStatsGrid extends StatelessWidget {
     required this.totalAnalysis,
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
-    required this.timelineEvents,
-    this.attendanceKpi,
+    this.attendanceRatePercent,
   });
 
   final int totalAnalysis;
   final int uploadedAnalysis;
   final int pendingAnalysis;
-  final int timelineEvents;
-  final AttendanceKpi? attendanceKpi;
+  final double? attendanceRatePercent;
 
   @override
   Widget build(BuildContext context) {
@@ -332,23 +329,59 @@ class DoctorPatientStatsGrid extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _StatGridCard(
-                value: timelineEvents,
-                label: 'EVENTOS',
-                valueColor: KeepiColors.slate,
+              child: _AttendancePercentGridCard(
+                ratePercent: attendanceRatePercent,
               ),
             ),
           ],
         ),
-        if (attendanceKpi != null) ...[
-          const SizedBox(height: 10),
-          AttendanceKpiPanel(
-            kpi: attendanceKpi!,
-            compact: true,
-            showTitle: true,
+      ],
+    );
+  }
+}
+
+class _AttendancePercentGridCard extends StatelessWidget {
+  const _AttendancePercentGridCard({required this.ratePercent});
+
+  final double? ratePercent;
+
+  @override
+  Widget build(BuildContext context) {
+    final level = AttendanceKpi.levelFor(ratePercent);
+    final color = AttendanceKpi.colorForLevel(level);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            AttendanceKpi.displayPercent(ratePercent),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: color,
+              height: 1,
+              letterSpacing: -0.8,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'ASISTENCIA',
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.3,
+              color: color.withValues(alpha: 0.85),
+            ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
@@ -492,8 +525,7 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
     required this.totalAnalysis,
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
-    required this.timelineEvents,
-    this.attendanceKpi,
+    this.attendanceRatePercent,
     this.sex,
     this.ageYears,
     this.bloodType,
@@ -514,8 +546,7 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
   final int totalAnalysis;
   final int uploadedAnalysis;
   final int pendingAnalysis;
-  final int timelineEvents;
-  final AttendanceKpi? attendanceKpi;
+  final double? attendanceRatePercent;
   final String? sex;
   final int? ageYears;
   final String? bloodType;
@@ -552,8 +583,7 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
       totalAnalysis: totalAnalysis,
       uploadedAnalysis: uploadedAnalysis,
       pendingAnalysis: pendingAnalysis,
-      timelineEvents: timelineEvents,
-      attendanceKpi: attendanceKpi,
+      attendanceRatePercent: attendanceRatePercent,
     );
 
     if (wide) {
@@ -961,22 +991,68 @@ class DoctorPatientWebHeaderCard extends StatelessWidget {
 }
 
 /// Barra horizontal de métricas del paciente (web).
+/// KPIs de asistencia para el dashboard del médico.
+class DoctorAttendanceOverviewStrip extends StatelessWidget {
+  const DoctorAttendanceOverviewStrip({
+    super.key,
+    required this.attended,
+    required this.noShow,
+    required this.ratePercent,
+  });
+
+  final int attended;
+  final int noShow;
+  final double? ratePercent;
+
+  @override
+  Widget build(BuildContext context) {
+    final rateColor = AttendanceKpi.colorForPercent(ratePercent);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            _DoctorPatientStatCell(value: attended, label: 'ASISTIÓ'),
+            const _DoctorPatientStatDivider(),
+            _DoctorPatientStatCell(
+              value: noShow,
+              label: 'NO ASISTIÓ',
+              accent: noShow > 0,
+            ),
+            const _DoctorPatientStatDivider(),
+            _DoctorPatientAttendanceCell(
+              ratePercent: ratePercent,
+              color: rateColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class DoctorPatientWebStatsBar extends StatelessWidget {
   const DoctorPatientWebStatsBar({
     super.key,
     required this.totalAnalysis,
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
-    required this.timelineEvents,
+    this.attendanceRatePercent,
   });
 
   final int totalAnalysis;
   final int uploadedAnalysis;
   final int pendingAnalysis;
-  final int timelineEvents;
+  final double? attendanceRatePercent;
 
   @override
   Widget build(BuildContext context) {
+    final attendanceColor =
+        AttendanceKpi.colorForPercent(attendanceRatePercent);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -996,7 +1072,55 @@ class DoctorPatientWebStatsBar extends StatelessWidget {
             const _DoctorPatientStatDivider(),
             _DoctorPatientStatCell(value: pendingAnalysis, label: 'PENDIENTES'),
             const _DoctorPatientStatDivider(),
-            _DoctorPatientStatCell(value: timelineEvents, label: 'EVENTOS'),
+            _DoctorPatientAttendanceCell(
+              ratePercent: attendanceRatePercent,
+              color: attendanceColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DoctorPatientAttendanceCell extends StatelessWidget {
+  const _DoctorPatientAttendanceCell({
+    required this.ratePercent,
+    required this.color,
+  });
+
+  final double? ratePercent;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AttendanceKpi.displayPercent(ratePercent),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1,
+                letterSpacing: -0.8,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'ASISTENCIA',
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.3,
+                color: color.withValues(alpha: 0.85),
+              ),
+            ),
           ],
         ),
       ),

@@ -7,7 +7,6 @@ import '../../core/app_theme.dart';
 import '../../core/web_layout.dart';
 import '../../models/consultation_context.dart';
 import '../../models/timeline_event.dart';
-import '../../models/attendance_kpi.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patients_cache_provider.dart';
 import '../../services/api_client.dart';
@@ -414,9 +413,6 @@ class _DoctorPatientProfileScreenState
     required bool wide,
   }) {
     final ctx = _clinicalContext;
-    final attendanceKpi = ctx != null
-        ? AttendanceKpi.fromStats(ctx.stats)
-        : null;
     return DoctorPatientSummaryHeaderRow(
       name: ctx?.patientName ?? widget.patientName,
       email: ctx?.patientEmail ?? widget.patientEmail,
@@ -427,8 +423,7 @@ class _DoctorPatientProfileScreenState
       totalAnalysis: _analysisRequests.length,
       uploadedAnalysis: completedCount,
       pendingAnalysis: pendingCount,
-      timelineEvents: _timeline.length,
-      attendanceKpi: attendanceKpi,
+      attendanceRatePercent: ctx?.stats.attendanceRatePercent,
       onEditAge: () => _editClinicalAge(),
       onEditBloodType: () => _editClinicalBloodType(),
       onEditWeight: () => _editClinicalWeight(),

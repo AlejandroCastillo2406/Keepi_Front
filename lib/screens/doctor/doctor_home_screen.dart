@@ -4,8 +4,6 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../../models/attendance_kpi.dart';
-import '../../widgets/attendance_kpi_panel.dart';
 import '../../core/app_theme.dart';
 import '../../core/decorative_background.dart';
 import '../../core/web_layout.dart';
@@ -25,6 +23,8 @@ import '../common/storage_choice_flow.dart';
 import '../../widgets/doctor_note_field.dart';
 import '../../widgets/doctor_appointment_slot_picker.dart';
 import '../../widgets/doctor_pending_appointment_review_sheet.dart';
+import '../../widgets/doctor_patient_web_blocks.dart';
+import '../../utils/attendance_kpi.dart';
 import 'doctor_calendar_tab.dart';
 import 'documentos_screen.dart';
 import '../../widgets/home_added_search_section.dart';
@@ -119,6 +119,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   String? _agendaError;
   int _slotDurationMinutes = 30;
   final Set<String> _markingAttendanceIds = {};
+  AttendanceStatsData? _attendanceStats;
+  bool _loadingAttendanceStats = false;
 
   // Storage onboarding
   final FirstRunStorageGate _storageGate = FirstRunStorageGate();
@@ -151,7 +153,25 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     await Future.wait([
       _loadPatients(force: force),
       _loadAgenda(),
+      _loadAttendanceStats(),
     ]);
+  }
+
+  Future<void> _loadAttendanceStats() async {
+    if (!mounted) return;
+    setState(() => _loadingAttendanceStats = true);
+    try {
+      final stats =
+          await DoctorService(context.read<ApiClient>()).fetchDoctorAttendanceStats();
+      if (!mounted) return;
+      setState(() {
+        _attendanceStats = stats;
+        _loadingAttendanceStats = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingAttendanceStats = false);
+    }
   }
 
   Future<void> _loadPatients({bool force = false}) async {
@@ -316,11 +336,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         .toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
   }
-
-  AttendanceKpi get _attendanceKpi => AttendanceKpi.fromAppointments(
-        _agenda,
-        slotMinutes: _slotDurationMinutes,
-      );
 
   static const _noScheduledAppointmentsMessage = 'No hay citas agendadas.';
 
@@ -667,6 +682,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           backgroundColor: status == 'attended' ? KeepiColors.green : null,
         ),
       );
+      await _loadAttendanceStats();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1001,10 +1017,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
             message: _noScheduledAppointmentsMessage,
           ),
         const SizedBox(height: 18),
-        if (!_loadingAgenda && _agendaError == null) ...[
-          AttendanceKpiPanel(kpi: _attendanceKpi, compact: true),
-          const SizedBox(height: 18),
-        ],
         _HomeTopActionsStrip(
           onNewPatient: _openCreatePatient,
           onScheduleAppointment: _openGlobalScheduleAppointment,
@@ -1244,6 +1256,22 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const _SectionDivider(
+                                tag: 'ASISTENCIA GENERAL',
+                                count: 0,
+                              ),
+                              const SizedBox(height: 14),
+                              if (loadingFirst || _loadingAttendanceStats)
+                                const _LoadingBox()
+                              else if (_agendaError != null)
+                                const SizedBox.shrink()
+                              else
+                                DoctorAttendanceOverviewStrip(
+                                  attended: _attendanceStats?.attended ?? 0,
+                                  noShow: _attendanceStats?.noShow ?? 0,
+                                  ratePercent: _attendanceStats?.ratePercent,
+                                ),
+                              const SizedBox(height: 20),
+                              const _SectionDivider(
                                 tag: 'RESUMEN DE ACTIVIDAD',
                                 count: 0,
                               ),
@@ -1270,13 +1298,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                                     ),
                                   ],
                                 ),
-                              if (!_loadingAgenda && _agendaError == null) ...[
-                                const SizedBox(height: 14),
-                                AttendanceKpiPanel(
-                                  kpi: _attendanceKpi,
-                                  compact: true,
-                                ),
-                              ],
                               if (pendingList.isNotEmpty) ...[
                                 const SizedBox(height: 20),
                                 _WebPendingCard(
