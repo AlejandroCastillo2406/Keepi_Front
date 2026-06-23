@@ -48,29 +48,52 @@ class ConsultationStats {
     this.analysisUploaded = 0,
     this.analysisPending = 0,
     this.timelineEvents = 0,
-    this.appointmentsAttended = 0,
-    this.appointmentsNoShow = 0,
-    this.attendanceRatePercent,
+    this.attendanceAttended = 0,
+    this.attendanceNoShow = 0,
+    this.attendancePending = 0,
+    this.attendanceAttendedPercent = 0,
+    this.attendanceNoShowPercent = 0,
   });
 
   final int analysisRequested;
   final int analysisUploaded;
   final int analysisPending;
   final int timelineEvents;
-  final int appointmentsAttended;
-  final int appointmentsNoShow;
-  final double? attendanceRatePercent;
+  final int attendanceAttended;
+  final int attendanceNoShow;
+  final int attendancePending;
+  final double attendanceAttendedPercent;
+  final double attendanceNoShowPercent;
+
+  /// Porcentaje de asistencia para KPIs; null si aún no hay citas registradas.
+  double? get attendanceRatePercent {
+    if (attendanceAttended + attendanceNoShow == 0) return null;
+    if (attendanceAttendedPercent > 0) return attendanceAttendedPercent;
+    return attendanceAttended * 100.0 / (attendanceAttended + attendanceNoShow);
+  }
 
   factory ConsultationStats.fromJson(Map<String, dynamic> json) {
+    final attended = json['attendance_attended'] as int? ??
+        json['appointments_attended'] as int? ??
+        0;
+    final noShow = json['attendance_no_show'] as int? ??
+        json['appointments_no_show'] as int? ??
+        0;
+    final attendedPct =
+        (json['attendance_attended_percent'] as num?)?.toDouble() ??
+            (json['attendance_rate_percent'] as num?)?.toDouble() ??
+            0.0;
     return ConsultationStats(
       analysisRequested: json['analysis_requested'] as int? ?? 0,
       analysisUploaded: json['analysis_uploaded'] as int? ?? 0,
       analysisPending: json['analysis_pending'] as int? ?? 0,
       timelineEvents: json['timeline_events'] as int? ?? 0,
-      appointmentsAttended: json['appointments_attended'] as int? ?? 0,
-      appointmentsNoShow: json['appointments_no_show'] as int? ?? 0,
-      attendanceRatePercent:
-          (json['attendance_rate_percent'] as num?)?.toDouble(),
+      attendanceAttended: attended,
+      attendanceNoShow: noShow,
+      attendancePending: json['attendance_pending'] as int? ?? 0,
+      attendanceAttendedPercent: attendedPct,
+      attendanceNoShowPercent:
+          (json['attendance_no_show_percent'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

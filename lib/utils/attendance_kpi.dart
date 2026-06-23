@@ -51,24 +51,62 @@ class AttendanceKpi {
         return 'SIN DATOS';
     }
   }
+
+  static int _readInt(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final v = json[key];
+      if (v is num) return v.toInt();
+    }
+    return 0;
+  }
+
+  static double? _readRatePercent(Map<String, dynamic> json) {
+    final attended = _readInt(json, [
+      'attendance_attended',
+      'appointments_attended',
+    ]);
+    final noShow = _readInt(json, [
+      'attendance_no_show',
+      'appointments_no_show',
+    ]);
+    if (attended + noShow == 0) return null;
+
+    for (final key in [
+      'attendance_attended_percent',
+      'attendance_rate_percent',
+    ]) {
+      final v = json[key];
+      if (v is num) return v.toDouble();
+    }
+    return attended * 100.0 / (attended + noShow);
+  }
 }
 
 class AttendanceStatsData {
   const AttendanceStatsData({
     this.attended = 0,
     this.noShow = 0,
+    this.pending = 0,
     this.ratePercent,
   });
 
   final int attended;
   final int noShow;
+  final int pending;
   final double? ratePercent;
 
   factory AttendanceStatsData.fromJson(Map<String, dynamic> json) {
     return AttendanceStatsData(
-      attended: json['appointments_attended'] as int? ?? 0,
-      noShow: json['appointments_no_show'] as int? ?? 0,
-      ratePercent: (json['attendance_rate_percent'] as num?)?.toDouble(),
+      attended: AttendanceKpi._readInt(json, [
+        'attendance_attended',
+        'appointments_attended',
+      ]),
+      noShow: AttendanceKpi._readInt(json, [
+        'attendance_no_show',
+        'appointments_no_show',
+      ]),
+      pending: AttendanceKpi._readInt(json, ['attendance_pending']),
+      ratePercent: AttendanceKpi._readRatePercent(json),
     );
   }
 }
