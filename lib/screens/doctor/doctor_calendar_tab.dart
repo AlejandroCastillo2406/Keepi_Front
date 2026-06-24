@@ -10,6 +10,7 @@ import '../../services/scheduling_service.dart';
 import '../../widgets/doctor_note_field.dart';
 import '../../widgets/doctor_appointment_slot_picker.dart';
 import '../../widgets/doctor_pending_appointment_review_sheet.dart';
+import '../../widgets/doctor_procedure_schedule_sheet.dart';
 
 enum _AgendaView { today, week }
 
@@ -30,6 +31,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   bool _loading = true;
   String? _error;
   List<AppointmentDto> _appointments = [];
+  List<ProcedureBlockDto> _procedures = [];
   ConsultationScheduleDto? _consultationSchedule;
   _AgendaView _agendaView = _AgendaView.today;
 
@@ -58,6 +60,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       if (!mounted) return;
       setState(() {
         _appointments = payload.appointments;
+        _procedures = payload.procedures;
         _consultationSchedule = payload.consultationSchedule;
         _loading = false;
       });
@@ -143,6 +146,125 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       return !a.appointmentDate!.toLocal().isBefore(now);
     }).toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
+  }
+
+  List<ProcedureBlockDto> get _selectedDayProcedures => _procedures
+      .where((p) {
+        final d = p.startAt.toLocal();
+        return d.year == _selectedDay.year &&
+            d.month == _selectedDay.month &&
+            d.day == _selectedDay.day;
+      })
+      .toList()
+    ..sort((a, b) => a.startAt.compareTo(b.startAt));
+
+  String _timeRangeLabel(DateTime start, DateTime end) {
+    return '${_hour(start.toLocal())} - ${_hour(end.toLocal())}';
+  }
+
+  Future<void> _scheduleProcedure() async {
+    final draft = await showDoctorProcedureScheduleSheet(
+      context,
+      initialDate: _selectedDay,
+      consultationSchedule: _consultationSchedule,
+      appointments: _appointments,
+      procedures: _procedures,
+    );
+    if (draft == null || !mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: KeepiColors.orange),
+      ),
+    );
+
+    try {
+      await AppointmentService(context.read<ApiClient>()).createDoctorProcedure(
+        title: draft.title,
+        startAt: draft.startAt,
+        endAt: draft.endAt,
+      );
+      if (mounted) Navigator.pop(context);
+      _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Procedimiento agendado'),
+            backgroundColor: KeepiColors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppointmentService.messageFromDio(e)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openProcedure(ProcedureBlockDto procedure) async {
+    final start = procedure.startAt.toLocal();
+    final end = procedure.endAt.toLocal();
+    final delete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          procedure.title,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          '${_two(start.day)}/${_two(start.month)}/${start.year}\n'
+          '${_timeRangeLabel(start, end)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cerrar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE11D48),
+            ),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (delete != true || !mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: KeepiColors.orange),
+      ),
+    );
+
+    try {
+      await AppointmentService(context.read<ApiClient>())
+          .deleteDoctorProcedure(procedure.id);
+      if (mounted) Navigator.pop(context);
+      _load();
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppointmentService.messageFromDio(e)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   List<AppointmentDto> get _selectedDayRows => _appointments.where((a) {
@@ -733,6 +855,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   @override
   Widget build(BuildContext context) {
     final dayRows = _selectedDayRows;
+    final procedureRows = _selectedDayProcedures;
     final pendingRows = _pendingRows;
     final approvalRows = _approvalPendingRows;
     final webWide = isWebWide(context);
@@ -755,6 +878,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                     flex: 7,
                     child: _buildMainAgendaCard(
                       dayRows: dayRows,
+                      procedureRows: procedureRows,
                       approvalRows: approvalRows,
                       pendingRows: pendingRows,
                       loading: _loading,
@@ -786,9 +910,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
           _buildAgendaHero(compact: true),
           const SizedBox(height: 16),
           _buildPrimaryScheduleButton(expanded: true),
+          const SizedBox(height: 12),
+          _buildProcedureScheduleButton(expanded: true),
           const SizedBox(height: 16),
           _buildMainAgendaCard(
             dayRows: dayRows,
+            procedureRows: procedureRows,
             approvalRows: approvalRows,
             pendingRows: pendingRows,
             loading: _loading,
@@ -992,8 +1119,44 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     return expanded ? SizedBox(width: double.infinity, child: button) : button;
   }
 
+  Widget _buildProcedureScheduleButton({bool expanded = false}) {
+    const accent = Color(0xFF7C3AED);
+    final button = InkWell(
+      onTap: _scheduleProcedure,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: accent.withValues(alpha: 0.08),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.medical_services_outlined, color: accent, size: 24),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Text(
+                'Procedimiento',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: accent, size: 24),
+          ],
+        ),
+      ),
+    );
+    return expanded ? SizedBox(width: double.infinity, child: button) : button;
+  }
+
   Widget _buildMainAgendaCard({
     required List<AppointmentDto> dayRows,
+    required List<ProcedureBlockDto> procedureRows,
     required List<AppointmentDto> approvalRows,
     required List<AppointmentDto> pendingRows,
     required bool loading,
@@ -1046,6 +1209,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                   )
                 : _buildTimelineAgenda(
                     dayRows: dayRows,
+                    procedureRows: procedureRows,
                     loading: loading,
                     error: error,
                     compact: compact,
@@ -1610,6 +1774,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       children: [
         if (!compact) ...[
           _buildPrimaryScheduleButton(),
+          const SizedBox(height: 12),
+          _buildProcedureScheduleButton(),
           const SizedBox(height: 20),
         ],
         Container(
@@ -1844,11 +2010,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
   Widget _buildTimelineAgenda({
     required List<AppointmentDto> dayRows,
+    required List<ProcedureBlockDto> procedureRows,
     required bool loading,
     required String? error,
     bool compact = false,
   }) {
-    final hours = _visibleHoursFor(dayRows);
+    final hours = _visibleHoursFor(dayRows, procedureRows);
+    final timelineItems = _buildDayTimelineItems(dayRows, procedureRows);
+    final hasItems = dayRows.isNotEmpty || procedureRows.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1891,13 +2060,13 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                   for (final h in hours) _timeGridRow(h, compact: compact),
                 ],
               ),
-              if (dayRows.isEmpty)
+              if (!hasItems)
                 Positioned.fill(child: _emptyDayOverlay())
               else
                 Column(
                   children: [
                     const SizedBox(height: 44),
-                    for (final a in dayRows) _buildAppointmentFromDto(a),
+                    ...timelineItems,
                   ],
                 ),
             ],
@@ -1906,7 +2075,33 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
   }
 
-  List<int> _visibleHoursFor(List<AppointmentDto> rows) {
+  List<Widget> _buildDayTimelineItems(
+    List<AppointmentDto> dayRows,
+    List<ProcedureBlockDto> procedureRows,
+  ) {
+    final entries = <({DateTime start, Widget widget})>[];
+    for (final appointment in dayRows) {
+      final start = appointment.appointmentDate?.toLocal();
+      if (start == null) continue;
+      entries.add((
+        start: start,
+        widget: _buildAppointmentFromDto(appointment),
+      ));
+    }
+    for (final procedure in procedureRows) {
+      entries.add((
+        start: procedure.startAt.toLocal(),
+        widget: _buildProcedureFromDto(procedure),
+      ));
+    }
+    entries.sort((a, b) => a.start.compareTo(b.start));
+    return entries.map((entry) => entry.widget).toList();
+  }
+
+  List<int> _visibleHoursFor(
+    List<AppointmentDto> rows,
+    List<ProcedureBlockDto> procedures,
+  ) {
     final scheduleDay = _scheduleForDay(_selectedDay);
 
     if (scheduleDay != null) {
@@ -1915,11 +2110,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       return [for (var h = startHour; h <= endHour; h++) h];
     }
 
-    if (rows.isEmpty) return [8, 9, 10, 11, 12, 13, 14];
-    final hours = rows
-        .where((a) => a.appointmentDate != null)
-        .map((a) => a.appointmentDate!.toLocal().hour)
-        .toList();
+    final hours = <int>[
+      ...rows
+          .where((a) => a.appointmentDate != null)
+          .map((a) => a.appointmentDate!.toLocal().hour),
+      ...procedures.map((p) => p.startAt.toLocal().hour),
+      ...procedures.map((p) => p.endAt.toLocal().hour),
+    ];
+    if (hours.isEmpty) return [8, 9, 10, 11, 12, 13, 14];
     final minHour = (hours.reduce((a, b) => a < b ? a : b) - 1).clamp(7, 21) as int;
     final maxHour = (hours.reduce((a, b) => a > b ? a : b) + 2).clamp(9, 22) as int;
     return [for (var h = minHour; h <= maxHour; h++) h];
@@ -1982,6 +2180,19 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildProcedureFromDto(ProcedureBlockDto procedure) {
+    const accent = Color(0xFF7C3AED);
+    return _buildAppointmentItem(
+      time: _timeRangeLabel(procedure.startAt, procedure.endAt),
+      name: procedure.title,
+      type: 'PROCEDIMIENTO',
+      description: 'Horario bloqueado para citas',
+      typeColor: accent,
+      softColor: accent.withValues(alpha: 0.08),
+      onTap: () => _openProcedure(procedure),
     );
   }
 

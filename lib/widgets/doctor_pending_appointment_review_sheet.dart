@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/appointment_service.dart';
 import '../services/scheduling_service.dart';
 import '../widgets/doctor_appointment_slot_picker.dart';
+import 'notification_web_dialog.dart';
 
 /// Detalle y acciones para citas solicitadas por el paciente en la web.
 class DoctorPendingAppointmentReviewSheet {
@@ -14,11 +15,16 @@ class DoctorPendingAppointmentReviewSheet {
     required String appointmentId,
     VoidCallback? onChanged,
   }) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _DoctorPendingAppointmentReviewBody(
+    final theme = NotificationDialogTheme.appointmentPending();
+    return NotificationWebDialog.show(
+      context,
+      title: theme.titleFallback,
+      tag: theme.tag,
+      accent: theme.accent,
+      icon: theme.icon,
+      maxWidth: 580,
+      maxHeightFactor: 0.9,
+      child: _DoctorPendingAppointmentReviewBody(
         appointmentId: appointmentId,
         onChanged: onChanged,
       ),
@@ -241,157 +247,152 @@ class _DoctorPendingAppointmentReviewBodyState
     final canManage = _canManage(appt);
     final hint = appt != null ? _hintFor(appt) : null;
 
-    final body = Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-      padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: KeepiColors.slate.withValues(alpha: 0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: _loading
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 32),
-              child: Center(
-                child: CircularProgressIndicator(color: KeepiColors.orange),
-              ),
-            )
-          : _error != null
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_error!, style: const TextStyle(color: KeepiColors.slate)),
-                    const SizedBox(height: 16),
-                    OutlinedButton(onPressed: _load, child: const Text('Reintentar')),
-                  ],
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: KeepiColors.skyBlue.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.event_available_outlined,
+    final body = _loading
+        ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: CircularProgressIndicator(color: KeepiColors.orange),
+            ),
+          )
+        : _error != null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, style: const TextStyle(color: KeepiColors.slate)),
+                  const SizedBox(height: 16),
+                  OutlinedButton(onPressed: _load, child: const Text('Reintentar')),
+                ],
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (appt != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Text(
+                        _titleFor(appt),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: KeepiColors.slate,
+                        ),
+                      ),
+                    ),
+                  NotificationInfoTile(
+                    icon: Icons.person_outline_rounded,
+                    label: 'Paciente',
+                    value: (appt?.patientName ?? '').trim().isNotEmpty
+                        ? appt!.patientName!.trim()
+                        : 'Paciente',
+                    accent: KeepiColors.skyBlue,
+                  ),
+                  const SizedBox(height: 12),
+                  NotificationInfoTile(
+                    icon: Icons.schedule_rounded,
+                    label: 'Fecha y hora',
+                    value: appt != null ? _formatWhen(appt) : '—',
+                    accent: KeepiColors.skyBlue,
+                  ),
+                  const SizedBox(height: 12),
+                  NotificationInfoTile(
+                    icon: Icons.notes_rounded,
+                    label: 'Motivo',
+                    value: appt != null && appt.reason.trim().isNotEmpty
+                        ? appt.reason.trim()
+                        : 'Consulta en línea',
+                    accent: KeepiColors.skyBlue,
+                  ),
+                  if (hint != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: KeepiColors.skyBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: KeepiColors.skyBlue.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            size: 18,
                             color: KeepiColors.skyBlue,
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            appt != null ? _titleFor(appt) : 'Cita pendiente',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: KeepiColors.slate,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              hint,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: KeepiColors.slate,
+                                height: 1.4,
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          onPressed: _busy ? null : () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    _InfoRow(
-                      label: 'Paciente',
-                      value: (appt?.patientName ?? '').trim().isNotEmpty
-                          ? appt!.patientName!.trim()
-                          : 'Paciente',
-                    ),
-                    const SizedBox(height: 10),
-                    _InfoRow(label: 'Fecha y hora', value: _formatWhen(appt!)),
-                    const SizedBox(height: 10),
-                    _InfoRow(
-                      label: 'Motivo',
-                      value: appt.reason.trim().isEmpty
-                          ? 'Consulta en línea'
-                          : appt.reason.trim(),
-                    ),
-                    if (hint != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        hint,
-                        style: const TextStyle(color: KeepiColors.slateLight),
+                        ],
                       ),
-                    ],
-                    if (!canManage) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        appt.status == 'scheduled'
-                            ? 'Esta cita ya fue confirmada.'
-                            : 'Esta solicitud ya fue gestionada.',
-                        style: const TextStyle(color: KeepiColors.slateLight),
-                      ),
-                    ],
-                    if (canManage) ...[
-                      const SizedBox(height: 20),
-                      if (_showConfirm(appt))
-                        FilledButton(
-                          onPressed: _busy ? null : _confirm,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: KeepiColors.orange,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text(
-                            'Confirmar',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      if (_showAssignDate(appt)) ...[
-                        FilledButton(
-                          onPressed: _busy ? null : _assignDate,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: KeepiColors.orange,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text(
-                            'Asignar fecha',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ],
-                      if (_showReschedule(appt)) ...[
-                        if (_showConfirm(appt) || _showAssignDate(appt))
-                          const SizedBox(height: 10),
-                        OutlinedButton(
-                          onPressed: _busy ? null : _reschedule,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text(
-                            'Reprogramar',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      TextButton(
-                        onPressed: _busy ? null : _cancel,
-                        child: Text(
-                          appt.status == 'pending_doctor_approval'
-                              ? 'Cancelar solicitud'
-                              : 'Rechazar',
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
+                    ),
                   ],
-                ),
-    );
+                  if (!canManage && appt != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      appt.status == 'scheduled'
+                          ? 'Esta cita ya fue confirmada.'
+                          : 'Esta solicitud ya fue gestionada.',
+                      style: const TextStyle(color: KeepiColors.slateLight),
+                    ),
+                  ],
+                  if (canManage && appt != null) ...[
+                    const SizedBox(height: 20),
+                    if (_showConfirm(appt))
+                      NotificationPrimaryButton(
+                        label: 'CONFIRMAR CITA',
+                        icon: Icons.check_circle_outline_rounded,
+                        accent: KeepiColors.green,
+                        onPressed: _busy ? () {} : _confirm,
+                      ),
+                    if (_showAssignDate(appt)) ...[
+                      if (_showConfirm(appt)) const SizedBox(height: 10),
+                      NotificationPrimaryButton(
+                        label: 'ASIGNAR FECHA',
+                        icon: Icons.event_rounded,
+                        accent: KeepiColors.orange,
+                        onPressed: _busy ? () {} : _assignDate,
+                      ),
+                    ],
+                    if (_showReschedule(appt)) ...[
+                      if (_showConfirm(appt) || _showAssignDate(appt))
+                        const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _reschedule,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: KeepiColors.skyBlue,
+                          side: const BorderSide(color: KeepiColors.skyBlue),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        icon: const Icon(Icons.edit_calendar_outlined),
+                        label: const Text(
+                          'Reprogramar',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: _busy ? null : _cancel,
+                      child: Text(
+                        appt.status == 'pending_doctor_approval'
+                            ? 'Cancelar solicitud'
+                            : 'Rechazar',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ],
+              );
 
     if (!_busy) return body;
 
@@ -401,11 +402,7 @@ class _DoctorPendingAppointmentReviewBodyState
         body,
         Positioned.fill(
           child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(20),
-            ),
+            color: Colors.white.withValues(alpha: 0.88),
             child: const Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -420,40 +417,6 @@ class _DoctorPendingAppointmentReviewBodyState
                 ),
               ],
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: KeepiColors.slateLight,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: KeepiColors.slate,
-            height: 1.4,
           ),
         ),
       ],

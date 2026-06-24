@@ -47,7 +47,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
     try {
       final svc = DoctorService(context.read<ApiClient>());
       final events = await svc.fetchPatientTimeline(widget.patientId);
-
+      
       if (!mounted) return;
       setState(() {
         _events = events
@@ -81,7 +81,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
         elevation: 0,
         scrolledUnderElevation: 0,
         title: Text(
-          'Historial: ${widget.patientName}',
+          'Historial: ${widget.patientName}', 
           style: const TextStyle(
             color: KeepiColors.slate,
             fontWeight: FontWeight.bold,
@@ -149,7 +149,7 @@ class _DoctorPatientTimelineScreenState extends State<DoctorPatientTimelineScree
             ),
             const SizedBox(height: 16),
             const Text(
-              'Aún no hay eventos en el historial',
+              'Aún no hay eventos en el historial', 
               style: TextStyle(
                 color: KeepiColors.slateLight,
                 fontWeight: FontWeight.w600,

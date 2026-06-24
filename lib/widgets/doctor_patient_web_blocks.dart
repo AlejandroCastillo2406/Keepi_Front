@@ -287,12 +287,16 @@ class DoctorPatientStatsGrid extends StatelessWidget {
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
     this.attendanceRatePercent,
+    this.attendanceAttended = 0,
+    this.attendanceNoShow = 0,
   });
 
   final int totalAnalysis;
   final int uploadedAnalysis;
   final int pendingAnalysis;
   final double? attendanceRatePercent;
+  final int attendanceAttended;
+  final int attendanceNoShow;
 
   @override
   Widget build(BuildContext context) {
@@ -331,6 +335,8 @@ class DoctorPatientStatsGrid extends StatelessWidget {
             Expanded(
               child: _AttendancePercentGridCard(
                 ratePercent: attendanceRatePercent,
+                attended: attendanceAttended,
+                noShow: attendanceNoShow,
               ),
             ),
           ],
@@ -341,13 +347,24 @@ class DoctorPatientStatsGrid extends StatelessWidget {
 }
 
 class _AttendancePercentGridCard extends StatelessWidget {
-  const _AttendancePercentGridCard({required this.ratePercent});
+  const _AttendancePercentGridCard({
+    required this.ratePercent,
+    this.attended = 0,
+    this.noShow = 0,
+  });
 
   final double? ratePercent;
+  final int attended;
+  final int noShow;
 
   @override
   Widget build(BuildContext context) {
-    final level = AttendanceKpi.levelFor(ratePercent);
+    final rate = AttendanceKpi.ratePercentFromCounts(
+      attended: attended,
+      noShow: noShow,
+      apiPercent: ratePercent,
+    );
+    final level = AttendanceKpi.levelFor(rate);
     final color = AttendanceKpi.colorForLevel(level);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
@@ -360,7 +377,11 @@ class _AttendancePercentGridCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            AttendanceKpi.displayPercent(ratePercent),
+            AttendanceKpi.displayPercent(
+              rate,
+              attended: attended,
+              noShow: noShow,
+            ),
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w800,
@@ -526,6 +547,8 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
     this.attendanceRatePercent,
+    this.attendanceAttended = 0,
+    this.attendanceNoShow = 0,
     this.sex,
     this.ageYears,
     this.bloodType,
@@ -547,6 +570,8 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
   final int uploadedAnalysis;
   final int pendingAnalysis;
   final double? attendanceRatePercent;
+  final int attendanceAttended;
+  final int attendanceNoShow;
   final String? sex;
   final int? ageYears;
   final String? bloodType;
@@ -584,6 +609,8 @@ class DoctorPatientSummaryHeaderRow extends StatelessWidget {
       uploadedAnalysis: uploadedAnalysis,
       pendingAnalysis: pendingAnalysis,
       attendanceRatePercent: attendanceRatePercent,
+      attendanceAttended: attendanceAttended,
+      attendanceNoShow: attendanceNoShow,
     );
 
     if (wide) {
@@ -1006,7 +1033,12 @@ class DoctorAttendanceOverviewStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rateColor = AttendanceKpi.colorForPercent(ratePercent);
+    final rate = AttendanceKpi.ratePercentFromCounts(
+      attended: attended,
+      noShow: noShow,
+      apiPercent: ratePercent,
+    );
+    final rateColor = AttendanceKpi.colorForPercent(rate);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1025,7 +1057,9 @@ class DoctorAttendanceOverviewStrip extends StatelessWidget {
             ),
             const _DoctorPatientStatDivider(),
             _DoctorPatientAttendanceCell(
-              ratePercent: ratePercent,
+              ratePercent: rate,
+              attended: attended,
+              noShow: noShow,
               color: rateColor,
             ),
           ],
@@ -1042,17 +1076,25 @@ class DoctorPatientWebStatsBar extends StatelessWidget {
     required this.uploadedAnalysis,
     required this.pendingAnalysis,
     this.attendanceRatePercent,
+    this.attendanceAttended = 0,
+    this.attendanceNoShow = 0,
   });
 
   final int totalAnalysis;
   final int uploadedAnalysis;
   final int pendingAnalysis;
   final double? attendanceRatePercent;
+  final int attendanceAttended;
+  final int attendanceNoShow;
 
   @override
   Widget build(BuildContext context) {
-    final attendanceColor =
-        AttendanceKpi.colorForPercent(attendanceRatePercent);
+    final rate = AttendanceKpi.ratePercentFromCounts(
+      attended: attendanceAttended,
+      noShow: attendanceNoShow,
+      apiPercent: attendanceRatePercent,
+    );
+    final attendanceColor = AttendanceKpi.colorForPercent(rate);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1073,7 +1115,9 @@ class DoctorPatientWebStatsBar extends StatelessWidget {
             _DoctorPatientStatCell(value: pendingAnalysis, label: 'PENDIENTES'),
             const _DoctorPatientStatDivider(),
             _DoctorPatientAttendanceCell(
-              ratePercent: attendanceRatePercent,
+              ratePercent: rate,
+              attended: attendanceAttended,
+              noShow: attendanceNoShow,
               color: attendanceColor,
             ),
           ],
@@ -1087,10 +1131,14 @@ class _DoctorPatientAttendanceCell extends StatelessWidget {
   const _DoctorPatientAttendanceCell({
     required this.ratePercent,
     required this.color,
+    this.attended = 0,
+    this.noShow = 0,
   });
 
   final double? ratePercent;
   final Color color;
+  final int attended;
+  final int noShow;
 
   @override
   Widget build(BuildContext context) {
@@ -1101,7 +1149,11 @@ class _DoctorPatientAttendanceCell extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              AttendanceKpi.displayPercent(ratePercent),
+              AttendanceKpi.displayPercent(
+                ratePercent,
+                attended: attended,
+                noShow: noShow,
+              ),
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,

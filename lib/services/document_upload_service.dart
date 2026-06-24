@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -49,9 +50,22 @@ class DocumentUploadService {
   DocumentUploadService(this._api);
   final ApiClient _api;
 
-  Future<AnalyzeResult> analyze(File file) async {
-    final name = file.path.split(RegExp(r'[/\\]')).last;
-    final multipart = await MultipartFile.fromFile(file.path, filename: name);
+  Future<AnalyzeResult> analyze({
+    File? file,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
+    if (file == null && fileBytes == null) {
+      throw Exception('Se requiere un archivo para analizar.');
+    }
+    final name = fileName?.trim().isNotEmpty == true
+        ? fileName!.trim()
+        : (file != null
+            ? file.path.split(RegExp(r'[/\\]')).last
+            : 'documento');
+    final multipart = fileBytes != null
+        ? MultipartFile.fromBytes(fileBytes, filename: name)
+        : await MultipartFile.fromFile(file!.path, filename: name);
     final formData = FormData.fromMap({'file': multipart});
     final res = await _api.dio.post<Map<String, dynamic>>(
       ApiEndpoints.documentsMobileAnalyze,
@@ -69,14 +83,25 @@ class DocumentUploadService {
   }
 
   Future<Map<String, dynamic>> saveAnalyzed({
-    required File file,
+    File? file,
+    Uint8List? fileBytes,
+    String? originalFileName,
     required String category,
     required String fileName,
     String? expiryDate,
     String? replacesDocumentId,
   }) async {
-    final pathName = file.path.split(RegExp(r'[/\\]')).last;
-    final multipart = await MultipartFile.fromFile(file.path, filename: pathName);
+    if (file == null && fileBytes == null) {
+      throw Exception('Se requiere un archivo para guardar.');
+    }
+    final pathName = originalFileName?.trim().isNotEmpty == true
+        ? originalFileName!.trim()
+        : (file != null
+            ? file.path.split(RegExp(r'[/\\]')).last
+            : 'documento');
+    final multipart = fileBytes != null
+        ? MultipartFile.fromBytes(fileBytes, filename: pathName)
+        : await MultipartFile.fromFile(file!.path, filename: pathName);
     final formData = FormData.fromMap({
       'file': multipart,
       'category': category,

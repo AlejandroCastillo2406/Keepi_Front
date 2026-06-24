@@ -31,10 +31,27 @@ class AttendanceKpi {
   static Color colorForPercent(double? percent) =>
       colorForLevel(levelFor(percent));
 
-  static String displayPercent(double? percent) {
-    if (percent == null) return '--';
-    final rounded = percent.round();
-    return '$rounded%';
+  /// Sin registros → null (--). Con registros y 0 asistió → 0.0 (0%).
+  static double? ratePercentFromCounts({
+    required int attended,
+    required int noShow,
+    double? apiPercent,
+  }) {
+    final recorded = attended + noShow;
+    if (recorded == 0) return null;
+    if (apiPercent != null) return apiPercent;
+    return attended * 100.0 / recorded;
+  }
+
+  static String displayPercent(
+    double? percent, {
+    int attended = 0,
+    int noShow = 0,
+  }) {
+    final recorded = attended + noShow;
+    if (recorded == 0) return '--';
+    final rate = percent ?? attended * 100.0 / recorded;
+    return '${rate.round()}%';
   }
 
   static String levelLabel(AttendanceLevel level) {

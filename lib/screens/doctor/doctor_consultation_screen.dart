@@ -444,6 +444,8 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       uploadedAnalysis: stats.analysisUploaded,
       pendingAnalysis: stats.analysisPending,
       attendanceRatePercent: stats.attendanceRatePercent,
+      attendanceAttended: stats.attendanceAttended,
+      attendanceNoShow: stats.attendanceNoShow,
       onEditAge: () => _editClinicalAge(),
       onEditBloodType: () => _editClinicalBloodType(),
       onEditWeight: () => _editClinicalWeight(),

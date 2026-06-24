@@ -846,6 +846,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     final dt = DateTime.tryParse(req.createdAt)?.toLocal();
     final day = dt?.day ?? 0;
     final monthAbbr = dt != null ? _monthsEsUpper[dt.month - 1] : '—';
+    final deadline = req.deadlineLabel;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -855,7 +856,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         tagLabel: 'ANÁLISIS',
         statusLabel: 'PENDIENTE',
         tagColor: KeepiColors.orange,
-        metaLine: 'Solicitado por tu médico',
+        metaLine: deadline != null
+            ? 'Entregar antes del $deadline'
+            : 'Solicitado por tu médico',
         title: 'Estudio por entregar',
         detail: req.description.trim().isEmpty ? 'Estudio solicitado' : req.description.trim(),
         icon: Icons.biotech_outlined,

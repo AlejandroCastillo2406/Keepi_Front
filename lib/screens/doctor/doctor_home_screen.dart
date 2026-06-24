@@ -223,7 +223,17 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       final schedSvc = SchedulingService(api);
       final now = DateTime.now();
       final from = DateTime(now.year, now.month, now.day);
-      final to = from.add(const Duration(days: 14));
+      final tomorrow = from.add(const Duration(days: 1));
+      // Fin del día de mañana — solo hoy y mañana en agenda del home.
+      final to = DateTime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
+        23,
+        59,
+        59,
+        999,
+      );
       final results = await Future.wait([
         apptSvc.fetchDoctorCalendar(from: from, to: to),
         schedSvc.fetchSettings(),
@@ -289,6 +299,21 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
   }
 
+  /// Todas las citas confirmadas de hoy y mañana, ordenadas por hora.
+  List<AppointmentDto> get _todayAndTomorrowAppointments {
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final endOfTomorrow = startOfToday.add(const Duration(days: 2));
+    return _agenda
+        .where((a) =>
+            _isConfirmedAppointment(a) &&
+            a.appointmentDate != null &&
+            !a.appointmentDate!.toLocal().isBefore(startOfToday) &&
+            a.appointmentDate!.toLocal().isBefore(endOfTomorrow))
+        .toList()
+      ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
+  }
+
   List<AppointmentDto> get _upcomingAppointments {
     final now = DateTime.now();
     return _agenda.where((a) {
@@ -305,6 +330,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           a.status == 'pending_doctor_proposal' ||
           a.status == 'pending_doctor_approval')
       .length;
+
+  /// Próxima cita confirmada de hoy o mañana cuyo horario aún no termina.
+  AppointmentDto? get _featuredNextAppointmentInRange {
+    final now = DateTime.now();
+    for (final a in _todayAndTomorrowAppointments) {
+      final end = _appointmentSlotEnd(a, _slotDurationMinutes);
+      if (end != null && end.isAfter(now)) return a;
+    }
+    return null;
+  }
 
   AppointmentDto? get _featuredNextAppointment {
     final now = DateTime.now();
@@ -983,7 +1018,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
 
     final nextAppt = _nextAppointment;
     final upcomingList = _dashboardUpcoming;
-    final pending = _pendingConfirmCount;
 
     final dashboard = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1083,18 +1117,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 
   Widget _buildWebHomeTab(AuthProvider auth) {
-    final today = _todaysAppointments;
-    final featured = _featuredNextAppointment;
-    final restOfToday = featured == null
-        ? today
-        : today.where((a) => a.id != featured.id).toList();
-    final upcoming = _dashboardUpcoming
-        .where((a) {
-          final d = a.appointmentDate?.toLocal();
-          return d == null || !_sameDay(d, DateTime.now());
-        })
-        .take(5)
-        .toList();
+    final featured = _featuredNextAppointmentInRange;
+    final allInRange = _todayAndTomorrowAppointments;
+    final restInRange = featured == null
+        ? allInRange
+        : allInRange.where((a) => a.id != featured.id).toList();
     final pendingList = _agenda
         .where((a) =>
             a.status == 'pending_patient_approval' ||
@@ -1147,8 +1174,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                                 children: [
                                   Expanded(
                                     child: _SectionDivider(
-                                      tag: 'AGENDA DE HOY',
-                                      count: today.length,
+                                      tag: 'AGENDA',
+                                      count: allInRange.length,
                                     ),
                                   ),
                                   TextButton(
@@ -1167,8 +1194,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                                   onRetry: _loadAgenda,
                                 )
                               else if (featured == null &&
-                                  today.isEmpty &&
-                                  upcoming.isEmpty)
+                                  allInRange.isEmpty)
                                 const _InlineEmpty(
                                   icon: Icons.event_available_outlined,
                                   message:
@@ -1201,36 +1227,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                                         _noScheduledAppointmentsMessage,
                                     featured: true,
                                   ),
-                                if (restOfToday.isNotEmpty) ...[
-                                  if (featured != null || today.isNotEmpty)
-                                    const SizedBox(height: 16),
-                                  _SectionDivider(
-                                    tag: 'MÁS HOY',
-                                    count: restOfToday.length,
-                                  ),
+                                if (restInRange.isNotEmpty) ...[
+                                  const SizedBox(height: 16),
+                                  const _HomeAgendaDivider(),
                                   const SizedBox(height: 14),
-                                ],
-                                for (final a in restOfToday)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: _AgendaCard(
-                                      appointment: a,
-                                      patients: _patients,
-                                      slotDurationMinutes: _slotDurationMinutes,
-                                      markingAttendance:
-                                          _markingAttendanceIds.contains(a.id),
-                                      onMarkAttendance: _markAttendance,
-                                      onTap: () => _openAgendaAppointment(a),
-                                    ),
-                                  ),
-                                if (upcoming.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  _SectionDivider(
-                                    tag: 'PRÓXIMOS DÍAS',
-                                    count: upcoming.length,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  for (final a in upcoming)
+                                  for (final a in restInRange)
                                     Padding(
                                       padding:
                                           const EdgeInsets.only(bottom: 10),
@@ -1595,6 +1596,15 @@ class _NextAppointmentHero extends StatelessWidget {
   String get _patientName =>
       patient?.name ?? appointment.patientName ?? 'Paciente';
 
+  String _dayLabel(DateTime? date) {
+    if (date == null) return '—';
+    final now = DateTime.now();
+    if (_sameDay(date, now)) return 'Hoy';
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    if (_sameDay(date, tomorrow)) return 'Mañana';
+    return '${_two(date.day)} ${_monthsEsUpper[date.month - 1]}';
+  }
+
   String _statusLabel() {
     switch (appointment.status) {
       case 'pending_patient_approval':
@@ -1705,7 +1715,8 @@ class _NextAppointmentHero extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(child: _buildContentBody(timeLabel, reason)),
+                    Expanded(
+                        child: _buildContentBody(timeLabel, reason, date)),
                     const SizedBox(width: 24),
                     _PatientAvatarLarge(initial: initial, size: 140),
                   ],
@@ -1720,7 +1731,8 @@ class _NextAppointmentHero extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: _buildContentBody(timeLabel, reason)),
+                    Expanded(
+                        child: _buildContentBody(timeLabel, reason, date)),
                     const SizedBox(width: 12),
                     _PatientAvatarLarge(
                       initial: initial,
@@ -1733,7 +1745,7 @@ class _NextAppointmentHero extends StatelessWidget {
     );
   }
 
-  Widget _buildContentBody(String timeLabel, String reason) {
+  Widget _buildContentBody(String timeLabel, String reason, DateTime? date) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1757,6 +1769,12 @@ class _NextAppointmentHero extends StatelessWidget {
               iconColor: KeepiColors.orange,
               label: 'Hora',
               value: timeLabel,
+            ),
+            _HeroInfoChip(
+              icon: Icons.calendar_today_outlined,
+              iconColor: KeepiColors.slate,
+              label: 'Día',
+              value: _dayLabel(date),
             ),
             _HeroInfoChip(
               icon: Icons.event_note_outlined,
@@ -2397,6 +2415,7 @@ class _HomeTopActionsStrip extends StatelessWidget {
             icon: Icons.person_add_alt_1_rounded,
             label: 'NUEVO PACIENTE',
             onPressed: onNewPatient,
+            accent: true,
           ),
         ),
         const SizedBox(width: 12),
@@ -2512,6 +2531,30 @@ class _StatCell extends StatelessWidget {
 }
 
 //   SECTION DIVIDER
+
+class _HomeAgendaDivider extends StatelessWidget {
+  const _HomeAgendaDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 18,
+          height: 1,
+          color: KeepiColors.slate.withValues(alpha: 0.45),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: KeepiColors.slate.withValues(alpha: 0.12),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _SectionDivider extends StatelessWidget {
   const _SectionDivider({required this.tag, required this.count});

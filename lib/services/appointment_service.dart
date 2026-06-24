@@ -83,20 +83,57 @@ class ConsultationScheduleDto {
   }
 }
 
+class ProcedureBlockDto {
+  ProcedureBlockDto({
+    required this.id,
+    required this.doctorId,
+    required this.title,
+    required this.startAt,
+    required this.endAt,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String doctorId;
+  final String title;
+  final DateTime startAt;
+  final DateTime endAt;
+  final DateTime createdAt;
+
+  factory ProcedureBlockDto.fromJson(Map<String, dynamic> json) {
+    return ProcedureBlockDto(
+      id: json['id']?.toString() ?? '',
+      doctorId: json['doctor_id']?.toString() ?? '',
+      title: json['title'] as String? ?? '',
+      startAt: DateTime.parse(json['start_at'] as String),
+      endAt: DateTime.parse(json['end_at'] as String),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.now(),
+    );
+  }
+}
+
 class DoctorCalendarDto {
   DoctorCalendarDto({
     required this.appointments,
     required this.consultationSchedule,
+    this.procedures = const [],
   });
 
   final List<AppointmentDto> appointments;
   final ConsultationScheduleDto consultationSchedule;
+  final List<ProcedureBlockDto> procedures;
 
   factory DoctorCalendarDto.fromJson(Map<String, dynamic> json) {
     final rawAppointments = json['appointments'] as List<dynamic>? ?? [];
+    final rawProcedures = json['procedures'] as List<dynamic>? ?? [];
     return DoctorCalendarDto(
       appointments: rawAppointments
           .map((e) => AppointmentDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      procedures: rawProcedures
+          .map((e) => ProcedureBlockDto.fromJson(e as Map<String, dynamic>))
           .toList(),
       consultationSchedule: ConsultationScheduleDto.fromJson(
         json['consultation_schedule'] as Map<String, dynamic>? ?? const {},
@@ -144,6 +181,26 @@ class AppointmentService {
       },
     );
     return DoctorCalendarDto.fromJson(res.data ?? const {});
+  }
+
+  Future<ProcedureBlockDto> createDoctorProcedure({
+    required String title,
+    required DateTime startAt,
+    required DateTime endAt,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.appointmentsDoctorProcedures,
+      data: {
+        'title': title.trim(),
+        'start_at': startAt.toUtc().toIso8601String(),
+        'end_at': endAt.toUtc().toIso8601String(),
+      },
+    );
+    return ProcedureBlockDto.fromJson(res.data ?? const {});
+  }
+
+  Future<void> deleteDoctorProcedure(String blockId) async {
+    await _api.dio.delete(ApiEndpoints.appointmentDoctorProcedure(blockId));
   }
 
 

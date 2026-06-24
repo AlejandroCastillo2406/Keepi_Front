@@ -5,6 +5,7 @@ import '../models/prior_document_item.dart';
 import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
 import '../utils/attendance_kpi.dart';
+import '../utils/date_labels.dart';
 import '../providers/consultation_bootstrap_provider.dart';
 import 'api_client.dart';
 import 'appointment_service.dart';
@@ -424,6 +425,7 @@ class AnalysisRequestDto {
   final String createdAt;
   final String? documentId;
   final String? completedAt;
+  final String? expiresAt;
 
   AnalysisRequestDto({
     required this.id,
@@ -434,7 +436,14 @@ class AnalysisRequestDto {
     required this.createdAt,
     this.documentId,
     this.completedAt,
+    this.expiresAt,
   });
+
+  String? get deadlineLabel => formatKeepiDate(expiresAt);
+
+  String? get completedAtLabel => formatKeepiDateTime(completedAt);
+
+  String? get createdAtLabel => formatKeepiDateTime(createdAt);
 
   factory AnalysisRequestDto.fromJson(Map<String, dynamic> json) {
     return AnalysisRequestDto(
@@ -450,6 +459,7 @@ class AnalysisRequestDto {
       createdAt: (json['created_at'] ?? json['createdAt'])?.toString() ?? '',
       documentId: (json['document_id'] ?? json['documentId'])?.toString(),
       completedAt: (json['completed_at'] ?? json['completedAt'])?.toString(),
+      expiresAt: (json['expires_at'] ?? json['expiresAt'])?.toString(),
     );
   }
 }

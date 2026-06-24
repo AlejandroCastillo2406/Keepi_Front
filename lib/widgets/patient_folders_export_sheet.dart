@@ -10,31 +10,33 @@ import '../services/document_export_save.dart';
 import '../services/document_export_service.dart';
 import '../services/drive_structure_service.dart';
 import '../utils/patient_folder_name.dart';
+import 'notification_web_dialog.dart';
 
-/// Modal: solo carpetas de pacientes del médico; exporta todo su contenido a un ZIP.
+/// Modal web: carpetas de pacientes del médico → ZIP descargable.
 Future<void> showPatientFoldersExportSheet(
   BuildContext context, {
   required List<DriveFolder> rootFolders,
 }) async {
-  await showModalBottomSheet<void>(
+  await showDialog<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => _PatientFoldersExportSheet(rootFolders: rootFolders),
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    builder: (ctx) => _PatientFoldersExportDialog(rootFolders: rootFolders),
   );
 }
 
-class _PatientFoldersExportSheet extends StatefulWidget {
-  const _PatientFoldersExportSheet({required this.rootFolders});
+class _PatientFoldersExportDialog extends StatefulWidget {
+  const _PatientFoldersExportDialog({required this.rootFolders});
 
   final List<DriveFolder> rootFolders;
 
   @override
-  State<_PatientFoldersExportSheet> createState() =>
-      _PatientFoldersExportSheetState();
+  State<_PatientFoldersExportDialog> createState() =>
+      _PatientFoldersExportDialogState();
 }
 
-class _PatientFoldersExportSheetState extends State<_PatientFoldersExportSheet> {
+class _PatientFoldersExportDialogState extends State<_PatientFoldersExportDialog> {
+  static const _accent = KeepiColors.orange;
+
   bool _loading = true;
   String? _error;
   List<PatientExportFolder> _items = [];
@@ -46,6 +48,10 @@ class _PatientFoldersExportSheetState extends State<_PatientFoldersExportSheet> 
     super.initState();
     _load();
   }
+
+  int get _selectedFilesCount => _items
+      .where((i) => _selectedIds.contains(i.patientId))
+      .fold<int>(0, (sum, i) => sum + i.filesCount);
 
   Future<void> _load() async {
     setState(() {
@@ -93,7 +99,8 @@ class _PatientFoldersExportSheetState extends State<_PatientFoldersExportSheet> 
       }
 
       list.sort(
-        (a, b) => a.patientName.toLowerCase().compareTo(b.patientName.toLowerCase()),
+        (a, b) =>
+            a.patientName.toLowerCase().compareTo(b.patientName.toLowerCase()),
       );
 
       if (!mounted) return;
@@ -108,6 +115,30 @@ class _PatientFoldersExportSheetState extends State<_PatientFoldersExportSheet> 
         _loading = false;
       });
     }
+  }
+
+  void _togglePatient(String patientId) {
+    if (_exporting) return;
+    setState(() {
+      if (_selectedIds.contains(patientId)) {
+        _selectedIds.remove(patientId);
+      } else {
+        _selectedIds.add(patientId);
+      }
+    });
+  }
+
+  void _toggleSelectAll() {
+    if (_exporting) return;
+    setState(() {
+      if (_selectedIds.length == _items.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_items.map((e) => e.patientId));
+      }
+    });
   }
 
   Future<void> _export() async {
@@ -183,265 +214,442 @@ class _PatientFoldersExportSheetState extends State<_PatientFoldersExportSheet> 
     }
   }
 
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) {
+      final p = parts.first;
+      return (p.length >= 2 ? p.substring(0, 2) : p).toUpperCase();
+    }
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final theme = NotificationDialogTheme.patientExport();
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.82,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: KeepiColors.cardBorder,
-                borderRadius: BorderRadius.circular(2),
+    return PopScope(
+      canPop: !_exporting,
+      child: NotificationWebDialog(
+        title: theme.titleFallback,
+        tag: theme.tag,
+        accent: theme.accent,
+        icon: theme.icon,
+        subtitle:
+            'Selecciona pacientes y descarga un ZIP con Análisis, Recetas y más.',
+        maxWidth: 640,
+        maxHeightFactor: 0.88,
+        canClose: !_exporting,
+        footer: _buildFooter(),
+        child: _buildBody(),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    final allSelected =
+        _items.isNotEmpty && _selectedIds.length == _items.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_items.isNotEmpty && !_loading)
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: _exporting ? null : _toggleSelectAll,
+                icon: Icon(
+                  allSelected
+                      ? Icons.deselect_outlined
+                      : Icons.select_all_rounded,
+                  size: 18,
+                  color: _accent,
+                ),
+                label: Text(
+                  allSelected ? 'Quitar todos' : 'Seleccionar todos',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Exportar expedientes',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: KeepiColors.slate,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Selecciona pacientes. El ZIP incluirá sus carpetas (Análisis, Recetas, etc.) y podrás elegir dónde guardarlo.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: KeepiColors.slateLight,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
+              const Spacer(),
+              if (_selectedIds.isNotEmpty)
+                Text(
+                  '$_selectedFilesCount archivos',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: KeepiColors.slateLight,
                   ),
-                  IconButton(
-                    onPressed: _exporting ? null : () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            Flexible(child: _buildBody()),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: Row(
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        _exporting
+            ? Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _accent.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _accent.withValues(alpha: 0.2)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (_items.isNotEmpty)
-                      TextButton(
-                        onPressed: _exporting
-                            ? null
-                            : () {
-                                setState(() {
-                                  if (_selectedIds.length == _items.length) {
-                                    _selectedIds.clear();
-                                  } else {
-                                    _selectedIds
-                                      ..clear()
-                                      ..addAll(_items.map((e) => e.patientId));
-                                  }
-                                });
-                              },
-                        child: Text(
-                          _selectedIds.length == _items.length
-                              ? 'Quitar todos'
-                              : 'Seleccionar todos',
-                        ),
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: _accent,
                       ),
-                    const Spacer(),
-                    FilledButton.icon(
-                      onPressed: _exporting || _selectedIds.isEmpty
-                          ? null
-                          : _export,
-                      icon: _exporting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.folder_zip_outlined, size: 20),
-                      label: Text(
-                        _exporting
-                            ? 'Exportando…'
-                            : 'Exportar (${_selectedIds.length})',
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: KeepiColors.orange,
-                        foregroundColor: Colors.white,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Preparando expediente…',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _accent,
                       ),
                     ),
                   ],
                 ),
+              )
+            : FilledButton.icon(
+                onPressed: _selectedIds.isEmpty ? null : _export,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _accent,
+                  disabledBackgroundColor:
+                      KeepiColors.slateLight.withValues(alpha: 0.35),
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white70,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.download_rounded, size: 20),
+                label: Text(
+                  _selectedIds.isEmpty
+                      ? 'Selecciona al menos un paciente'
+                      : 'Exportar ZIP (${_selectedIds.length})',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 
   Widget _buildBody() {
     if (_loading) {
       return const Padding(
-        padding: EdgeInsets.all(40),
+        padding: EdgeInsets.symmetric(vertical: 48),
         child: Center(
-          child: CircularProgressIndicator(color: KeepiColors.orange),
+          child: CircularProgressIndicator(color: _accent),
         ),
       );
     }
+
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      return Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.red.shade100),
+            ),
+            child: Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.red.shade800, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          NotificationPrimaryButton(
+            label: 'Reintentar',
+            icon: Icons.refresh_rounded,
+            accent: _accent,
+            onPressed: _load,
+          ),
+        ],
+      );
+    }
+
+    if (_items.isEmpty) {
+      return Column(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: _accent.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.cloud_off_outlined,
+              size: 36,
+              color: _accent.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Sin carpetas de pacientes',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: KeepiColors.slate,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Cuando registres pacientes y subas documentos a la nube, '
+            'aparecerán aquí listos para exportar.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: KeepiColors.slateLight,
+              height: 1.45,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: _load, child: const Text('Reintentar')),
+            Expanded(
+              child: _StatChip(
+                icon: Icons.people_outline_rounded,
+                label: 'Pacientes',
+                value: '${_items.length}',
+                accent: _accent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatChip(
+                icon: Icons.insert_drive_file_outlined,
+                label: 'En nube',
+                value: '${_items.fold<int>(0, (s, i) => s + i.filesCount)}',
+                accent: KeepiColors.skyBlue,
+              ),
+            ),
           ],
         ),
-      );
-    }
-    if (_items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(28),
-        child: Text(
-          'No hay carpetas de pacientes en tu nube.\n'
-          'Cuando registres pacientes y subas documentos, aparecerán aquí.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: KeepiColors.slateLight, height: 1.4),
+        const SizedBox(height: 14),
+        NotificationInfoTile(
+          icon: Icons.info_outline_rounded,
+          label: 'Contenido del ZIP',
+          value: 'Cada paciente incluye sus subcarpetas: Análisis, Recetas, '
+              'Estudios y documentos clínicos.',
+          accent: _accent,
         ),
-      );
-    }
+        const SizedBox(height: 18),
+        Text(
+          'PACIENTES DISPONIBLES',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.3,
+            color: KeepiColors.slateLight.withValues(alpha: 0.9),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ..._items.map(_buildPatientCard),
+      ],
+    );
+  }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      itemCount: _items.length,
-      itemBuilder: (context, index) {
-        final item = _items[index];
-        final selected = _selectedIds.contains(item.patientId);
-        final countLabel = item.filesCount == 1
-            ? '1 archivo'
-            : '${item.filesCount} archivos';
+  Widget _buildPatientCard(PatientExportFolder item) {
+    final selected = _selectedIds.contains(item.patientId);
+    final countLabel = item.filesCount == 1
+        ? '1 archivo'
+        : '${item.filesCount} archivos';
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Material(
-            color: selected
-                ? KeepiColors.orangeSoft.withValues(alpha: 0.5)
-                : KeepiColors.cardBg,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              onTap: _exporting
-                  ? null
-                  : () {
-                      setState(() {
-                        if (selected) {
-                          _selectedIds.remove(item.patientId);
-                        } else {
-                          _selectedIds.add(item.patientId);
-                        }
-                      });
-                    },
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: selected
-                        ? KeepiColors.orange.withValues(alpha: 0.5)
-                        : KeepiColors.cardBorder,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _togglePatient(item.patientId),
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: selected
+                  ? _accent.withValues(alpha: 0.06)
+                  : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected
+                    ? _accent.withValues(alpha: 0.45)
+                    : KeepiColors.cardBorder,
+                width: selected ? 1.5 : 1,
+              ),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: _accent.withValues(alpha: 0.12),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: selected
+                          ? [_accent, Color.lerp(_accent, Colors.white, 0.25)!]
+                          : [
+                              KeepiColors.skyBlueSoft,
+                              KeepiColors.skyBlue.withValues(alpha: 0.25),
+                            ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _initials(item.patientName),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: selected ? Colors.white : KeepiColors.skyBlue,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: selected,
-                      onChanged: _exporting
-                          ? null
-                          : (_) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedIds.remove(item.patientId);
-                                } else {
-                                  _selectedIds.add(item.patientId);
-                                }
-                              });
-                            },
-                      activeColor: KeepiColors.orange,
-                    ),
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: KeepiColors.skyBlueSoft,
-                        borderRadius: BorderRadius.circular(12),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.patientName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: KeepiColors.slate,
+                          fontSize: 15,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.person_outline_rounded,
-                        color: KeepiColors.skyBlue,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 4),
+                      Row(
                         children: [
-                          Text(
-                            item.patientName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: KeepiColors.slate,
-                              fontSize: 15,
-                            ),
+                          Icon(
+                            Icons.folder_outlined,
+                            size: 14,
+                            color: selected ? _accent : KeepiColors.slateLight,
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(width: 4),
                           Text(
                             countLabel,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: KeepiColors.slateLight,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: selected
+                                  ? _accent.withValues(alpha: 0.85)
+                                  : KeepiColors.slateLight,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: selected ? _accent : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected ? _accent : KeepiColors.cardBorder,
+                      width: 2,
+                    ),
+                  ),
+                  child: selected
+                      ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+                      : null,
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                    color: accent.withValues(alpha: 0.75),
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: accent,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -8,22 +8,22 @@ import '../models/timeline_event.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
 import '../router/app_navigation.dart';
+import '../utils/date_labels.dart';
 import '../services/prescription_service.dart';
 import '../services/questionnaire_service.dart';
 import '../widgets/doctor_event_note_section.dart';
+import 'notification_web_dialog.dart';
 
 class TimelineEventDetailSheet extends StatefulWidget {
   const TimelineEventDetailSheet({
     super.key,
     required this.patientId,
     required this.event,
-    this.scrollController,
     this.onNoteSaved,
   });
 
   final String patientId;
   final TimelineEvent event;
-  final ScrollController? scrollController;
   final VoidCallback? onNoteSaved;
 
   static Future<void> show(
@@ -32,25 +32,33 @@ class TimelineEventDetailSheet extends StatefulWidget {
     required TimelineEvent event,
     VoidCallback? onNoteSaved,
   }) {
+    final theme = TimelineDialogTheme.fromEvent(event);
     final isAppointment = event.eventType.toLowerCase() == 'appointment';
-    return showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: isAppointment ? 0.85 : 0.65,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (_, controller) => TimelineEventDetailSheet(
-          patientId: patientId,
-          event: event,
-          onNoteSaved: onNoteSaved,
-          scrollController: controller,
-        ),
+    final subtitle = _heroSubtitle(event);
+
+    return NotificationWebDialog.show<void>(
+      context,
+      title: event.title,
+      tag: theme.tag,
+      accent: theme.accent,
+      icon: theme.icon,
+      subtitle: subtitle,
+      maxWidth: isAppointment ? 680 : 620,
+      maxHeightFactor: isAppointment ? 0.92 : 0.88,
+      child: TimelineEventDetailSheet(
+        patientId: patientId,
+        event: event,
+        onNoteSaved: onNoteSaved,
       ),
     );
+  }
+
+  static String? _heroSubtitle(TimelineEvent event) {
+    final sub = (event.subtitle ?? '').trim();
+    if (sub.isNotEmpty) return sub;
+    final desc = event.description.trim();
+    if (desc.isNotEmpty && desc != event.title.trim()) return desc;
+    return null;
   }
 
   @override
@@ -107,149 +115,72 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     }
   }
 
-  String _getEventLabel(String eventType) {
-    switch (eventType.toLowerCase()) {
-      case 'registration': return 'Registro';
-      case 'appointment': return 'Cita Médica';
-      case 'prescription': return 'Receta Médica';
-      case 'analysis': return 'Análisis Clínico';
-      case 'analysis_request': return 'Solicitud de Análisis';
-      case 'analysis_upload': return 'Estudio Subido';
-      case 'questionnaire': return 'Cuestionario';
-      case 'clinical_intake': return 'Antecedentes';
-      case 'prior_documents': return 'Documentos previos';
-      default: return eventType;
-    }
-  }
-
   Widget _buildDetailContent(BuildContext context) {
     final event = widget.event;
-    bool isAppointment = event.eventType.toLowerCase() == 'appointment';
-    bool isQuestionnaire = event.eventType.toLowerCase() == 'questionnaire';
-    bool isClinicalIntake = event.eventType.toLowerCase() == 'clinical_intake';
-    bool isAnalysis = event.eventType.toLowerCase().contains('analysis');
-    
-    Color eventColor;
-    IconData eventIcon;
+    final isAppointment = event.eventType.toLowerCase() == 'appointment';
+    final isQuestionnaire = event.eventType.toLowerCase() == 'questionnaire';
+    final isClinicalIntake = event.eventType.toLowerCase() == 'clinical_intake';
+    final isAnalysis = event.eventType.toLowerCase().contains('analysis');
+    final theme = TimelineDialogTheme.fromEvent(event);
 
-    switch (event.eventType.toLowerCase()) {
-      case 'appointment':
-        eventColor = KeepiColors.orange;
-        eventIcon = Icons.event_note_rounded;
-        break;
-      case 'analysis':
-      case 'analysis_request':
-        eventColor = const Color(0xFF2563EB);
-        eventIcon = Icons.biotech_outlined;
-        break;
-      case 'analysis_upload':
-        eventColor = const Color(0xFF0F766E);
-        eventIcon = Icons.file_present_rounded;
-        break;
-      case 'prescription':
-        eventColor = const Color(0xFF7C3AED);
-        eventIcon = Icons.receipt_long_outlined;
-        break;
-      case 'questionnaire':
-        eventColor = KeepiColors.orange;
-        eventIcon = Icons.quiz_outlined;
-        break;
-      case 'clinical_intake':
-        eventColor = const Color(0xFF059669);
-        eventIcon = Icons.assignment_turned_in_outlined;
-        break;
-      default:
-        eventColor = KeepiColors.slate;
-        eventIcon = Icons.flag_outlined;
+    if (isAppointment) {
+      return _buildAppointmentDetailCard(event);
     }
 
-    return Container(
-            decoration: const BoxDecoration(
-              color: KeepiColors.surfaceBg,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-            ),
-            child: ListView(
-              controller: widget.scrollController,
-              padding: const EdgeInsets.all(24),
-              children: [
-                Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-                
-                if (isAppointment)
-                  _buildAppointmentDetailCard(event)
-                else ...[
-                  Row(
-                    children: [
-                      Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: eventColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)), child: Icon(eventIcon, color: eventColor, size: 28)),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(event.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: KeepiColors.slate)),
-                            Text(_getEventLabel(event.eventType).toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: eventColor, letterSpacing: 1.2)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider()),
-
-                  _buildProfessionalCalendarCard(event.occurredAt, eventColor),
-                  const SizedBox(height: 16),
-                  
-                  _buildInfoCard([
-                    _buildRow(Icons.info_outline_rounded, "Estado:", "Registrado en el historial"),
-                  ]),
-                  
-                  // Botón S3 genérico para eventos distintos
-                  if (event.s3Url != null && event.s3Url!.isNotEmpty && event.eventType.toLowerCase() != 'prescription' && !isAnalysis) ...[
-                    const SizedBox(height: 16),
-                    _buildS3DownloadButton(event.s3Url!),
-                  ],
-                  
-                  const SizedBox(height: 24),
-                  
-                  if (event.eventType.toLowerCase() == 'prescription')
-                    _buildPremiumPrescriptionCard(event) 
-                  else if (isClinicalIntake)
-                    _buildClinicalIntakeDetailCard(event)
-                  else if (isQuestionnaire)
-                    _buildQuestionnaireDetailCard(event) 
-                  else if (isAnalysis)
-                    _buildAnalysisDetailCard(event)
-                  else
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Detalles:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16), 
-                            border: Border.all(color: Colors.grey.shade200)
-                          ),
-                          child: Text(
-                            event.description.isEmpty
-                                ? "Sin contenido registrado."
-                                : event.description,
-                            style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-                if (!isAppointment)
-                  DoctorEventNoteSection(
-                    patientId: widget.patientId,
-                    event: event,
-                    onNoteSaved: widget.onNoteSaved,
-                  ),
-              ],
-            ),
-          );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildProfessionalCalendarCard(event.occurredAt, theme.accent),
+        const SizedBox(height: 16),
+        _buildInfoCard([
+          _buildRow(Icons.info_outline_rounded, "Estado:", "Registrado en el historial"),
+        ]),
+        if (event.s3Url != null &&
+            event.s3Url!.isNotEmpty &&
+            event.eventType.toLowerCase() != 'prescription' &&
+            !isAnalysis) ...[
+          const SizedBox(height: 16),
+          _buildS3DownloadButton(event.s3Url!),
+        ],
+        const SizedBox(height: 24),
+        if (event.eventType.toLowerCase() == 'prescription')
+          _buildPremiumPrescriptionCard(event)
+        else if (isClinicalIntake)
+          _buildClinicalIntakeDetailCard(event)
+        else if (isQuestionnaire)
+          _buildQuestionnaireDetailCard(event)
+        else if (isAnalysis)
+          _buildAnalysisDetailCard(event)
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Detalles:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Text(
+                  event.description.isEmpty
+                      ? "Sin contenido registrado."
+                      : event.description,
+                  style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        DoctorEventNoteSection(
+          patientId: widget.patientId,
+          event: event,
+          onNoteSaved: widget.onNoteSaved,
+        ),
+      ],
+    );
   }
 
 
@@ -299,7 +230,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
               matchedRequest.status.toLowerCase() == 'completed';
           docId = matchedRequest.documentId ?? '';
           hasDocument = docId.isNotEmpty;
-          completedAtStr = matchedRequest.completedAt ?? '';
+          completedAtStr = matchedRequest.completedAtLabel ?? '';
           if (matchedRequest.description.isNotEmpty) {
             description = matchedRequest.description;
           }
@@ -309,6 +240,7 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
 
         // LEYENDA SI NO ESTÁ COMPLETADO Y NO TIENE ARCHIVO
         if (!isCompleted && !hasDocument && !eventHasFile) {
+          final deadline = matchedRequest?.deadlineLabel;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -326,10 +258,12 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
                   children: [
                     const Icon(Icons.warning_amber_rounded, color: KeepiColors.slateLight, size: 20),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        "Aún no hay resultados de análisis subidos para mostrar.",
-                        style: TextStyle(color: KeepiColors.slateLight, fontSize: 13.5, fontWeight: FontWeight.w500),
+                        deadline != null
+                            ? 'Pendiente de subir. Fecha límite: $deadline.'
+                            : 'Aún no hay resultados de análisis subidos para mostrar.',
+                        style: const TextStyle(color: KeepiColors.slateLight, fontSize: 13.5, fontWeight: FontWeight.w500),
                       ),
                     ),
                   ],
@@ -340,8 +274,8 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
         }
 
         if (completedAtStr.isEmpty) {
-           DateTime dt = DateTime.tryParse(event.occurredAt) ?? DateTime.now();
-           completedAtStr = "${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}T${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}:00Z";
+          completedAtStr =
+              formatKeepiDateTime(event.occurredAt) ?? event.occurredAt;
         }
         final fallbackUrl = event.s3Url;
 

@@ -74,6 +74,7 @@ class ApiEndpoints {
       _path(Config.pathDocumentsMobileSaveAnalyzed);
 
   static String get prescriptionsDraft => _path('/prescriptions/draft');
+  static String get prescriptionsManualDraft => _path('/prescriptions/draft/manual');
   static String prescriptionsConfirm(String prescriptionId) =>
       _path('/prescriptions/$prescriptionId/confirm');
   static String get prescriptionsMine => _path('/prescriptions/mine');
@@ -90,6 +91,10 @@ class ApiEndpoints {
   static String get appointmentsDoctorCreate => _path('/appointments/doctor');
   static String get appointmentsDoctorCalendar =>
       _path('/appointments/doctor/calendar');
+  static String get appointmentsDoctorProcedures =>
+      _path('/appointments/doctor/procedures');
+  static String appointmentDoctorProcedure(String blockId) =>
+      _path('/appointments/doctor/procedures/$blockId');
   static String get appointmentsMine => _path('/appointments/mine');
 
   static String appointmentById(String appointmentId) =>

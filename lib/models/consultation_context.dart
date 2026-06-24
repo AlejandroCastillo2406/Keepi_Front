@@ -1,3 +1,5 @@
+import '../utils/attendance_kpi.dart';
+
 class ConsultationContext {
   const ConsultationContext({
     this.patientName,
@@ -65,12 +67,14 @@ class ConsultationStats {
   final double attendanceAttendedPercent;
   final double attendanceNoShowPercent;
 
-  /// Porcentaje de asistencia para KPIs; null si aún no hay citas registradas.
-  double? get attendanceRatePercent {
-    if (attendanceAttended + attendanceNoShow == 0) return null;
-    if (attendanceAttendedPercent > 0) return attendanceAttendedPercent;
-    return attendanceAttended * 100.0 / (attendanceAttended + attendanceNoShow);
-  }
+  /// Porcentaje de asistencia: null sin registros; 0.0 si nunca asiste.
+  double? get attendanceRatePercent => AttendanceKpi.ratePercentFromCounts(
+        attended: attendanceAttended,
+        noShow: attendanceNoShow,
+        apiPercent: hasAttendanceRecords ? attendanceAttendedPercent : null,
+      );
+
+  bool get hasAttendanceRecords => attendanceAttended + attendanceNoShow > 0;
 
   factory ConsultationStats.fromJson(Map<String, dynamic> json) {
     final attended = json['attendance_attended'] as int? ??

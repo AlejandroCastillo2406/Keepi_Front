@@ -47,6 +47,38 @@ class PrescriptionService {
     return PrescriptionDraftDto.fromJson(res.data!);
   }
 
+  Future<PrescriptionDraftDto> createManualDraft({
+    required String patientId,
+    File? file,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
+    final formDataMap = <String, dynamic>{
+      'patient_id': patientId,
+    };
+
+    if (fileBytes != null) {
+      formDataMap['file'] = MultipartFile.fromBytes(
+        fileBytes,
+        filename: fileName ?? 'receta_manual.pdf',
+      );
+    } else if (file != null) {
+      formDataMap['file'] = await MultipartFile.fromFile(
+        file.path,
+        filename: file.path.split(RegExp(r'[/\\]')).last,
+      );
+    }
+
+    final form = FormData.fromMap(formDataMap);
+
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.prescriptionsManualDraft,
+      data: form,
+      options: Options(contentType: 'multipart/form-data'),
+    );
+    return PrescriptionDraftDto.fromJson(res.data!);
+  }
+
   Future<PrescriptionDto> confirm({
     required String prescriptionId,
     required String extractedText,

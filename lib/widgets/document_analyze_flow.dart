@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -21,6 +22,18 @@ class AnalyzeSaveFormData {
   final String? expiryDate;
 }
 
+class _PickedUploadFile {
+  const _PickedUploadFile({
+    required this.displayName,
+    this.file,
+    this.bytes,
+  });
+
+  final String displayName;
+  final File? file;
+  final Uint8List? bytes;
+}
+
 /// Reemplaza un documento vencido o por vencer (marca el anterior como reemplazado).
 Future<void> runDocumentReplaceFlow(
   BuildContext context, {
@@ -39,23 +52,38 @@ Future<void> runDocumentReplaceFlow(
   );
 }
 
-/// Selecciona archivo, analiza con IA y guarda en el almacenamiento activo.
-Future<void> runDocumentAnalyzeFlow(
-  BuildContext context, {
-  VoidCallback? onSaved,
-  String saveButtonLabel = 'Guardar',
-  String? replacesDocumentId,
-  String dialogTitle = 'Resumen del análisis',
-  String successMessage = 'Documento guardado correctamente',
-}) async {
+Future<_PickedUploadFile?> _pickUploadFile(BuildContext context) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.any,
-    withData: false,
+    withData: kIsWeb,
     allowMultiple: false,
   );
-  if (result == null || result.files.isEmpty) return;
+  if (result == null || result.files.isEmpty) return null;
 
   final platformFile = result.files.single;
+  final displayName = platformFile.name.trim().isNotEmpty
+      ? platformFile.name.trim()
+      : 'documento';
+
+  if (kIsWeb) {
+    final bytes = platformFile.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo leer el archivo seleccionado.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return null;
+    }
+    return _PickedUploadFile(
+      displayName: displayName,
+      bytes: bytes,
+    );
+  }
+
   final path = platformFile.path;
   if (path == null || path.isEmpty) {
     if (context.mounted) {
@@ -66,7 +94,7 @@ Future<void> runDocumentAnalyzeFlow(
         ),
       );
     }
-    return;
+    return null;
   }
 
   final file = File(path);
@@ -79,8 +107,26 @@ Future<void> runDocumentAnalyzeFlow(
         ),
       );
     }
-    return;
+    return null;
   }
+
+  return _PickedUploadFile(
+    displayName: displayName,
+    file: file,
+  );
+}
+
+/// Selecciona archivo, analiza con IA y guarda en el almacenamiento activo.
+Future<void> runDocumentAnalyzeFlow(
+  BuildContext context, {
+  VoidCallback? onSaved,
+  String saveButtonLabel = 'Guardar',
+  String? replacesDocumentId,
+  String dialogTitle = 'Resumen del análisis',
+  String successMessage = 'Documento guardado correctamente',
+}) async {
+  final picked = await _pickUploadFile(context);
+  if (picked == null || !context.mounted) return;
 
   final api = context.read<ApiClient>();
   final uploadService = DocumentUploadService(api);
@@ -116,7 +162,11 @@ Future<void> runDocumentAnalyzeFlow(
 
   AnalyzeResult analyzeResult;
   try {
-    analyzeResult = await uploadService.analyze(file);
+    analyzeResult = await uploadService.analyze(
+      file: picked.file,
+      fileBytes: picked.bytes,
+      fileName: picked.displayName,
+    );
   } catch (e) {
     if (!context.mounted) return;
     Navigator.of(context).pop();
@@ -160,7 +210,7 @@ Future<void> runDocumentAnalyzeFlow(
     context: context,
     builder: (ctx) => _AnalyzeResultModal(
       result: analyzeResult,
-      originalFileName: platformFile.name,
+      originalFileName: picked.displayName,
       saveButtonLabel: saveButtonLabel,
       dialogTitle: dialogTitle,
     ),
@@ -196,7 +246,9 @@ Future<void> runDocumentAnalyzeFlow(
 
   try {
     await uploadService.saveAnalyzed(
-      file: file,
+      file: picked.file,
+      fileBytes: picked.bytes,
+      originalFileName: picked.displayName,
       category: saved.category,
       fileName: saved.fileName,
       expiryDate: saved.expiryDate,

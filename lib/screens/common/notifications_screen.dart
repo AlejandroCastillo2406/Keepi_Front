@@ -13,6 +13,8 @@ import '../../services/notification_navigation.dart';
 import '../../services/notifications_service.dart';
 import '../../services/prescription_service.dart';
 import '../../services/doctor_service.dart';
+import '../../utils/date_labels.dart';
+import '../../widgets/notification_web_dialog.dart';
 
 const _monthsEsUpper = <String>[
   'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
@@ -626,7 +628,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             if (matchById || matchByDesc) {
               isCompleted = rStatus.toLowerCase() == 'completed' || rDocId.isNotEmpty;
               docId = rDocId;
-              completedAtStr = rCompleted;
+              completedAtStr = r.completedAtLabel ?? rCompleted;
               if (rDesc.isNotEmpty) description = rDesc;
               hasDocument = docId.isNotEmpty;
 
@@ -667,8 +669,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
 
         if (completedAtStr.isEmpty) {
-           DateTime dt = DateTime.tryParse(n.createdAt ?? '') ?? DateTime.now();
-           completedAtStr = "${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}T${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}:00Z";
+          completedAtStr =
+              formatKeepiDateTime(n.createdAt) ?? completedAtStr;
         }
 
         return Column(
@@ -822,197 +824,98 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       try { patientId = (authProv as dynamic).userId?.toString() ?? ''; } catch(_) {}
     }
 
-    Color eventColor = KeepiColors.slate;
-    IconData eventIcon = Icons.info_outline_rounded;
-    String tag = 'AVISO';
+    final theme = NotificationDialogTheme.fromNotification(n);
+    final eventColor = theme.accent;
+    final eventIcon = theme.icon;
+    final tag = theme.tag;
 
-    if (isAppointment) {
-      eventColor = KeepiColors.skyBlue;
-      eventIcon = Icons.event_available_outlined;
-      tag = 'CITA MÉDICA';
+    Widget? footer;
+    if (isAnalysis) {
+      footer = NotificationPrimaryButton(
+        label: 'VER DOCUMENTO',
+        icon: Icons.file_present_rounded,
+        accent: eventColor,
+        onPressed: () {
+          Navigator.pop(context);
+          _openAnalysisDocument(n);
+        },
+      );
     } else if (isPrescription) {
-      eventColor = const Color(0xFF7C3AED);
-      eventIcon = Icons.medication_outlined;
-      tag = 'RECETA MÉDICA';
-    } else if (isAnalysis) {
-      eventColor = KeepiColors.orange;
-      eventIcon = Icons.biotech_outlined;
-      tag = 'ANÁLISIS CLÍNICO';
+      footer = NotificationPrimaryButton(
+        label: 'GESTIONAR RECORDATORIOS',
+        icon: Icons.notifications_active_outlined,
+        accent: eventColor,
+        onPressed: () {
+          Navigator.pop(context);
+          _openReminderPrompt(n);
+        },
+      );
     } else if (isReplaced) {
-      eventColor = KeepiColors.slate;
-      eventIcon = Icons.find_replace_rounded;
-      tag = 'DOCUMENTO ACTUALIZADO';
+      footer = NotificationPrimaryButton(
+        label: 'VER REEMPLAZO',
+        icon: Icons.find_replace_rounded,
+        accent: eventColor,
+        onPressed: () {
+          Navigator.pop(context);
+          _openDocumentReplacement(n);
+        },
+      );
+    } else if (isAppointment) {
+      footer = NotificationPrimaryButton(
+        label: 'GESTIONAR CITA',
+        icon: Icons.calendar_month_rounded,
+        accent: eventColor,
+        onPressed: () {
+          Navigator.pop(context);
+          _openAppointmentPrompt(n);
+        },
+      );
     }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: isAppointment ? 0.85 : 0.75,
-          minChildSize: 0.4,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (_, controller) => Container(
-            decoration: const BoxDecoration(
-              color: KeepiColors.surfaceBg,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+    NotificationWebDialog.show(
+      context,
+      title: n.title.isNotEmpty ? n.title : theme.titleFallback,
+      tag: tag,
+      accent: eventColor,
+      icon: eventIcon,
+      maxWidth: isAppointment ? 680 : 560,
+      maxHeightFactor: isAppointment ? 0.92 : 0.88,
+      footer: footer,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isAppointment)
+            _buildAppointmentDetailCard(n)
+          else ...[
+            _buildProfessionalCalendarCard(
+              n.createdAt ?? DateTime.now().toIso8601String(),
+              eventColor,
             ),
-            child: ListView(
-              controller: controller,
-              padding: const EdgeInsets.all(24),
-              children: [
-                Center(
-                  child: Container(
-                    width: 40, height: 4, 
-                    margin: const EdgeInsets.only(bottom: 20), 
-                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))
-                  )
-                ),
-                
-                // Si es cita médica, usamos directamente el diseño completo
-                if (isAppointment)
-                  _buildAppointmentDetailCard(n)
-                else ...[
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12), 
-                        decoration: BoxDecoration(color: eventColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)), 
-                        child: Icon(eventIcon, color: eventColor, size: 28)
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(n.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: KeepiColors.slate)),
-                            Text(tag, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: eventColor, letterSpacing: 1.2)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider()),
-
-                  _buildProfessionalCalendarCard(n.createdAt ?? DateTime.now().toIso8601String(), eventColor),
-                  const SizedBox(height: 16),
-                  
-                  _buildInfoCard([
-                    _buildRow(Icons.info_outline_rounded, "Estado:", "Notificación recibida en historial"),
-                  ]),
-                  const SizedBox(height: 24),
-
-                  if (isPrescription)
-                    _buildPremiumPrescriptionCard(n)
-                  else if (isAnalysis)
-                    _buildAnalysisDetailCard(context, n, patientId)
-                  else
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Detalles:", style: TextStyle(fontWeight: FontWeight.bold, color: KeepiColors.slate, fontSize: 16)),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                          child: Text(n.message.isEmpty ? "Sin contenido registrado." : n.message, style: const TextStyle(fontSize: 14, color: KeepiColors.slate, height: 1.6, fontWeight: FontWeight.w500)),
-                        ),
-                      ],
-                    ),
-                ],
-
-                if (isAnalysis) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _openAnalysisDocument(n); 
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: KeepiColors.orange, 
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.file_present_rounded),
-                      label: const Text("VER DOCUMENTO RÁPIDO", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-
-                if (isPrescription) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _openReminderPrompt(n); 
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF7C3AED), 
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.notifications_active_outlined),
-                      label: const Text("GESTIONAR RECORDATORIOS", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-
-                if (isReplaced) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _openDocumentReplacement(n); 
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: KeepiColors.slate, 
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.find_replace_rounded),
-                      label: const Text("VER REEMPLAZO", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-
-                if (isAppointment) ...[
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _openAppointmentPrompt(n);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: KeepiColors.skyBlue, 
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.calendar_month_rounded),
-                      label: const Text("GESTIONAR CITA", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-
-              ],
-            ),
-          ),
-        );
-      },
+            const SizedBox(height: 16),
+            _buildInfoCard([
+              _buildRow(
+                Icons.info_outline_rounded,
+                'Estado:',
+                'Notificación recibida en historial',
+              ),
+            ]),
+            const SizedBox(height: 20),
+            if (isPrescription)
+              _buildPremiumPrescriptionCard(n)
+            else if (isAnalysis)
+              _buildAnalysisDetailCard(context, n, patientId)
+            else
+              NotificationInfoTile(
+                icon: Icons.notes_rounded,
+                label: 'Detalles',
+                value: n.message.isEmpty
+                    ? 'Sin contenido registrado.'
+                    : n.message,
+                accent: eventColor,
+              ),
+          ],
+        ],
+      ),
     );
   }
 

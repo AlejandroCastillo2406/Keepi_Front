@@ -6,6 +6,7 @@ import '../router/app_navigation.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
 import '../services/drive_structure_service.dart';
+import 'notification_web_dialog.dart';
 
 /// Modal al abrir notificación de reemplazo: explicación + ver antes/después.
 void showDocumentReplacementComparisonSheet(
@@ -22,112 +23,63 @@ void showDocumentReplacementComparisonSheet(
   final beforeCat = oldCategory?.trim();
   final afterCat = newCategory?.trim();
 
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        child: Material(
-          borderRadius: BorderRadius.circular(20),
-          color: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: KeepiColors.orangeSoft,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.swap_horiz_rounded,
-                        color: KeepiColors.orange,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Text(
-                        'Documento reemplazado',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: KeepiColors.slate,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: KeepiColors.slateLight,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Actualizaste un documento vencido o por vencer. '
-                  'El archivo anterior quedó marcado como reemplazado.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.4,
-                    color: KeepiColors.slate,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _DocCompareCard(
-                  label: 'ANTES',
-                  name: beforeName,
-                  category: beforeCat,
-                  muted: true,
-                ),
-                const SizedBox(height: 10),
-                const Icon(Icons.arrow_downward_rounded, color: KeepiColors.slateLight),
-                const SizedBox(height: 10),
-                _DocCompareCard(
-                  label: 'DESPUÉS',
-                  name: afterName,
-                  category: afterCat,
-                  muted: false,
-                ),
-                const SizedBox(height: 18),
-                OutlinedButton.icon(
-                  onPressed: () => _openKeepiDocument(
-                    ctx,
-                    documentId: oldDocumentId,
-                    title: beforeName,
-                  ),
-                  icon: const Icon(Icons.history_rounded, size: 20),
-                  label: const Text('Ver documento anterior'),
-                ),
-                const SizedBox(height: 10),
-                FilledButton.icon(
-                  onPressed: () => _openKeepiDocument(
-                    ctx,
-                    documentId: newDocumentId,
-                    title: afterName,
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: KeepiColors.orange,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  icon: const Icon(Icons.description_rounded, size: 20),
-                  label: const Text('Ver documento nuevo'),
-                ),
-              ],
-            ),
+  final theme = NotificationDialogTheme.documentReplaced();
+
+  NotificationWebDialog.show(
+    context,
+    title: 'Documento reemplazado',
+    tag: theme.tag,
+    accent: theme.accent,
+    icon: theme.icon,
+    maxWidth: 520,
+    subtitle:
+        'Actualizaste un documento vencido o por vencer. El archivo anterior quedó marcado como reemplazado.',
+    footer: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => _openKeepiDocument(
+            context,
+            documentId: oldDocumentId,
+            title: beforeName,
+          ),
+          icon: const Icon(Icons.history_rounded, size: 20),
+          label: const Text('Ver documento anterior'),
+        ),
+        const SizedBox(height: 10),
+        NotificationPrimaryButton(
+          label: 'VER DOCUMENTO NUEVO',
+          icon: Icons.description_rounded,
+          accent: theme.accent,
+          onPressed: () => _openKeepiDocument(
+            context,
+            documentId: newDocumentId,
+            title: afterName,
           ),
         ),
-      ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DocCompareCard(
+          label: 'ANTES',
+          name: beforeName,
+          category: beforeCat,
+          muted: true,
+        ),
+        const SizedBox(height: 10),
+        const Center(
+          child: Icon(Icons.arrow_downward_rounded, color: KeepiColors.slateLight),
+        ),
+        const SizedBox(height: 10),
+        _DocCompareCard(
+          label: 'DESPUÉS',
+          name: afterName,
+          category: afterCat,
+          muted: false,
+        ),
+      ],
     ),
   );
 }
@@ -243,80 +195,25 @@ void showDocumentReplacementInfo(BuildContext context, DriveFile file) {
         : 'Este archivo sustituye a uno vencido o por vencer.\n\nReemplaza a:\n$name';
   }
 
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      child: Material(
-        borderRadius: BorderRadius.circular(20),
-        color: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: accent, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    icon: const Icon(Icons.close_rounded, color: KeepiColors.slateLight),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                file.name,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: KeepiColors.slateLight,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                body,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.45,
-                  color: KeepiColors.slate,
-                ),
-              ),
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: KeepiColors.orange,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: const Text('Entendido'),
-              ),
-            ],
-          ),
-        ),
-      ),
+  NotificationWebDialog.show(
+    context,
+    title: title,
+    tag: isReplaced ? 'ARCHIVO ANTERIOR' : 'ARCHIVO VIGENTE',
+    accent: accent,
+    icon: icon,
+    maxWidth: 480,
+    subtitle: file.name,
+    footer: NotificationPrimaryButton(
+      label: 'ENTENDIDO',
+      icon: Icons.check_rounded,
+      accent: accent,
+      onPressed: () => Navigator.of(context).pop(),
+    ),
+    child: NotificationInfoTile(
+      icon: Icons.info_outline_rounded,
+      label: 'Detalle',
+      value: body,
+      accent: accent,
     ),
   );
 }

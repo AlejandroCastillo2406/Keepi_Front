@@ -5,24 +5,29 @@ import '../core/app_theme.dart';
 import '../models/timeline_event.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
+import 'notification_web_dialog.dart';
 
 Future<void> showDoctorTimelineNote(
   BuildContext context, {
   required String patientId,
   required TimelineEvent event,
 }) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) {
-      return _DoctorNoteSheet(patientId: patientId, event: event);
-    },
+  final theme = NotificationDialogTheme.timelineNote();
+  await NotificationWebDialog.show<void>(
+    context,
+    title: event.title,
+    tag: theme.tag,
+    accent: theme.accent,
+    icon: theme.icon,
+    subtitle: 'Registrada en el historial clínico',
+    maxWidth: 520,
+    maxHeightFactor: 0.72,
+    child: _DoctorNoteContent(patientId: patientId, event: event),
   );
 }
 
-class _DoctorNoteSheet extends StatefulWidget {
-  const _DoctorNoteSheet({
+class _DoctorNoteContent extends StatefulWidget {
+  const _DoctorNoteContent({
     required this.patientId,
     required this.event,
   });
@@ -31,10 +36,10 @@ class _DoctorNoteSheet extends StatefulWidget {
   final TimelineEvent event;
 
   @override
-  State<_DoctorNoteSheet> createState() => _DoctorNoteSheetState();
+  State<_DoctorNoteContent> createState() => _DoctorNoteContentState();
 }
 
-class _DoctorNoteSheetState extends State<_DoctorNoteSheet> {
+class _DoctorNoteContentState extends State<_DoctorNoteContent> {
   bool _loading = true;
   String? _error;
   String _content = '';
@@ -69,77 +74,33 @@ class _DoctorNoteSheetState extends State<_DoctorNoteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.45,
-      minChildSize: 0.28,
-      maxChildSize: 0.85,
-      expand: false,
-      builder: (_, controller) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: CircularProgressIndicator(color: KeepiColors.orange),
         ),
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
-        child: ListView(
-          controller: controller,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(Icons.sticky_note_2_outlined, color: KeepiColors.orange),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.event.title,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: KeepiColors.slate,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Nota clínica del médico',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-                color: KeepiColors.slateLight,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (_loading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(color: KeepiColors.orange),
-                ),
-              )
-            else if (_error != null && _content.isEmpty)
-              Text(_error!, style: const TextStyle(color: Colors.red))
-            else
-              Text(
-                _content.isNotEmpty ? _content : 'Sin contenido en la nota.',
-                style: const TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: KeepiColors.slate,
-                ),
-              ),
-          ],
+      );
+    }
+
+    if (_error != null && _content.isEmpty) {
+      return Text(_error!, style: const TextStyle(color: Colors.red));
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: KeepiColors.surfaceBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KeepiColors.cardBorder),
+      ),
+      child: Text(
+        _content.isNotEmpty ? _content : 'Sin contenido en la nota.',
+        style: const TextStyle(
+          fontSize: 15,
+          height: 1.55,
+          color: KeepiColors.slate,
         ),
       ),
     );

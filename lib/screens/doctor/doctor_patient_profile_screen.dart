@@ -424,6 +424,8 @@ class _DoctorPatientProfileScreenState
       uploadedAnalysis: completedCount,
       pendingAnalysis: pendingCount,
       attendanceRatePercent: ctx?.stats.attendanceRatePercent,
+      attendanceAttended: ctx?.stats.attendanceAttended ?? 0,
+      attendanceNoShow: ctx?.stats.attendanceNoShow ?? 0,
       onEditAge: () => _editClinicalAge(),
       onEditBloodType: () => _editClinicalBloodType(),
       onEditWeight: () => _editClinicalWeight(),
@@ -1558,9 +1560,17 @@ class _AnalysisCard extends StatelessWidget {
   final bool isPending;
   final bool isOpening;
 
+  String _pendingSubtitle(AnalysisRequestDto item) {
+    final deadline = item.deadlineLabel;
+    if (deadline != null) {
+      return 'Fecha límite: $deadline · Toca para subir el reporte físico';
+    }
+    return 'Solicitado: ${item.createdAt.isNotEmpty ? item.createdAt : '—'} · Toca para subir el reporte físico';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final completedAt = item.completedAt?.trim();
+    final completedAt = item.completedAtLabel;
     final accent = isPending ? KeepiColors.orange : KeepiColors.skyBlue;
     final accentSoft =
         isPending ? KeepiColors.orangeSoft : KeepiColors.skyBlueSoft;
@@ -1624,8 +1634,8 @@ class _AnalysisCard extends StatelessWidget {
                   const SizedBox(height: 5),
                   Text(
                     isPending
-                        ? 'Solicitado: ${item.createdAt.isNotEmpty ? item.createdAt : '—'} · Toca para subir el reporte físico'
-                        : completedAt == null || completedAt.isEmpty
+                        ? _pendingSubtitle(item)
+                        : completedAt == null
                             ? 'Fecha de cierre no disponible'
                             : 'Completado: $completedAt',
                     style: const TextStyle(

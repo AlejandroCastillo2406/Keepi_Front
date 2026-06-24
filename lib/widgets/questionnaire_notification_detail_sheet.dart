@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_theme.dart';
-import '../core/care_event_style.dart';
 import '../models/questionnaire_models.dart';
 import '../services/api_client.dart';
 import '../services/notifications_service.dart';
 import '../services/questionnaire_service.dart';
+import 'notification_web_dialog.dart';
 
 class QuestionnaireNotificationDetailData {
   const QuestionnaireNotificationDetailData({
@@ -138,305 +138,155 @@ Future<void> showQuestionnaireNotificationDetailSheet(
   BuildContext context, {
   required AppNotificationDto notification,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (sheetContext) {
-      return DraggableScrollableSheet(
-        initialChildSize: 0.82,
-        minChildSize: 0.45,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (_, controller) => Container(
-          decoration: const BoxDecoration(
-            color: KeepiColors.surfaceBg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-          ),
-          child: FutureBuilder<QuestionnaireNotificationDetailData>(
-            future: loadQuestionnaireNotificationDetail(
-              api: sheetContext.read<ApiClient>(),
-              notification: notification,
+  final theme = NotificationDialogTheme.questionnaire();
+
+  return NotificationWebDialog.show(
+    context,
+    title: notification.title.isNotEmpty
+        ? notification.title
+        : theme.titleFallback,
+    tag: theme.tag,
+    accent: theme.accent,
+    icon: theme.icon,
+    maxWidth: 620,
+    maxHeightFactor: 0.9,
+    child: FutureBuilder<QuestionnaireNotificationDetailData>(
+      future: loadQuestionnaireNotificationDetail(
+        api: context.read<ApiClient>(),
+        notification: notification,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: CircularProgressIndicator(color: KeepiColors.orange),
             ),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(color: KeepiColors.orange),
-                );
-              }
+          );
+        }
 
-              if (snapshot.hasError) {
-                return ListView(
-                  controller: controller,
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    _sheetHandle(),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'No se pudo cargar el cuestionario',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: KeepiColors.slate,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      notification.message,
-                      style: const TextStyle(color: KeepiColors.slateLight),
-                    ),
-                  ],
-                );
-              }
+        if (snapshot.hasError) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'No se pudo cargar el cuestionario',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: KeepiColors.slate,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                notification.message,
+                style: const TextStyle(color: KeepiColors.slateLight),
+              ),
+            ],
+          );
+        }
 
-              final accent = CareEventStyle.colorFor('questionnaire');
-              final data = snapshot.data!;
-              final answeredLabel = formatQuestionnaireDateTime(data.answeredAt);
+        final accent = theme.accent;
+        final data = snapshot.data!;
+        final answeredLabel = formatQuestionnaireDateTime(data.answeredAt);
 
-              return ListView(
-                controller: controller,
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-                children: [
-                  _sheetHandle(),
-                  const SizedBox(height: 16),
-                  Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            NotificationInfoTile(
+              icon: Icons.person_outline_rounded,
+              label: 'Respondido por',
+              value: data.patientName,
+              accent: accent,
+            ),
+            if ((data.patientEmail ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              NotificationInfoTile(
+                icon: Icons.email_outlined,
+                label: 'Correo',
+                value: data.patientEmail!.trim(),
+                accent: accent,
+              ),
+            ],
+            const SizedBox(height: 12),
+            NotificationInfoTile(
+              icon: Icons.event_outlined,
+              label: 'Fecha y hora',
+              value: answeredLabel.isNotEmpty ? answeredLabel : '—',
+              accent: accent,
+            ),
+            const SizedBox(height: 12),
+            NotificationInfoTile(
+              icon: Icons.quiz_outlined,
+              label: 'Cuestionario',
+              value: data.questionnaireName,
+              accent: accent,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              data.responses.isEmpty
+                  ? 'PREGUNTAS Y RESPUESTAS'
+                  : 'PREGUNTAS Y RESPUESTAS (${data.responses.length})',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.3,
+                color: KeepiColors.slateLight,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (data.responses.isEmpty)
+              NotificationInfoTile(
+                icon: Icons.info_outline_rounded,
+                label: 'Sin respuestas',
+                value: notification.message.isEmpty
+                    ? 'No se encontraron respuestas para este cuestionario.'
+                    : notification.message,
+                accent: accent,
+              )
+            else
+              ...data.responses.map((row) {
+                final question =
+                    (row['question_text'] ?? 'Pregunta').toString();
+                final answer =
+                    formatQuestionnaireAnswerText(row['answer_value']);
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: KeepiColors.cardBorder),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          Icons.assignment_turned_in_outlined,
-                          color: accent,
-                          size: 28,
+                      Text(
+                        question,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: KeepiColors.slate,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              notification.title.isNotEmpty
-                                  ? notification.title
-                                  : 'Cuestionario completado',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                color: KeepiColors.slate,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'CUESTIONARIO COMPLETADO',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.2,
-                                color: accent,
-                              ),
-                            ),
-                          ],
+                      const SizedBox(height: 6),
+                      Text(
+                        answer,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: accent.withValues(alpha: 0.95),
+                          height: 1.4,
                         ),
                       ),
                     ],
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Divider(),
-                  ),
-                  _infoTile(
-                    icon: Icons.person_outline_rounded,
-                    label: 'Respondido por',
-                    value: data.patientName,
-                    accent: accent,
-                  ),
-                  if ((data.patientEmail ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _infoTile(
-                      icon: Icons.email_outlined,
-                      label: 'Correo',
-                      value: data.patientEmail!.trim(),
-                      accent: accent,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  _infoTile(
-                    icon: Icons.event_outlined,
-                    label: 'Fecha y hora',
-                    value: answeredLabel.isNotEmpty ? answeredLabel : '—',
-                    accent: accent,
-                  ),
-                  const SizedBox(height: 12),
-                  _infoTile(
-                    icon: Icons.quiz_outlined,
-                    label: 'Cuestionario',
-                    value: data.questionnaireName,
-                    accent: accent,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    data.responses.isEmpty
-                        ? 'PREGUNTAS Y RESPUESTAS'
-                        : 'PREGUNTAS Y RESPUESTAS (${data.responses.length})',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: KeepiColors.slateLight,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (data.responses.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: KeepiColors.cardBorder),
-                      ),
-                      child: Text(
-                        notification.message.isEmpty
-                            ? 'No se encontraron respuestas para este cuestionario.'
-                            : notification.message,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: KeepiColors.slate,
-                          height: 1.5,
-                        ),
-                      ),
-                    )
-                  else
-                    ...data.responses.map((row) {
-                      final question =
-                          (row['question_text'] ?? 'Pregunta').toString();
-                      final answer = formatQuestionnaireAnswerText(
-                        row['answer_value'],
-                      );
-                      return Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: KeepiColors.cardBorder),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              question,
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: KeepiColors.slate,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              answer,
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                color: KeepiColors.slateLight,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: accent,
-                        side: BorderSide(color: accent),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Cerrar',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      );
-    },
-  );
-}
-
-Widget _sheetHandle() {
-  return Center(
-    child: Container(
-      width: 40,
-      height: 4,
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(2),
-      ),
-    ),
-  );
-}
-
-Widget _infoTile({
-  required IconData icon,
-  required String label,
-  required String value,
-  Color accent = KeepiColors.orange,
-}) {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: KeepiColors.cardBorder),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: accent),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                  color: KeepiColors.slateLight,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: KeepiColors.slate,
-                  height: 1.3,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+                );
+              }),
+          ],
+        );
+      },
     ),
   );
 }
