@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../core/web_layout.dart';
 import '../../models/consultation_context.dart';
 import '../../models/timeline_event.dart';
@@ -403,6 +404,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
       context,
       patientId: _patientId,
       patientName: _context?.patientName ?? widget.patientName,
+      patientEmail: _context?.patientEmail ?? widget.patientEmail,
     );
   }
 
@@ -546,7 +548,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
   }
 
   ({String date, String time}) _consultationDateTimeParts() {
-    final dt = _effectiveAppointment.appointmentDate?.toLocal();
+    final dt = _effectiveAppointment.appointmentDate?.asScheduleLocal;
     if (dt == null) {
       final ev = _event;
       if (ev != null && ev.date.trim().isNotEmpty) {
@@ -559,7 +561,7 @@ class _DoctorConsultationScreenState extends State<DoctorConsultationScreen> {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     var time = '$h:$m';
-    final end = _effectiveAppointment.endDate?.toLocal();
+    final end = _effectiveAppointment.endDate?.asScheduleLocal;
     if (end != null) {
       final eh = end.hour.toString().padLeft(2, '0');
       final em = end.minute.toString().padLeft(2, '0');

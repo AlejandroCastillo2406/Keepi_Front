@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../core/web_layout.dart';
 import '../../models/prior_document_item.dart';
 import '../../services/api_client.dart';
@@ -270,7 +271,7 @@ class _DocTile extends StatelessWidget {
   String _formatDate(String iso) {
     final dt = DateTime.tryParse(iso);
     if (dt == null) return '';
-    final local = dt.toLocal();
+    final local = dt.isUtc ? dt.asUserLocal : dt;
     return '${local.day}/${local.month}/${local.year}';
   }
 }

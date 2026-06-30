@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/keepi_timezone.dart';
 import '../core/app_theme.dart';
 import '../services/appointment_service.dart';
 import 'doctor_appointment_slot_picker.dart';
@@ -62,17 +63,17 @@ List<OccupiedRange> buildOccupiedRangesForDay({
 
   for (final appointment in appointments) {
     if (!isBlockingAppointmentStatus(appointment.status)) continue;
-    final start = appointment.appointmentDate?.toLocal();
+    final start = appointment.appointmentDate?.asScheduleLocal;
     if (start == null || !isSameCalendarDay(start, day)) continue;
-    final end = appointment.endDate?.toLocal() ??
+    final end = appointment.endDate?.asScheduleLocal ??
         start.add(Duration(minutes: slotDurationMinutes));
     ranges.add(OccupiedRange(start: start, end: end));
   }
 
   for (final procedure in procedures) {
-    final start = procedure.startAt.toLocal();
+    final start = procedure.startAt.asScheduleLocal;
     if (!isSameCalendarDay(start, day)) continue;
-    ranges.add(OccupiedRange(start: start, end: procedure.endAt.toLocal()));
+    ranges.add(OccupiedRange(start: start, end: procedure.endAt.asScheduleLocal));
   }
 
   ranges.sort((a, b) => a.start.compareTo(b.start));
@@ -195,7 +196,7 @@ Future<ProcedureScheduleResult?> showDoctorProcedureScheduleSheet(
 }) {
   return showDialog<ProcedureScheduleResult>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
+    barrierColor: KeepiColors.slate.withValues(alpha: 0.48),
     builder: (ctx) => _ProcedureScheduleDialog(
       initialDate: initialDate,
       consultationSchedule: consultationSchedule,

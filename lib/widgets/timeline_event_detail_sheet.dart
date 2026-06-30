@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_theme.dart';
+import '../core/keepi_timezone.dart';
 import '../models/clinical_intake_detail.dart';
 import '../models/timeline_event.dart';
 import '../services/api_client.dart';
 import '../services/doctor_service.dart';
 import '../router/app_navigation.dart';
 import '../utils/date_labels.dart';
+import '../utils/timeline_datetime.dart';
 import '../services/prescription_service.dart';
 import '../services/questionnaire_service.dart';
 import '../widgets/doctor_event_note_section.dart';
@@ -536,12 +538,14 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
         List<Map<String, dynamic>> matchingResponses = [];
         
         if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-          final eventDate = DateTime.tryParse(event.occurredAt)?.toLocal();
+          final eventDate = KeepiTimezone.parseUser(event.occurredAt);
           
           if (eventDate != null) {
             for (var r in snapshot.data!) {
               if (r is Map) {
-                final answeredAt = DateTime.tryParse((r['answered_at'] ?? '').toString())?.toLocal();
+                final answeredAt = KeepiTimezone.parseUser(
+                  (r['answered_at'] ?? '').toString(),
+                );
                 if (answeredAt != null && answeredAt.difference(eventDate).abs() < const Duration(minutes: 15)) {
                   matchingResponses.add(Map<String, dynamic>.from(r));
                 }
@@ -646,20 +650,8 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
 
 
   Widget _buildAppointmentDetailCard(TimelineEvent event) {
-    DateTime dt = DateTime.now();
-    try {
-      dt = DateTime.parse(event.occurredAt);
-    } catch (e) {}
-
-    String day = dt.day.toString().padLeft(2, '0');
-    String monthStr = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][dt.month - 1];
-    int hour = dt.hour;
-    String ampm = hour >= 12 ? 'PM' : 'AM';
-    if (hour > 12) hour -= 12;
-    if (hour == 0) hour = 12;
-    String hourStr = hour.toString().padLeft(2, '0');
-    String minStr = dt.minute.toString().padLeft(2, '0');
-    String formattedDate = "$day $monthStr ${dt.year} - $hourStr:$minStr $ampm";
+    final formattedDate = '${event.date.trim()}${event.time.trim().isNotEmpty ? ' - ${event.time.trim()}' : ''}';
+    final dt = TimelineDateTime.displayDateTime(event);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -902,12 +894,13 @@ class _TimelineEventDetailSheetState extends State<TimelineEventDetailSheet> {
     String day = "??";
     String monthYear = "---";
     String time = "--:--";
-    try {
-      DateTime dt = DateTime.parse(dateStr);
+    final dt = KeepiTimezone.parseUser(dateStr);
+    if (dt != null) {
       day = dt.day.toString();
-      monthYear = "${['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'][dt.month - 1]} ${dt.year}";
-      time = "${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}";
-    } catch (e) {}
+      monthYear =
+          "${['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'][dt.month - 1]} ${dt.year}";
+      time = TimelineDateTime.formatTimelineTime(dt);
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),

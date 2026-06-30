@@ -94,6 +94,32 @@ class PatientSchedulingLinkDto {
   }
 }
 
+class PatientSchedulingLinkEmailDto {
+  PatientSchedulingLinkEmailDto({
+    required this.schedulingLink,
+    required this.patientName,
+    required this.emailSent,
+    this.emailError,
+    this.message = '',
+  });
+
+  final String schedulingLink;
+  final String patientName;
+  final bool emailSent;
+  final String? emailError;
+  final String message;
+
+  factory PatientSchedulingLinkEmailDto.fromJson(Map<String, dynamic> json) {
+    return PatientSchedulingLinkEmailDto(
+      schedulingLink: json['scheduling_link'] as String? ?? '',
+      patientName: json['patient_name'] as String? ?? '',
+      emailSent: json['email_sent'] as bool? ?? false,
+      emailError: json['email_error'] as String?,
+      message: json['message'] as String? ?? '',
+    );
+  }
+}
+
 class SchedulingService {
   SchedulingService(this._api);
 
@@ -182,5 +208,14 @@ class SchedulingService {
       ApiEndpoints.doctorPatientSchedulingLink(patientId),
     );
     return PatientSchedulingLinkDto.fromJson(res.data ?? const {});
+  }
+
+  Future<PatientSchedulingLinkEmailDto> emailPatientSchedulingLink(
+    String patientId,
+  ) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.doctorPatientSchedulingLinkEmail(patientId),
+    );
+    return PatientSchedulingLinkEmailDto.fromJson(res.data ?? const {});
   }
 }

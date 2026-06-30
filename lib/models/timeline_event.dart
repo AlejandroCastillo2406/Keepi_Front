@@ -1,3 +1,5 @@
+import '../utils/timeline_datetime.dart';
+
 /// Evento de línea de tiempo (paciente / médico), alineado con `TimelineEventResponse` del backend.
 class TimelineEvent {
   final String id;
@@ -61,7 +63,7 @@ class TimelineEvent {
   }
 
   factory TimelineEvent.fromJson(Map<String, dynamic> json) {
-    return TimelineEvent(
+    final event = TimelineEvent(
       id: json['id']?.toString() ?? '',
       date: json['date']?.toString() ?? '',
       time: json['time']?.toString() ?? '',
@@ -77,6 +79,7 @@ class TimelineEvent {
       hasDoctorNote: json['has_doctor_note'] == true,
       doctorNotePreview: json['doctor_note_preview']?.toString(),
     );
+    return TimelineDateTime.normalizeFromApi(event);
   }
 
   String? get s3Url => null;
@@ -86,12 +89,7 @@ class TimelineEvent {
 List<TimelineEvent> sortTimelineNewestFirst(Iterable<TimelineEvent> events) {
   final list = List<TimelineEvent>.from(events);
   list.sort((a, b) {
-    final da = DateTime.tryParse(a.occurredAt);
-    final db = DateTime.tryParse(b.occurredAt);
-    if (da == null && db == null) return 0;
-    if (da == null) return 1;
-    if (db == null) return -1;
-    return db.compareTo(da);
+    return TimelineDateTime.sortInstant(b).compareTo(TimelineDateTime.sortInstant(a));
   });
   return list;
 }

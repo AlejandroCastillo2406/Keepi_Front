@@ -22,6 +22,7 @@ import '../screens/user/home_screen.dart';
 import '../screens/user/folder_contents_screen.dart';
 import '../screens/user/settings_screen.dart';
 import '../screens/user/user.dart';
+import '../screens/doctor/doctor_attendance_detail_screen.dart';
 import 'app_paths.dart';
 import 'doctor_route_pages.dart';
 import 'patient_route_pages.dart';
@@ -242,6 +243,14 @@ GoRouter createAppRouter(AuthProvider auth) {
                 path: 'agenda',
                 pageBuilder: (_, __) => const NoTransitionPage(
                   child: DoctorTabPlaceholder(),
+                ),
+              ),
+              GoRoute(
+                path: 'asistencia-detalle',
+                pageBuilder: (context, state) => NoTransitionPage(
+                  child: Builder(
+                    builder: (ctx) => buildDoctorOverlayPage(ctx, state),
+                  ),
                 ),
               ),
               GoRoute(

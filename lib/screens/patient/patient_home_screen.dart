@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../core/web_layout.dart';
 import '../../widgets/web_app_shell.dart';
 import '../../models/timeline_event.dart';
@@ -201,7 +202,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     final now = DateTime.now();
     final future = _myAppointments.where((a) {
       if (a.appointmentDate == null) return false;
-      return a.appointmentDate!.toLocal().isAfter(now);
+      return a.appointmentDate!.isAfter(DateTime.now().toUtc());
     }).toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
     return future.isEmpty ? null : future.first;
@@ -808,8 +809,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildAppointmentCard(AppointmentDto a) {
-    final start = a.appointmentDate?.toLocal() ?? DateTime.now();
-    final end = a.endDate?.toLocal() ?? start.add(const Duration(minutes: 30));
+    final start = a.appointmentDate?.asScheduleLocal ?? DateTime.now();
+    final end = a.endDate?.asScheduleLocal ?? start.add(const Duration(minutes: 30));
     final timeLabel = a.appointmentDate != null 
         ? '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}'
         : 'Pendiente de fecha';
@@ -843,7 +844,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildPendingRequestCard(AnalysisRequestDto req) {
-    final dt = DateTime.tryParse(req.createdAt)?.toLocal();
+    final dt = KeepiTimezone.parseUser(req.createdAt);
     final day = dt?.day ?? 0;
     final monthAbbr = dt != null ? _monthsEsUpper[dt.month - 1] : '—';
     final deadline = req.deadlineLabel;
@@ -1877,8 +1878,8 @@ class _NextAppointmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final start = appointment.appointmentDate?.toLocal() ?? DateTime.now();
-    final end = appointment.endDate?.toLocal() ?? start.add(const Duration(minutes: 30));
+    final start = appointment.appointmentDate?.asScheduleLocal ?? DateTime.now();
+    final end = appointment.endDate?.asScheduleLocal ?? start.add(const Duration(minutes: 30));
     final timeLabel = appointment.appointmentDate != null 
         ? '${_two(start.hour)}:${_two(start.minute)} — ${_two(end.hour)}:${_two(end.minute)}'
         : 'Pendiente de fecha';

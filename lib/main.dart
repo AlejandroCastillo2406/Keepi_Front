@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/app_theme.dart';
+import 'core/keepi_timezone.dart';
 import 'providers/auth_provider.dart';
 import 'providers/consultation_bootstrap_provider.dart';
 import 'providers/expedientes_cache_provider.dart';
@@ -48,6 +49,7 @@ void main() async {
   await PushNotificationService.initializeFirebaseSafely();
   await PushNotificationService.configureTapHandlers(appNavigatorKey);
   final prefs = await SharedPreferences.getInstance();
+  await KeepiTimezone.init(prefs);
   runApp(KeepiApp(prefs: prefs));
 }
 

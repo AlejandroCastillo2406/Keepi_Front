@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/keepi_timezone.dart';
 import '../../core/app_theme.dart';
 import '../../core/web_layout.dart';
 import '../../services/api_client.dart';
 import '../../services/appointment_service.dart';
 import '../../services/doctor_service.dart';
 import '../../services/scheduling_service.dart';
-import '../../widgets/doctor_note_field.dart';
 import '../../widgets/doctor_appointment_slot_picker.dart';
+import '../../widgets/doctor_calendar_ics_export_dialog.dart';
+import '../../widgets/doctor_patient_picker_sheet.dart';
+import '../../widgets/keepi_web_dialog.dart';
 import '../../widgets/doctor_pending_appointment_review_sheet.dart';
 import '../../widgets/doctor_procedure_schedule_sheet.dart';
 
@@ -27,6 +30,7 @@ class DoctorCalendarTab extends StatefulWidget {
 }
 
 class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
+  final ScrollController _timelineScrollCtrl = ScrollController();
   DateTime _selectedDay = DateTime.now();
   bool _loading = true;
   String? _error;
@@ -34,7 +38,45 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   List<ProcedureBlockDto> _procedures = [];
   ConsultationScheduleDto? _consultationSchedule;
   _AgendaView _agendaView = _AgendaView.today;
+  static const double _timelineHourHeight = 120;
+  static const double _timelineLabelWidth = 66;
+  // Guard: auto-scroll-to-current-time runs only once per selected day.
+  DateTime? _autoScrolledForDay;
 
+  void _scrollTimelineToCurrentTime({
+  required int startHour,
+  required double rowHeight,
+  required double viewportHeight,
+}) {
+  if (!_isSameDay(_selectedDay, DateTime.now())) return;
+  // Only auto-scroll once per selected day to avoid scrolling on every rebuild.
+  if (_autoScrolledForDay != null &&
+      _isSameDay(_autoScrolledForDay!, _selectedDay)) return;
+
+  _autoScrolledForDay = _selectedDay;
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!_timelineScrollCtrl.hasClients) return;
+
+    final now = DateTime.now();
+    final minutesFromStart = ((now.hour - startHour) * 60) + now.minute;
+    final currentTop = (minutesFromStart / 60) * rowHeight;
+    final target = (currentTop - (viewportHeight * 0.38))
+        .clamp(0.0, _timelineScrollCtrl.position.maxScrollExtent);
+
+    _timelineScrollCtrl.animateTo(
+      target,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+    );
+  });
+}
+
+  @override
+  void dispose() {
+    _timelineScrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -138,19 +180,19 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
 
   List<AppointmentDto> get _upcomingRows {
-    final now = DateTime.now();
+    final nowUtc = DateTime.now().toUtc();
     return _appointments.where((a) {
       if (a.appointmentDate == null) return false;
       if (!_isConfirmedAppointmentStatus(a.status)) return false;      
       if (a.status == 'canceled') return false;
-      return !a.appointmentDate!.toLocal().isBefore(now);
+      return a.appointmentDate!.isAfter(nowUtc);
     }).toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
   }
 
   List<ProcedureBlockDto> get _selectedDayProcedures => _procedures
       .where((p) {
-        final d = p.startAt.toLocal();
+        final d = p.startAt.asScheduleLocal;
         return d.year == _selectedDay.year &&
             d.month == _selectedDay.month &&
             d.day == _selectedDay.day;
@@ -159,7 +201,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
   String _timeRangeLabel(DateTime start, DateTime end) {
-    return '${_hour(start.toLocal())} - ${_hour(end.toLocal())}';
+    return '${_hour(start.asScheduleLocal)} - ${_hour(end.asScheduleLocal)}';
   }
 
   Future<void> _scheduleProcedure() async {
@@ -210,34 +252,18 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Future<void> _openProcedure(ProcedureBlockDto procedure) async {
-    final start = procedure.startAt.toLocal();
-    final end = procedure.endAt.toLocal();
-    final delete = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          procedure.title,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        content: Text(
-          '${_two(start.day)}/${_two(start.month)}/${start.year}\n'
-          '${_timeRangeLabel(start, end)}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cerrar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFE11D48),
-            ),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
+    final start = procedure.startAt.asScheduleLocal;
+    final end = procedure.endAt.asScheduleLocal;
+    final delete = await KeepiConfirmDialog.show(
+      context,
+      title: procedure.title,
+      message:
+          '${_two(start.day)}/${_two(start.month)}/${start.year}\n${_timeRangeLabel(start, end)}',
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cerrar',
+      icon: Icons.delete_outline_rounded,
+      accent: const Color(0xFFE11D48),
+      destructive: true,
     );
     if (delete != true || !mounted) return;
 
@@ -271,7 +297,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         if (a.appointmentDate == null) return false;
         if (a.status == 'pending_doctor_proposal') return false; 
         
-        final d = a.appointmentDate!.toLocal();
+        final d = a.appointmentDate!.asScheduleLocal;
         return d.year == _selectedDay.year && d.month == _selectedDay.month && d.day == _selectedDay.day;
       }).toList()..sort((a, b) {
         final dateA = a.appointmentDate ?? DateTime(2000);
@@ -298,9 +324,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Future<void> _rescheduleWebRequest(AppointmentDto a) async {
+    final confirmed = _isConfirmedAppointmentStatus(a.status);
     final ok = await _showPremiumActionConfirm(
-      title: 'Reagendar cita',
-      message: 'Selecciona un nuevo horario y enviaremos la propuesta al paciente.',
+      title: confirmed ? 'Reagendar cita confirmada' : 'Reagendar cita',
+      message: confirmed
+          ? 'Selecciona un nuevo horario. El paciente recibirá un correo para aceptar o rechazar el cambio.'
+          : 'Selecciona un nuevo horario y enviaremos la propuesta al paciente.',
       primaryLabel: 'Elegir horario',
       icon: Icons.event_repeat_rounded,
       accent: KeepiColors.skyBlue,
@@ -328,8 +357,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Propuesta enviada al paciente por correo'),
+          SnackBar(
+            content: Text(
+              confirmed
+                  ? 'Propuesta de reprogramación enviada al paciente por correo'
+                  : 'Propuesta enviada al paciente por correo',
+            ),
             backgroundColor: KeepiColors.green,
           ),
         );
@@ -429,9 +462,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Future<void> _cancelAppointment(AppointmentDto a) async {
+    final confirmed = _isConfirmedAppointmentStatus(a.status);
     final confirm = await _showPremiumActionConfirm(
       title: 'Cancelar cita',
-      message: 'Esta acción cancelará la cita y no se puede deshacer.',
+      message: confirmed
+          ? 'Se cancelará la cita confirmada y el paciente recibirá un correo con el aviso y su link de agenda.'
+          : 'Esta acción cancelará la cita. El paciente recibirá un correo con el aviso.',
       primaryLabel: 'Cancelar cita',
       icon: Icons.event_busy_rounded,
       accent: const Color(0xFFE11D48),
@@ -455,7 +491,10 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cita cancelada correctamente'), backgroundColor: KeepiColors.slate),
+          const SnackBar(
+            content: Text('Cita cancelada. El paciente recibirá un correo.'),
+            backgroundColor: KeepiColors.slate,
+          ),
         );
       }
     } catch (e) {
@@ -575,37 +614,9 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     }
 
     if (!mounted) return;
-    final selectedPatient = await showModalBottomSheet<PatientListItem>(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.only(top: 16),
-          child: Column(
-            children: [
-              const Text('Selecciona un paciente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: KeepiColors.slate)),
-              const SizedBox(height: 10),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: patients.length,
-                  itemBuilder: (context, index) {
-                    final p = patients[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: KeepiColors.skyBlueSoft,
-                        child: Text(p.name[0].toUpperCase(), style: const TextStyle(color: KeepiColors.skyBlue, fontWeight: FontWeight.bold)),
-                      ),
-                      title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(p.email),
-                      onTap: () => Navigator.pop(ctx, p),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      }
+    final selectedPatient = await openDoctorPatientPicker(
+      context,
+      patients: patients,
     );
 
     if (selectedPatient == null || !mounted) return;
@@ -613,108 +624,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     final finalDateTime = await pickDoctorAppointmentSlot(context);
     if (finalDateTime == null || !mounted) return;
 
-    final noteCtrl = TextEditingController();
-    final reasonCtrl = TextEditingController();
-    final dateStr =
-        '${_two(finalDateTime.day)}/${_two(finalDateTime.month)}/${finalDateTime.year}';
-    final timeStr = formatSlotTimeLocal(finalDateTime);
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: KeepiColors.cardBorder),
-          ),
-          backgroundColor: Colors.white,
-          title: const Text(
-            'Confirmar cita',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: KeepiColors.slate,
-              letterSpacing: -0.3,
-            ),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 14.5,
-                color: KeepiColors.slate,
-                height: 1.4,
-              ),
-              children: [
-                      const TextSpan(text: '¿Asignar la cita a '),
-                TextSpan(
-                  text: selectedPatient.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: KeepiColors.skyBlue,
-                ),
-                      ),
-                      const TextSpan(text: ' el '),
-                TextSpan(
-                  text: dateStr,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const TextSpan(text: ' a las '),
-                TextSpan(
-                  text: timeStr,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const TextSpan(text: '?'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ConsultationReasonField(controller: reasonCtrl),
-                const SizedBox(height: 16),
-                DoctorNoteField(controller: noteCtrl),
-              ],
-            ),
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text(
-                'Cancelar',
-                style: TextStyle(color: KeepiColors.slateLight, fontWeight: FontWeight.w700),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: KeepiColors.orange,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Confirmar', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-            ),
-          ],
-        );
-      },
+    final confirmed = await showDoctorAppointmentConfirmDialog(
+      context,
+      patientName: selectedPatient.name,
+      dateTime: finalDateTime,
     );
-
-    final doctorNote = noteCtrl.text.trim();
-    final reason = reasonCtrl.text.trim();
-    noteCtrl.dispose();
-    reasonCtrl.dispose();
-
-    if (confirm != true || !mounted) return;
-    if (reason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Indica el motivo de la consulta.')),
-      );
-      return;
-    }
+    if (confirmed == null || !mounted) return;
 
     showDialog(
       context: context, 
@@ -726,8 +641,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       await DoctorService(context.read<ApiClient>()).scheduleAppointment(
         patientId: selectedPatient.id,
         date: finalDateTime,
-        reason: reason,
-        doctorNote: doctorNote.isEmpty ? null : doctorNote,
+        reason: confirmed.reason,
+        doctorNote: confirmed.doctorNote,
       );
       if (mounted) Navigator.pop(context); 
       _load(); 
@@ -751,104 +666,15 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     required Color accent,
     bool destructive = false,
   }) {
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 22),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 430),
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: KeepiColors.cardBorder.withValues(alpha: 0.85)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.16),
-                  blurRadius: 40,
-                  offset: const Offset(0, 22),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Icon(icon, color: accent, size: 28),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          color: Color(0xFF111827),
-                          fontSize: 21,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.6,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  message,
-                  style: const TextStyle(
-                    color: KeepiColors.slateLight,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: KeepiColors.slate,
-                          side: const BorderSide(color: KeepiColors.cardBorder),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        child: const Text('Volver'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: destructive ? const Color(0xFFE11D48) : accent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        child: Text(primaryLabel),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    return KeepiConfirmDialog.show(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: primaryLabel,
+      cancelLabel: 'Volver',
+      icon: icon,
+      accent: accent,
+      destructive: destructive,
     );
   }
 
@@ -912,6 +738,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
           _buildPrimaryScheduleButton(expanded: true),
           const SizedBox(height: 12),
           _buildProcedureScheduleButton(expanded: true),
+          const SizedBox(height: 12),
+          _buildExportCalendarButton(expanded: true),
           const SizedBox(height: 16),
           _buildMainAgendaCard(
             dayRows: dayRows,
@@ -937,7 +765,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   Widget _buildAgendaHero({bool compact = false}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+      children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -964,8 +792,54 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
             ],
           ),
         ),
+        const SizedBox(width: 12),
+        _buildExportCalendarButton(compact: compact),
       ],
     );
+  }
+
+  Future<void> _openExportCalendar() async {
+    await showDoctorCalendarIcsExportDialog(context);
+  }
+
+  Widget _buildExportCalendarButton({bool compact = false, bool expanded = false}) {
+    final button = InkWell(
+      onTap: _openExportCalendar,
+      borderRadius: BorderRadius.circular(expanded ? 18 : 16),
+      child: Container(
+        height: expanded ? 56 : (compact ? 44 : 48),
+        width: expanded ? double.infinity : null,
+        padding: EdgeInsets.symmetric(horizontal: expanded ? 22 : (compact ? 12 : 16)),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(expanded ? 18 : 16),
+          border: Border.all(color: KeepiColors.cardBorder),
+          boxShadow: _cardShadow(blur: 12, alpha: 0.025),
+        ),
+        child: Row(
+          mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment:
+              expanded ? MainAxisAlignment.center : MainAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.download_rounded,
+              size: 20,
+              color: KeepiColors.orange,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              expanded ? 'Exportar calendario (.ics)' : 'Exportar .ics',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: KeepiColors.slate,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return expanded ? SizedBox(width: double.infinity, child: button) : button;
   }
 
 
@@ -1125,7 +999,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       onTap: _scheduleProcedure,
       borderRadius: BorderRadius.circular(18),
       child: Container(
-        height: 56,
+        height: 68,
         padding: const EdgeInsets.symmetric(horizontal: 22),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
@@ -1134,19 +1008,35 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         ),
         child: Row(
           children: [
-            Icon(Icons.medical_services_outlined, color: accent, size: 24),
-            const SizedBox(width: 14),
+            Icon(Icons.medical_services_outlined, color: accent, size: 30),
+            const SizedBox(width: 16),
             const Expanded(
-              child: Text(
-                'Procedimiento',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Nuevo procedimiento',
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Crear un nuevo procedimiento en el calendario',
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: accent, size: 24),
+            Icon(Icons.chevron_right_rounded, color: accent, size: 26),
           ],
         ),
       ),
@@ -1154,14 +1044,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     return expanded ? SizedBox(width: double.infinity, child: button) : button;
   }
 
-  Widget _buildMainAgendaCard({
-    required List<AppointmentDto> dayRows,
-    required List<ProcedureBlockDto> procedureRows,
-    required List<AppointmentDto> approvalRows,
-    required List<AppointmentDto> pendingRows,
-    required bool loading,
-    required String? error,
-    bool compact = false,
+  Widget _buildMainAgendaCard({ 
+      required List<AppointmentDto> dayRows,
+      required List<ProcedureBlockDto> procedureRows,
+      required List<AppointmentDto> approvalRows,
+      required List<AppointmentDto> pendingRows,
+      required bool loading,
+      required String? error,
+      bool compact = false,
   }) {
     final showWeek = _agendaView == _AgendaView.week;
     return Container(
@@ -1171,7 +1061,12 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(compact ? 16 : 24, compact ? 16 : 22, compact ? 16 : 24, 12),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 16 : 24,
+              compact ? 16 : 22,
+              compact ? 16 : 24,
+              12,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1188,19 +1083,35 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 const SizedBox(height: 16),
                 _buildAgendaNavigation(compact: compact),
                 const SizedBox(height: 14),
-                _buildAgendaSummary(dayRows, approvalRows.length + pendingRows.length, compact: compact),
+                _buildAgendaSummary(
+                  dayRows,
+                  approvalRows.length + pendingRows.length,
+                  compact: compact,
+                ),
               ],
             ),
           ),
+
           if (!showWeek) ...[
             Padding(
-              padding: EdgeInsets.fromLTRB(compact ? 12 : 24, 0, compact ? 12 : 24, compact ? 14 : 20),
+              padding: EdgeInsets.fromLTRB(
+                compact ? 12 : 24,
+                0,
+                compact ? 12 : 24,
+                compact ? 14 : 20,
+              ),
               child: _buildWeekStrip(compact: compact),
             ),
             const Divider(height: 1, color: KeepiColors.cardBorder),
           ],
+
           Padding(
-            padding: EdgeInsets.fromLTRB(compact ? 12 : 24, compact ? 14 : 22, compact ? 12 : 24, compact ? 18 : 26),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 12 : 24,
+              compact ? 14 : 22,
+              compact ? 12 : 24,
+              compact ? 18 : 26,
+            ),
             child: showWeek
                 ? _buildWeekAgenda(
                     loading: loading,
@@ -1367,7 +1278,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
 
   Widget _buildAgendaSummary(List<AppointmentDto> dayRows, int pendingCount, {bool compact = false}) {
     final upcoming = _upcomingRows;
-    final next = upcoming.isEmpty ? null : upcoming.first.appointmentDate!.toLocal();
+    final next = upcoming.isEmpty ? null : upcoming.first.appointmentDate!.asScheduleLocal;
     final nextLabel = next == null ? 'Sin próximas' : '${_relativeDayLabel(next)} · ${_hour(next)}';
     return Wrap(
       spacing: 10,
@@ -1411,7 +1322,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         final appointmentsCount = _appointments.where((a) {
           if (a.appointmentDate == null) return false;
           if (!_isConfirmedAppointmentStatus(a.status)) return false;
-          return _isSameDay(a.appointmentDate!.toLocal(), date);
+          return _isSameDay(a.appointmentDate!.asScheduleLocal, date);
         }).length;
         final hasAppointments = appointmentsCount > 0;
 
@@ -1557,14 +1468,14 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     final weekRows = _appointments.where((a) {
       if (a.appointmentDate == null) return false;
       if (!_isConfirmedAppointmentStatus(a.status)) return false;      
-      final local = a.appointmentDate!.toLocal();
+      final local = a.appointmentDate!.asScheduleLocal;
       return !local.isBefore(days.first) && local.isBefore(days.last.add(const Duration(days: 1)));
     }).toList()
       ..sort((a, b) => a.appointmentDate!.compareTo(b.appointmentDate!));
 
     final total = weekRows.length;
     final busiest = days.map((day) {
-      return weekRows.where((a) => _isSameDay(a.appointmentDate!.toLocal(), day)).length;
+      return weekRows.where((a) => _isSameDay(a.appointmentDate!.asScheduleLocal, day)).length;
     }).fold<int>(0, (a, b) => a > b ? a : b);
 
     return Column(
@@ -1607,7 +1518,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
         else
           Column(
             children: days.map((day) {
-              final rows = weekRows.where((a) => _isSameDay(a.appointmentDate!.toLocal(), day)).toList();
+              final rows = weekRows.where((a) => _isSameDay(a.appointmentDate!.asScheduleLocal, day)).toList();
               return _weekSummaryDayCard(day, rows, maxCount: busiest, compact: compact);
             }).toList(),
           ),
@@ -1615,100 +1526,166 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
   }
 
-  Widget _weekSummaryDayCard(DateTime day, List<AppointmentDto> rows, {required int maxCount, bool compact = false}) {
-    final selected = _isSameDay(day, _selectedDay);
-    final preview = rows.take(2).toList();
-    return InkWell(
-      onTap: () => setState(() {
-        _selectedDay = day;
-        _agendaView = _AgendaView.today;
-      }),
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: EdgeInsets.all(compact ? 13 : 16),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFFBF7) : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? KeepiColors.orange.withValues(alpha: 0.38) : KeepiColors.cardBorder),
-          boxShadow: selected ? _cardShadow(blur: 18, alpha: 0.04) : null,
+Widget _weekSummaryDayCard(
+  DateTime day,
+  List<AppointmentDto> rows, {
+  required int maxCount,
+  bool compact = false,
+}) {
+  final selected = _isSameDay(day, _selectedDay);
+  final preview = rows.take(2).toList();
+  final hiddenCount = rows.length - preview.length;
+
+  void openDay() {
+    setState(() {
+      _selectedDay = day;
+      _agendaView = _AgendaView.today;
+    });
+  }
+
+  return InkWell(
+    onTap: openDay,
+    borderRadius: BorderRadius.circular(20),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(compact ? 13 : 16),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFFFFFBF7) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: selected
+              ? KeepiColors.orange.withValues(alpha: 0.38)
+              : KeepiColors.cardBorder,
         ),
-        child: Column(
-          children: [
-            Row(
+        boxShadow: selected ? _cardShadow(blur: 18, alpha: 0.04) : null,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: compact ? 54 : 62,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? KeepiColors.orange : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? KeepiColors.orange : KeepiColors.cardBorder,
+              ),
+            ),
+            child: Column(
               children: [
-                Container(
-                  width: compact ? 54 : 62,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: selected ? KeepiColors.orange : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: selected ? KeepiColors.orange : KeepiColors.cardBorder),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(_shortWeekDay(day), style: TextStyle(color: selected ? Colors.white : KeepiColors.slateLight, fontSize: 11, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 5),
-                      Text('${day.day}', style: TextStyle(color: selected ? Colors.white : KeepiColors.slate, fontSize: 20, fontWeight: FontWeight.w900)),
-                    ],
+                Text(
+                  _shortWeekDay(day),
+                  style: TextStyle(
+                    color: selected ? Colors.white : KeepiColors.slateLight,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              rows.isEmpty ? 'Sin citas programadas' : '${rows.length} ${rows.length == 1 ? 'cita programada' : 'citas programadas'}',
-                              style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w900, fontSize: 15),
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded, color: KeepiColors.slateLight),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _scheduleLabelForDay(day),
-                        style: TextStyle(
-                          color: _isWorkingDay(day) ? KeepiColors.green : KeepiColors.slateLight,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (preview.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: preview.map((a) {
-                            final local = a.appointmentDate!.toLocal();
-                            final name = (a.patientName ?? '').trim().isNotEmpty ? a.patientName!.trim() : 'Paciente';
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: KeepiColors.cardBorder),
-                              ),
-                              child: Text('${_hour(local)} · $name', style: const TextStyle(color: KeepiColors.slate, fontSize: 11.5, fontWeight: FontWeight.w800)),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ],
+                const SizedBox(height: 5),
+                Text(
+                  '${day.day}',
+                  style: TextStyle(
+                    color: selected ? Colors.white : KeepiColors.slate,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  rows.isEmpty
+                      ? 'Sin citas programadas'
+                      : '${rows.length} ${rows.length == 1 ? 'cita programada' : 'citas programadas'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _scheduleLabelForDay(day),
+                  style: TextStyle(
+                    color: _isWorkingDay(day)
+                        ? KeepiColors.green
+                        : KeepiColors.slateLight,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (preview.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ...preview.map((a) {
+                        final local = a.appointmentDate!.asScheduleLocal;
+                        final name = (a.patientName ?? '').trim().isNotEmpty
+                            ? a.patientName!.trim()
+                            : 'Paciente';
+
+                        return Container(
+                          constraints: const BoxConstraints(maxWidth: 210),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: KeepiColors.cardBorder),
+                          ),
+                          child: Text(
+                            '${_hour(local)} · $name',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: KeepiColors.slate,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        );
+                      }),
+                      if (hiddenCount > 0)
+                        InkWell(
+                          onTap: openDay,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: KeepiColors.orangeSoft,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'Ver $hiddenCount más',
+                              style: const TextStyle(
+                                color: KeepiColors.orange,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: KeepiColors.slateLight),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _emptyWeekCard() {
     return Container(
@@ -1765,9 +1742,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     bool compact = false,
   }) {
     final totalPending = approvalRows.length + pendingRows.length;
-    final pendingPanelHeight = _pendingPanelHeight(totalPending, compact: compact);
+    final estimatedCardHeight = compact ? 220.0 : 250.0;    
     final extraPending = totalPending > 2 ? totalPending - 2 : 0;
-    final maxUpcomingHeight = compact ? 380.0 : 470.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1776,6 +1752,8 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
           _buildPrimaryScheduleButton(),
           const SizedBox(height: 12),
           _buildProcedureScheduleButton(),
+          const SizedBox(height: 12),
+          _buildExportCalendarButton(),
           const SizedBox(height: 20),
         ],
         Container(
@@ -1821,7 +1799,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
                 Column(
                   children: [
                     SizedBox(
-                      height: pendingPanelHeight,
+                      height: _pendingPanelHeight(totalPending, compact: compact),
                       child: Scrollbar(
                         thumbVisibility: !compact && totalPending > 2,
                         child: ListView(
@@ -1852,7 +1830,6 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
           child: _buildUpcomingAppointmentsPanel(
             loading: loading,
             compact: compact,
-            maxHeight: maxUpcomingHeight,
           ),
         ),
       ],
@@ -1894,61 +1871,73 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Widget _buildUpcomingAppointmentsPanel({
-    required bool loading,
-    bool compact = false,
-    double maxHeight = 470,
-  }) {
-    final rows = _upcomingRows.toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Próximas citas',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ),
-            _countBadge(rows.length),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Vista general, sin depender del día seleccionado.',
-          style: TextStyle(color: KeepiColors.slateLight, fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 18),
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
-          )
-        else if (rows.isEmpty)
-          _emptyUpcomingCard()
-        else
-          SizedBox(
-            height: maxHeight,
-            child: Scrollbar(
-              thumbVisibility: !compact,
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: rows.length,
-                itemBuilder: (_, index) => _upcomingAppointmentTile(rows[index]),
+  required bool loading,
+  bool compact = false,
+}) {
+  final rows = _upcomingRows.toList();
+  final visibleCount = rows.length.clamp(0, 5);
+  final tileHeight = compact ? 92.0 : 96.0;
+  final listHeight = visibleCount * tileHeight;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Próximas citas',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+                color: Color(0xFF111827),
               ),
             ),
           ),
-      ],
-    );
-  }
+          _countBadge(rows.length),
+        ],
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'Vista general, sin depender del día seleccionado.',
+        style: TextStyle(
+          color: KeepiColors.slateLight,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 18),
+      if (loading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: CircularProgressIndicator(color: KeepiColors.orange),
+          ),
+        )
+      else if (rows.isEmpty)
+        _emptyUpcomingCard()
+      else
+        SizedBox(
+          height: listHeight,
+          child: Scrollbar(
+            thumbVisibility: !compact && rows.length > 3,
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              physics: rows.length > 3
+                  ? const BouncingScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              itemCount: rows.length,
+              itemBuilder: (_, index) => _upcomingAppointmentTile(rows[index]),
+            ),
+          ),
+        ),
+    ],
+  );
+}
 
   Widget _upcomingAppointmentTile(AppointmentDto a) {
-    final local = a.appointmentDate!.toLocal();
+    final local = a.appointmentDate!.asScheduleLocal;
     final visual = _statusVisual(a.status);
     final name = (a.patientName ?? '').trim().isNotEmpty ? a.patientName!.trim() : 'Paciente';
     return InkWell(
@@ -2008,72 +1997,203 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     );
   }
 
-  Widget _buildTimelineAgenda({
-    required List<AppointmentDto> dayRows,
-    required List<ProcedureBlockDto> procedureRows,
-    required bool loading,
-    required String? error,
-    bool compact = false,
-  }) {
-    final hours = _visibleHoursFor(dayRows, procedureRows);
-    final timelineItems = _buildDayTimelineItems(dayRows, procedureRows);
-    final hasItems = dayRows.isNotEmpty || procedureRows.isNotEmpty;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Agenda del ${_selectedDay.day} ${_monthName(_selectedDay.month).toLowerCase()}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                      color: Color(0xFF111827),
-                    ),
+Widget _buildTimelineAgenda({
+  required List<AppointmentDto> dayRows,
+  required List<ProcedureBlockDto> procedureRows,
+  required bool loading,
+  required String? error,
+  bool compact = false,
+}) {
+  final hours = _visibleHoursFor(dayRows, procedureRows);
+  final hasItems = dayRows.isNotEmpty || procedureRows.isNotEmpty;
+  final rowHeight = compact ? 90.0 : _timelineHourHeight;
+  final timelineHeight = hours.length * rowHeight;
+  final startHour = hours.isEmpty ? 8 : hours.first;
+  final viewportHeight = compact ? 560.0 : 690.0;
+  _scrollTimelineToCurrentTime(
+    startHour: startHour,
+    rowHeight: rowHeight,
+    viewportHeight: viewportHeight,
+  );
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Agenda del ${_selectedDay.day} ${_monthName(_selectedDay.month).toLowerCase()}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.4,
+                    color: Color(0xFF111827),
                   ),
-                  const SizedBox(height: 8),
-                  _scheduleDayPill(_selectedDay),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                _scheduleDayPill(_selectedDay),
+              ],
             ),
-            if (compact) _buildTodayButton(),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 38),
-            child: Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
-          )
-        else if (error != null)
-          _errorCard(error)
-        else
-          Stack(
-            children: [
-              Column(
-                children: [
-                  for (final h in hours) _timeGridRow(h, compact: compact),
-                ],
-              ),
-              if (!hasItems)
-                Positioned.fill(child: _emptyDayOverlay())
-              else
-                Column(
+          ),
+          if (compact) _buildTodayButton(),
+        ],
+      ),
+      const SizedBox(height: 16),
+      if (loading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 38),
+          child: Center(child: CircularProgressIndicator(color: KeepiColors.orange)),
+        )
+      else if (error != null)
+        _errorCard(error)
+      else
+        Container(
+          height: viewportHeight,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: KeepiColors.cardBorder.withValues(alpha: 0.75)),
+          ),
+          child: Scrollbar(
+            controller: _timelineScrollCtrl,
+            thumbVisibility: !compact,
+            child: SingleChildScrollView(
+              controller: _timelineScrollCtrl,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(top: 4, bottom: 14),
+              child: SizedBox(
+                height: timelineHeight,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    const SizedBox(height: 44),
-                    ...timelineItems,
+                    Column(
+                      children: [
+                        for (final h in hours) _timeGridRow(h, compact: compact),
+                      ],
+                    ),
+                    
+                    if (!hasItems)
+                      Positioned.fill(child: _emptyDayOverlay())
+                    else ...[
+                      ...dayRows.map(
+                        (a) => _positionedAppointment(
+                          child: _buildAppointmentFromDto(a),
+                          start: a.appointmentDate?.asScheduleLocal,
+                          end: a.endDate?.asScheduleLocal,
+                          startHour: startHour,
+                          rowHeight: rowHeight,
+                          compact: compact,
+                        ),
+                      ),
+                      ...procedureRows.map(
+                        (p) => _positionedAppointment(
+                          child: _buildProcedureFromDto(p),
+                          start: p.startAt.asScheduleLocal,
+                          end: p.endAt.asScheduleLocal,
+                          startHour: startHour,
+                          rowHeight: rowHeight,
+                          compact: compact,
+                        ),
+                      ),
+                    ],
+                     if (_isSameDay(_selectedDay, DateTime.now()))
+                      _currentTimeLine(
+                        startHour: startHour,
+                        rowHeight: rowHeight,
+                        compact: compact,
+                      ),
                   ],
                 ),
-            ],
+              ),
+            ),
           ),
-      ],
-    );
-  }
+        ),
+    ],
+  );
+}
+
+Widget _currentTimeLine({
+  required int startHour,
+  required double rowHeight,
+  required bool compact,
+}) {
+  final now = DateTime.now();
+  final minutesFromStart = ((now.hour - startHour) * 60) + now.minute;
+  final top = (minutesFromStart / 60) * rowHeight;
+
+  if (top < 0) return const SizedBox.shrink();
+
+  return Positioned(
+  top: top,
+  left: compact ? 48 : _timelineLabelWidth,
+  right: 0,
+  child: IgnorePointer(
+    child: Material(
+      color: Colors.transparent,
+      child: Row(
+        children: [
+          Container(
+            width: 11,
+            height: 11,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Container(
+              height: 2,
+              color: const Color(0xFFEF4444),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
+);
+}
+
+Widget _positionedAppointment({
+  required Widget child,
+  required DateTime? start,
+  DateTime? end,
+  required int startHour,
+  required double rowHeight,
+  required bool compact,
+}) {
+  if (start == null) return const SizedBox.shrink();
+
+  final minutesFromStart = ((start.hour - startHour) * 60) + start.minute;
+  final top = (minutesFromStart / 60) * rowHeight;
+
+  final durationMinutes = end == null
+      ? 30
+      : end.difference(start).inMinutes.clamp(15, 240);
+
+  final slotHeight = (durationMinutes / 60) * rowHeight;
+
+  return Positioned(
+    top: top.clamp(0.0, double.infinity).toDouble(),
+    left: compact ? 48 : _timelineLabelWidth,
+    right: 0,
+    height: slotHeight.clamp(54.0, 220.0).toDouble(),
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: child,
+    ),
+  );
+}
 
   List<Widget> _buildDayTimelineItems(
     List<AppointmentDto> dayRows,
@@ -2081,7 +2201,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   ) {
     final entries = <({DateTime start, Widget widget})>[];
     for (final appointment in dayRows) {
-      final start = appointment.appointmentDate?.toLocal();
+      final start = appointment.appointmentDate?.asScheduleLocal;
       if (start == null) continue;
       entries.add((
         start: start,
@@ -2090,7 +2210,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     }
     for (final procedure in procedureRows) {
       entries.add((
-        start: procedure.startAt.toLocal(),
+        start: procedure.startAt.asScheduleLocal,
         widget: _buildProcedureFromDto(procedure),
       ));
     }
@@ -2113,9 +2233,9 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
     final hours = <int>[
       ...rows
           .where((a) => a.appointmentDate != null)
-          .map((a) => a.appointmentDate!.toLocal().hour),
-      ...procedures.map((p) => p.startAt.toLocal().hour),
-      ...procedures.map((p) => p.endAt.toLocal().hour),
+          .map((a) => a.appointmentDate!.asScheduleLocal.hour),
+      ...procedures.map((p) => p.startAt.asScheduleLocal.hour),
+      ...procedures.map((p) => p.endAt.asScheduleLocal.hour),
     ];
     if (hours.isEmpty) return [8, 9, 10, 11, 12, 13, 14];
     final minHour = (hours.reduce((a, b) => a < b ? a : b) - 1).clamp(7, 21) as int;
@@ -2157,25 +2277,27 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Widget _timeGridRow(int hour, {bool compact = false}) {
-    return SizedBox(
-      height: compact ? 52 : 58,
-      child: Row(
-        children: [
-          SizedBox(
-            width: compact ? 44 : 58,
-            child: Text(
-              '${hour.toString().padLeft(2, '0')}:00',
-              style: const TextStyle(
-                color: KeepiColors.slate,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
+  return SizedBox(
+    height: compact ? 90 : _timelineHourHeight,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: compact ? 48 : _timelineLabelWidth,
+          child: Text(
+            '${hour.toString().padLeft(2, '0')}:00',
+            style: const TextStyle(
+              color: KeepiColors.slate,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          Expanded(
-            child: Container(
-              height: 1,
-              color: KeepiColors.cardBorder.withValues(alpha: 0.82),
+        ),
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.only(top: 8),
+            height: 1,
+            color: KeepiColors.cardBorder.withValues(alpha: 0.82),
             ),
           ),
         ],
@@ -2192,29 +2314,44 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
       description: 'Horario bloqueado para citas',
       typeColor: accent,
       softColor: accent.withValues(alpha: 0.08),
+      dense: true,
       onTap: () => _openProcedure(procedure),
     );
   }
 
-  Widget _buildAppointmentFromDto(AppointmentDto a) {
-    final timeString = a.appointmentDate != null ? _hour(a.appointmentDate!.toLocal()) : '--:--';
-    final patientName = (a.patientName ?? '').trim().isNotEmpty ? a.patientName!.trim() : 'Paciente';
-    final visual = _statusVisual(a.status);
-    final isCanceled = a.status == 'canceled';
+ Widget _buildAppointmentFromDto(AppointmentDto a) {
+  final start = a.appointmentDate?.asScheduleLocal;
+  final end = a.endDate?.asScheduleLocal;
 
-    return _buildAppointmentItem(
-      time: timeString,
-      name: patientName,
-      type: visual.label,
-      description: a.reason.isEmpty ? 'Toca para abrir consulta' : a.reason,
-      typeColor: visual.color,
-      softColor: visual.softColor,
-      isCanceled: isCanceled,
-      onTap: () => _openAppointment(a),
-      onReassign: isCanceled ? () => _reassignCanceled(a) : null,
-      onCancel: isCanceled ? null : () => _cancelAppointment(a),
-    );
-  }
+  final timeString = start == null
+      ? '--:--'
+      : end == null
+          ? _hour(start)
+          : '${_hour(start)} - ${_hour(end)}';
+
+  final patientName = (a.patientName ?? '').trim().isNotEmpty
+      ? a.patientName!.trim()
+      : 'Paciente';
+
+  final visual = _statusVisual(a.status);
+  final isCanceled = a.status == 'canceled';
+  final isConfirmed = _isConfirmedAppointmentStatus(a.status);
+
+  return _buildAppointmentItem(
+    time: timeString,
+    name: patientName,
+    type: visual.label,
+    description: a.reason.isEmpty ? 'Toca para abrir consulta' : a.reason,
+    typeColor: visual.color,
+    softColor: visual.softColor,
+    isCanceled: isCanceled,
+    dense: true,
+    onTap: () => _openAppointment(a),
+    onReschedule: isConfirmed ? () => _rescheduleWebRequest(a) : null,
+    onReassign: isCanceled ? () => _reassignCanceled(a) : null,
+    onCancel: isCanceled ? null : () => _cancelAppointment(a),
+  );
+}
 
   Widget _buildPendingItem(AppointmentDto a, {bool rail = false}) {
     if (rail) {
@@ -2267,7 +2404,7 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Widget _buildApprovalPendingItem(AppointmentDto a, {bool rail = false}) {
-    final local = a.appointmentDate?.toLocal();
+    final local = a.appointmentDate?.asScheduleLocal;
     final when = local != null ? '${local.day} ${_monthName(local.month).substring(0, 3).toLowerCase()} · ${_hour(local)}' : 'Sin fecha';
     if (rail) {
       return _railAppointmentCard(
@@ -2517,75 +2654,286 @@ class _DoctorCalendarTabState extends State<DoctorCalendarTab> {
   }
 
   Widget _buildAppointmentItem({
-    required String time,
-    required String name,
-    required String type,
-    required String description,
-    required Color typeColor,
-    Color? softColor,
-    bool isCanceled = false,
-    VoidCallback? onTap,
-    VoidCallback? onReassign,
-    VoidCallback? onCancel,
-  }) {
-    final card = Container(
-      margin: const EdgeInsets.only(left: 66, bottom: 14),
-      padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: softColor ?? Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border(left: BorderSide(color: typeColor, width: 4)),
-        boxShadow: _cardShadow(blur: 14, alpha: 0.03),
-      ),
-      child: Row(
+  required String time,
+  required String name,
+  required String type,
+  required String description,
+  required Color typeColor,
+  Color? softColor,
+  bool isCanceled = false,
+  bool dense = false,
+  VoidCallback? onTap,
+  VoidCallback? onReschedule,
+  VoidCallback? onReassign,
+  VoidCallback? onCancel,
+}) {
+  final hasReason = description.trim().isNotEmpty &&
+      description.trim() != 'Toca para abrir consulta';
+  final hasMenu =
+      onReschedule != null || onCancel != null || onReassign != null;
+  final trailingWidth = hasMenu
+      ? (dense ? 124.0 : 140.0)
+      : (dense ? 92.0 : 108.0);
+
+  Widget nameContent;
+  if (dense && hasReason) {
+    nameContent = RichText(
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(
         children: [
-          SizedBox(
-            width: 54,
-            child: Text(
-              time,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                    color: isCanceled ? Colors.grey : KeepiColors.slate,
-                decoration: isCanceled ? TextDecoration.lineThrough : null,
-              ),
+          TextSpan(
+            text: name,
+            style: const TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF1F2937),
             ),
           ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5, color: Color(0xFF1F2937)),
-                      ),
-                        ),
-                        const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-                      child: Text(type, style: TextStyle(color: typeColor, fontSize: 9.5, fontWeight: FontWeight.w900)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Text(description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: KeepiColors.slateLight, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
+          const TextSpan(
+            text: ' · ',
+            style: TextStyle(
+              fontSize: 15,
+              color: KeepiColors.slateLight,
+            ),
+          ),
+          TextSpan(
+            text: description,
+            style: const TextStyle(
+              fontSize: 14,
+              color: KeepiColors.slateLight,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
         ],
       ),
     );
-
-    if (onTap == null) return card;
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16), child: card);
+  } else {
+    nameContent = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: dense ? 15.5 : 18,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFF1F2937),
+          ),
+        ),
+        if (!dense && hasReason) ...[
+          const SizedBox(height: 5),
+          Text(
+            description,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              color: KeepiColors.slateLight,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ],
+    );
   }
+
+  final mainRow = Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      SizedBox(
+        width: dense ? 110 : 126,
+        child: Text(
+          time,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: dense ? 13 : 14,
+            fontWeight: FontWeight.w900,
+            color: isCanceled ? Colors.grey : KeepiColors.slate,
+            decoration: isCanceled ? TextDecoration.lineThrough : null,
+          ),
+        ),
+      ),
+      SizedBox(width: dense ? 10 : 16),
+      Expanded(child: nameContent),
+    ],
+  );
+
+  final tappableMain = onTap == null
+      ? mainRow
+      : Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: mainRow,
+          ),
+        );
+
+  return Tooltip(
+    message: hasReason ? '$name\n$description' : name,
+    waitDuration: const Duration(milliseconds: 450),
+    child: Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: _cardShadow(blur: 14, alpha: 0.035),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          children: [
+            ColoredBox(color: softColor ?? Colors.white),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: ColoredBox(color: typeColor, child: const SizedBox(width: 5)),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                dense ? 14 : 18,
+                dense ? 8 : 14,
+                dense ? 14 : 18,
+                dense ? 8 : 14,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: tappableMain),
+                  SizedBox(
+                    width: trailingWidth,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: dense ? 9 : 12,
+                            vertical: dense ? 5 : 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: typeColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            type,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: typeColor,
+                              fontSize: dense ? 9.5 : 10.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (hasMenu) ...[
+                          const SizedBox(width: 4),
+                          Builder(
+                            builder: (btnCtx) => ExcludeFocus(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  final box = btnCtx.findRenderObject()
+                                      as RenderBox?;
+                                  if (box == null) return;
+
+                                  // Lock scroll position before opening
+                                  final savedOffset =
+                                      _timelineScrollCtrl.hasClients
+                                          ? _timelineScrollCtrl.offset
+                                          : 0.0;
+
+                                  final globalOffset =
+                                      box.localToGlobal(Offset.zero);
+                                  final size = box.size;
+                                  final rect = RelativeRect.fromLTRB(
+                                    globalOffset.dx,
+                                    globalOffset.dy + size.height + 4,
+                                    globalOffset.dx + size.width,
+                                    globalOffset.dy + size.height + 4,
+                                  );
+
+                                  showMenu<String>(
+                                    context: btnCtx,
+                                    position: rect,
+                                    elevation: 14,
+                                    color: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(16),
+                                    ),
+                                    items: [
+                                      if (onReschedule != null)
+                                        const PopupMenuItem(
+                                          value: 'reschedule',
+                                          child: Text('Reagendar'),
+                                        ),
+                                      if (onCancel != null)
+                                        const PopupMenuItem(
+                                          value: 'cancel',
+                                          child: Text('Cancelar'),
+                                        ),
+                                      if (onReassign != null)
+                                        const PopupMenuItem(
+                                          value: 'reassign',
+                                          child: Text(
+                                              'Asignar nueva fecha'),
+                                        ),
+                                    ],
+                                  ).then((value) {
+                                    // Restore scroll in case Flutter moved it
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (_timelineScrollCtrl.hasClients) {
+                                        _timelineScrollCtrl
+                                            .jumpTo(savedOffset);
+                                      }
+                                    });
+                                    if (value == null) return;
+                                    switch (value) {
+                                      case 'reschedule':
+                                        onReschedule?.call();
+                                        break;
+                                      case 'cancel':
+                                        onCancel?.call();
+                                        break;
+                                      case 'reassign':
+                                        onReassign?.call();
+                                        break;
+                                    }
+                                  });
+                                },
+                                child: SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.more_vert_rounded,
+                                      color: isCanceled
+                                          ? KeepiColors.slateLight
+                                          : KeepiColors.slate,
+                                      size: 18,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
   Widget _countBadge(int count) {
     return Container(

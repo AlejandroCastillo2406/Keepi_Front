@@ -91,6 +91,8 @@ class ApiEndpoints {
   static String get appointmentsDoctorCreate => _path('/appointments/doctor');
   static String get appointmentsDoctorCalendar =>
       _path('/appointments/doctor/calendar');
+  static String get appointmentsDoctorExportIcs =>
+      _path('/appointments/doctor/export.ics');
   static String get appointmentsDoctorProcedures =>
       _path('/appointments/doctor/procedures');
   static String appointmentDoctorProcedure(String blockId) =>
@@ -177,6 +179,8 @@ class ApiEndpoints {
       _path('/doctors/patients/$patientId/appointments');
   static String doctorPatientSchedulingLink(String patientId) =>
       _path('/doctors/patients/$patientId/scheduling-link');
+  static String doctorPatientSchedulingLinkEmail(String patientId) =>
+      _path('/doctors/patients/$patientId/scheduling-link/email');
   static String questionnairePublicByToken(String token) =>
       _path('/questionnaire/public/$token');
 }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/care_event_style.dart';
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../providers/auth_provider.dart';
 import '../../router/app_paths.dart';
 import '../../services/api_client.dart';
@@ -390,7 +391,7 @@ class _DropdownNotifCard extends StatelessWidget {
   String get _dateStamp {
     final raw = data.createdAt;
     if (raw == null || raw.isEmpty) return '';
-    final dt = DateTime.tryParse(raw)?.toLocal();
+    final dt = KeepiTimezone.parseUser(raw);
     if (dt == null) return '';
     const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     return '${dt.day.toString().padLeft(2, '0')} ${months[dt.month - 1]} · ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';

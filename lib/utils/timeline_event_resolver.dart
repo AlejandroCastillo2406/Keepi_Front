@@ -1,7 +1,9 @@
 import '../models/timeline_event.dart';
+import '../core/keepi_timezone.dart';
 import '../services/appointment_service.dart';
 import '../services/doctor_service.dart';
 import '../services/search_service.dart';
+import 'timeline_datetime.dart';
 
 /// Resuelve o construye un [TimelineEvent] para abrir el detalle unificado.
 class TimelineEventResolver {
@@ -20,25 +22,30 @@ class TimelineEventResolver {
     'DIC',
   ];
 
-  static String _fmtDate(DateTime dt) {
-    final local = dt.toLocal();
+  static String _fmtDate(DateTime dt, {required bool isAppointment}) {
+    final local = isAppointment
+        ? (dt.isUtc ? dt.asScheduleLocal : dt)
+        : (dt.isUtc ? dt.asUserLocal : dt);
     return '${local.day.toString().padLeft(2, '0')} '
         '${_monthsEs[local.month - 1]} ${local.year}';
   }
 
-  static String _fmtTime(DateTime dt) {
-    final local = dt.toLocal();
-    return '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}';
+  static String _fmtTime(DateTime dt, {required bool isAppointment}) {
+    final local = isAppointment
+        ? (dt.isUtc ? dt.asScheduleLocal : dt)
+        : (dt.isUtc ? dt.asUserLocal : dt);
+    return TimelineDateTime.formatTimelineTime(local);
   }
 
   static TimelineEvent fromAppointment(AppointmentDto a) {
-    final when = (a.appointmentDate ?? a.createdAt).toLocal();
+    final when = a.appointmentDate != null
+        ? a.appointmentDate!.asScheduleLocal
+        : a.createdAt.asUserLocal;
     final reason = a.reason.trim().isNotEmpty ? a.reason.trim() : 'Consulta';
     return TimelineEvent(
       id: 'appt_${a.id}',
-      date: _fmtDate(when),
-      time: _fmtTime(when),
+      date: _fmtDate(when, isAppointment: true),
+      time: _fmtTime(when, isAppointment: true),
       title: 'Cita médica',
       actor: 'Doctor',
       eventType: 'appointment',
@@ -50,8 +57,11 @@ class TimelineEventResolver {
   }
 
   static TimelineEvent fromSearchItem(GlobalSearchItem item) {
-    final when = item.date.toLocal();
     final type = item.type.toLowerCase();
+    final isAppointment = type == 'appointment';
+    final when = isAppointment
+        ? (item.date.isUtc ? item.date.asScheduleLocal : item.date)
+        : (item.date.isUtc ? item.date.asUserLocal : item.date);
     String eventType;
     String title;
     String id;
@@ -79,8 +89,8 @@ class TimelineEventResolver {
 
     return TimelineEvent(
       id: id,
-      date: _fmtDate(when),
-      time: _fmtTime(when),
+      date: _fmtDate(when, isAppointment: isAppointment),
+      time: _fmtTime(when, isAppointment: isAppointment),
       title: title,
       actor: 'Doctor',
       eventType: eventType,

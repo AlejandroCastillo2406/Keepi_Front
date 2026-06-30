@@ -4,6 +4,7 @@ import '../core/app_theme.dart';
 import '../core/care_event_style.dart';
 import '../models/timeline_event.dart';
 import '../services/notifications_service.dart';
+import 'keepi_web_dialog.dart';
 
 /// Modal web centrado para detalle de notificaciones (reemplaza bottom sheets).
 class NotificationWebDialog extends StatelessWidget {
@@ -93,58 +94,18 @@ class NotificationWebDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxH = MediaQuery.sizeOf(context).height * maxHeightFactor;
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxH),
-        child: Material(
-          color: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-            side: const BorderSide(color: KeepiColors.cardBorder),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _NotificationHeroHeader(
-                title: title,
-                tag: tag,
-                accent: accent,
-                icon: icon,
-                subtitle: subtitle,
-                canClose: canClose,
-                onClose: onClose ?? () => Navigator.of(context).pop(),
-              ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-                  child: child,
-                ),
-              ),
-              if (footer != null)
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    border: Border(
-                      top: BorderSide(
-                        color: KeepiColors.slate.withValues(alpha: 0.08),
-                      ),
-                    ),
-                  ),
-                  child: footer!,
-                ),
-            ],
-          ),
-        ),
-      ),
+    return KeepiWebDialogShell(
+      title: title,
+      subtitle: subtitle,
+      tag: tag,
+      icon: icon,
+      iconAccent: accent,
+      footer: footer,
+      maxWidth: maxWidth,
+      maxHeightFactor: maxHeightFactor,
+      canClose: canClose,
+      onClose: onClose ?? () => Navigator.of(context).pop(),
+      child: child,
     );
   }
 }
@@ -267,133 +228,6 @@ class TimelineDialogTheme {
     if (t == 'appointment') return 'appointment';
     if (t == 'registration') return 'registration';
     return t;
-  }
-}
-
-class _NotificationHeroHeader extends StatelessWidget {
-  const _NotificationHeroHeader({
-    required this.title,
-    required this.tag,
-    required this.accent,
-    required this.icon,
-    this.subtitle,
-    required this.onClose,
-    this.canClose = true,
-  });
-
-  final String title;
-  final String tag;
-  final Color accent;
-  final IconData icon;
-  final String? subtitle;
-  final VoidCallback onClose;
-  final bool canClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 22, 16, 22),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accent,
-            Color.lerp(accent, Colors.white, 0.22)!,
-          ],
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -18,
-            top: -24,
-            child: Icon(
-              icon,
-              size: 120,
-              color: Colors.white.withValues(alpha: 0.12),
-            ),
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Icon(icon, color: Colors.white, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        tag,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.35,
-                        color: Colors.white,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (subtitle != null && subtitle!.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.9),
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: canClose ? onClose : null,
-                icon: Icon(
-                  Icons.close_rounded,
-                  color: canClose ? Colors.white : Colors.white38,
-                ),
-                tooltip: 'Cerrar',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 }
 

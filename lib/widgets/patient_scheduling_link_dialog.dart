@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/scheduling_service.dart';
+import 'keepi_web_dialog.dart';
 
 /// Genera y muestra el enlace web de agenda para un paciente.
 class PatientSchedulingLinkDialog {
@@ -13,6 +14,7 @@ class PatientSchedulingLinkDialog {
     BuildContext context, {
     required String patientId,
     required String patientName,
+    String? patientEmail,
   }) {
     return showDialog<void>(
       context: context,
@@ -20,6 +22,7 @@ class PatientSchedulingLinkDialog {
       builder: (ctx) => _PatientSchedulingLinkDialogBody(
         patientId: patientId,
         patientName: patientName,
+        patientEmail: patientEmail,
       ),
     );
   }
@@ -29,10 +32,12 @@ class _PatientSchedulingLinkDialogBody extends StatefulWidget {
   const _PatientSchedulingLinkDialogBody({
     required this.patientId,
     required this.patientName,
+    this.patientEmail,
   });
 
   final String patientId;
   final String patientName;
+  final String? patientEmail;
 
   @override
   State<_PatientSchedulingLinkDialogBody> createState() =>
@@ -42,6 +47,7 @@ class _PatientSchedulingLinkDialogBody extends StatefulWidget {
 class _PatientSchedulingLinkDialogBodyState
     extends State<_PatientSchedulingLinkDialogBody> {
   bool _loading = true;
+  bool _sendingEmail = false;
   String? _error;
   PatientSchedulingLinkDto? _result;
 
@@ -94,48 +100,65 @@ class _PatientSchedulingLinkDialogBodyState
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _sendEmail() async {
+    final email = (widget.patientEmail ?? '').trim();
+    if (email.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El paciente no tiene correo registrado.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _sendingEmail = true);
+    try {
+      final result = await SchedulingService(context.read<ApiClient>())
+          .emailPatientSchedulingLink(widget.patientId);
+      if (!mounted) return;
+      setState(() => _sendingEmail = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.emailSent
+                ? 'Correo enviado a $email'
+                : (result.emailError ?? result.message).isNotEmpty
+                    ? (result.emailError ?? result.message)
+                    : 'No se pudo enviar el correo.',
+          ),
+          backgroundColor:
+              result.emailSent ? KeepiColors.green : Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sendingEmail = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(SchedulingService.messageFromDio(e)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
     final link = result?.schedulingLink.trim() ?? '';
     final hasWebLink = link.startsWith('http');
 
-    return AlertDialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: KeepiColors.cardBorder),
-      ),
-      backgroundColor: Colors.white,
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: KeepiColors.skyBlue.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.link_rounded,
-              color: KeepiColors.skyBlue,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Link de agenda web',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: KeepiColors.slate,
-                fontSize: 18,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 480,
-        child: _loading
+    return KeepiWebDialogShell(
+      title: 'Link de agenda web',
+      subtitle: 'Enlace único para que el paciente agende en línea.',
+      tag: 'AGENDA WEB',
+      icon: Icons.link_rounded,
+      iconAccent: KeepiColors.skyBlue,
+      maxWidth: 520,
+      maxHeightFactor: 0.72,
+      child: _loading
             ? const Padding(
                 padding: EdgeInsets.symmetric(vertical: 28),
                 child: Center(
@@ -208,29 +231,45 @@ class _PatientSchedulingLinkDialogBodyState
                       ),
                     ],
                   ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cerrar'),
-        ),
-        if (!_loading && _error == null && hasWebLink)
-          TextButton.icon(
-            onPressed: () => _openLink(link),
-            icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Abrir'),
+      footer: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
           ),
-        if (!_loading && _error == null && link.isNotEmpty)
-          FilledButton.icon(
-            onPressed: () => _copyLink(link),
-            style: FilledButton.styleFrom(
-              backgroundColor: KeepiColors.orange,
-              foregroundColor: Colors.white,
+          if (!_loading && _error == null && hasWebLink)
+            OutlinedButton.icon(
+              onPressed: () => _openLink(link),
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Abrir'),
             ),
-            icon: const Icon(Icons.copy_rounded, size: 18),
-            label: const Text('Copiar enlace'),
-          ),
-      ],
+          if (!_loading && _error == null && link.isNotEmpty)
+            FilledButton.icon(
+              onPressed: () => _copyLink(link),
+              style: FilledButton.styleFrom(
+                backgroundColor: KeepiColors.orange,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text('Copiar enlace'),
+            ),
+          if (!_loading && _error == null && hasWebLink)
+            TextButton.icon(
+              onPressed: _sendingEmail ? null : _sendEmail,
+              icon: _sendingEmail
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.outgoing_mail, size: 18),
+              label: Text(_sendingEmail ? 'Enviando…' : 'Enviar por correo'),
+            ),
+        ],
+      ),
     );
   }
 }

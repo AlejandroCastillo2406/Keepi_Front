@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../core/keepi_timezone.dart';
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
 
@@ -30,7 +31,7 @@ class GlobalSearchItem {
       subtitle: json['subtitle']?.toString(),
       patientId: json['patient_id']?.toString(),
       date: json['date'] != null
-          ? DateTime.parse(json['date'].toString())
+          ? KeepiTimezone.toUserLocal(DateTime.parse(json['date'].toString()))
           : DateTime.now(),
       status: json['status']?.toString(),
     );

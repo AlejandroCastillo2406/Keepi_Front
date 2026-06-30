@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../core/care_event_style.dart';
 import '../../providers/auth_provider.dart';
 import '../../router/app_navigation.dart';
@@ -1245,7 +1246,7 @@ class _NotifCard extends StatelessWidget {
   String get _dateStamp {
     final raw = data.createdAt;
     if (raw == null || raw.isEmpty) return '';
-    final dt = DateTime.tryParse(raw)?.toLocal();
+    final dt = KeepiTimezone.parseUser(raw);
     if (dt == null) return '';
     return '${_two(dt.day)} ${_monthsEsUpper[dt.month - 1]} · ${_two(dt.hour)}:${_two(dt.minute)}';
   }

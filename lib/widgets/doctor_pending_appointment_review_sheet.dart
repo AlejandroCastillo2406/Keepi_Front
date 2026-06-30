@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_theme.dart';
+import '../core/keepi_timezone.dart';
 import '../services/api_client.dart';
 import '../services/appointment_service.dart';
 import '../services/scheduling_service.dart';
 import '../widgets/doctor_appointment_slot_picker.dart';
 import 'notification_web_dialog.dart';
+import 'keepi_web_dialog.dart';
 
 /// Detalle y acciones para citas solicitadas por el paciente en la web.
 class DoctorPendingAppointmentReviewSheet {
@@ -82,7 +84,7 @@ class _DoctorPendingAppointmentReviewBodyState
   }
 
   String _formatWhen(AppointmentDto appt) {
-    final dt = appt.appointmentDate?.toLocal();
+    final dt = appt.appointmentDate?.asScheduleLocal;
     if (dt == null) return 'Sin fecha';
     final d = '${dt.day.toString().padLeft(2, '0')}/'
         '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
@@ -154,24 +156,14 @@ class _DoctorPendingAppointmentReviewBodyState
       appt.status == 'pending_doctor_proposal';
 
   Future<void> _confirm() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar solicitud'),
-        content: const Text(
-          '¿Confirmar esta cita solicitada por el paciente?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirmar'),
-          ),
-        ],
-      ),
+    final ok = await KeepiConfirmDialog.show(
+      context,
+      title: 'Confirmar solicitud',
+      message: '¿Confirmar esta cita solicitada por el paciente?',
+      confirmLabel: 'Confirmar',
+      cancelLabel: 'Volver',
+      icon: Icons.check_circle_outline_rounded,
+      accent: KeepiColors.green,
     );
     if (ok != true || !mounted) return;
     await _run(() async {
@@ -183,26 +175,17 @@ class _DoctorPendingAppointmentReviewBodyState
   Future<void> _cancel() async {
     final appt = _appointment;
     final isWebReject = appt?.status == 'pending_doctor_approval';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isWebReject ? 'Cancelar solicitud' : 'Rechazar cita'),
-        content: Text(
-          isWebReject
-              ? '¿Rechazar esta cita solicitada por el paciente?'
-              : '¿Rechazar esta cita pendiente?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Rechazar'),
-          ),
-        ],
-      ),
+    final ok = await KeepiConfirmDialog.show(
+      context,
+      title: isWebReject ? 'Cancelar solicitud' : 'Rechazar cita',
+      message: isWebReject
+          ? '¿Rechazar esta cita solicitada por el paciente?'
+          : '¿Rechazar esta cita pendiente?',
+      confirmLabel: 'Rechazar',
+      cancelLabel: 'Volver',
+      icon: Icons.close_rounded,
+      accent: const Color(0xFFE11D48),
+      destructive: true,
     );
     if (ok != true || !mounted) return;
     await _run(() async {

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../core/web_layout.dart';
 import '../../models/consultation_context.dart';
 import '../../models/timeline_event.dart';
@@ -100,7 +101,7 @@ class _DoctorPatientProfileScreenState
 
     final parsed = rows.map((r) {
       final rawDate = (r['answered_at'] ?? '').toString();
-      final dt = DateTime.tryParse(rawDate)?.toLocal();
+      final dt = KeepiTimezone.parseUser(rawDate);
       return _ResponseRow(data: r, answeredAt: dt);
     }).toList()
       ..sort((a, b) {
@@ -304,7 +305,7 @@ class _DoctorPatientProfileScreenState
   }
 
   String _formatAppointmentWhen(AppointmentDto appt) {
-    final dt = appt.appointmentDate?.toLocal();
+    final dt = appt.appointmentDate?.asScheduleLocal;
     if (dt == null) return 'Sin fecha programada';
     final dd = dt.day.toString().padLeft(2, '0');
     final mm = dt.month.toString().padLeft(2, '0');
@@ -404,6 +405,7 @@ class _DoctorPatientProfileScreenState
       context,
       patientId: widget.patientId,
       patientName: widget.patientName,
+      patientEmail: widget.patientEmail,
     );
   }
 

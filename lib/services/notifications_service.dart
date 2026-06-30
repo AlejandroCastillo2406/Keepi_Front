@@ -1,3 +1,5 @@
+import '../core/keepi_timezone.dart';
+
 import 'package:dio/dio.dart';
 
 import '../core/api_endpoints.dart';
@@ -74,7 +76,7 @@ class AppNotificationDto {
   DateTime? get proposedStartAt {
     final raw = payload['proposed_start_at']?.toString();
     if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw)?.toLocal();
+    return KeepiTimezone.parseSchedule(raw);
   }
 
   factory AppNotificationDto.fromJson(Map<String, dynamic> j) {

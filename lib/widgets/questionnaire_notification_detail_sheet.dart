@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_theme.dart';
+import '../core/keepi_timezone.dart';
 import '../models/questionnaire_models.dart';
 import '../services/api_client.dart';
 import '../services/notifications_service.dart';
@@ -73,7 +74,7 @@ Future<QuestionnaireNotificationDetailData> loadQuestionnaireNotificationDetail(
   if (effectivePatientId.isNotEmpty) {
     final raw =
         await QuestionnaireService(api).fetchPatientResponses(effectivePatientId);
-    final notifDate = DateTime.tryParse(notification.createdAt ?? '')?.toLocal();
+    final notifDate = KeepiTimezone.parseUser(notification.createdAt);
 
     for (final row in raw) {
       if (row is! Map) continue;
@@ -82,7 +83,7 @@ Future<QuestionnaireNotificationDetailData> loadQuestionnaireNotificationDetail(
         if (map['invitation_id']?.toString() != invitationId) continue;
       } else if (notifDate != null) {
         final answeredAt =
-            DateTime.tryParse((map['answered_at'] ?? '').toString())?.toLocal();
+            KeepiTimezone.parseUser((map['answered_at'] ?? '').toString());
         if (answeredAt == null ||
             answeredAt.difference(notifDate).abs() > const Duration(hours: 24)) {
           continue;
@@ -100,13 +101,13 @@ Future<QuestionnaireNotificationDetailData> loadQuestionnaireNotificationDetail(
     });
   }
 
-  DateTime? answeredAt = invitation?.completedAt?.toLocal();
+  DateTime? answeredAt = invitation?.completedAt?.asUserLocal;
   if (answeredAt == null && responses.isNotEmpty) {
-    answeredAt = DateTime.tryParse(
+    answeredAt = KeepiTimezone.parseUser(
       (responses.last['answered_at'] ?? '').toString(),
-    )?.toLocal();
+    );
   }
-  answeredAt ??= DateTime.tryParse(notification.createdAt ?? '')?.toLocal();
+  answeredAt ??= KeepiTimezone.parseUser(notification.createdAt);
 
   var questionnaireName = '';
   for (final row in responses) {

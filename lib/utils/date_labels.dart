@@ -1,22 +1,14 @@
-/// Etiquetas de fecha/hora legibles para la UI (zona horaria local).
+import '../core/keepi_timezone.dart';
+
+/// Etiquetas de fecha/hora legibles usando la zona guardada al iniciar sesión.
 String? formatKeepiDate(String? raw) {
-  final trimmed = raw?.trim();
-  if (trimmed == null || trimmed.isEmpty) return null;
-  final dt = DateTime.tryParse(trimmed)?.toLocal();
+  final dt = KeepiTimezone.parseUser(raw);
   if (dt == null) return null;
-  final day = dt.day.toString().padLeft(2, '0');
-  final month = dt.month.toString().padLeft(2, '0');
-  return '$day/$month/${dt.year}';
+  return KeepiTimezone.formatUserDate(dt);
 }
 
 String? formatKeepiDateTime(String? raw) {
-  final trimmed = raw?.trim();
-  if (trimmed == null || trimmed.isEmpty) return null;
-  final dt = DateTime.tryParse(trimmed)?.toLocal();
+  final dt = KeepiTimezone.parseUser(raw);
   if (dt == null) return null;
-  final day = dt.day.toString().padLeft(2, '0');
-  final month = dt.month.toString().padLeft(2, '0');
-  final hour = dt.hour.toString().padLeft(2, '0');
-  final minute = dt.minute.toString().padLeft(2, '0');
-  return '$day/$month/${dt.year} · $hour:$minute';
+  return KeepiTimezone.formatUserDateTime(dt);
 }

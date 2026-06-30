@@ -125,8 +125,9 @@ class ExpedientesCacheProvider extends ChangeNotifier {
   }
 
   void invalidateRoot() {
-    if (_root == null) return;
+    if (_root == null && _folders.isEmpty) return;
     _root = null;
+    _folders.clear();
     notifyListeners();
   }
 

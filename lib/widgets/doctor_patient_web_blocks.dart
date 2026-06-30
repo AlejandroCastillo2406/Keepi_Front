@@ -1025,11 +1025,19 @@ class DoctorAttendanceOverviewStrip extends StatelessWidget {
     required this.attended,
     required this.noShow,
     required this.ratePercent,
+    this.pending = 0,
+    this.onAttendedTap,
+    this.onNoShowTap,
+    this.onPendingTap,
   });
 
   final int attended;
   final int noShow;
+  final int pending;
   final double? ratePercent;
+  final VoidCallback? onAttendedTap;
+  final VoidCallback? onNoShowTap;
+  final VoidCallback? onPendingTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1039,6 +1047,7 @@ class DoctorAttendanceOverviewStrip extends StatelessWidget {
       apiPercent: ratePercent,
     );
     final rateColor = AttendanceKpi.colorForPercent(rate);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1048,12 +1057,31 @@ class DoctorAttendanceOverviewStrip extends StatelessWidget {
       child: IntrinsicHeight(
         child: Row(
           children: [
-            _DoctorPatientStatCell(value: attended, label: 'ASISTIÓ'),
+            _DoctorPatientStatCell(
+              value: attended,
+              label: 'ASISTIÓ',
+              valueColor: attended > 0
+                  ? KeepiColors.green
+                  : KeepiColors.slateLight,
+              onTap: onAttendedTap,
+            ),
             const _DoctorPatientStatDivider(),
             _DoctorPatientStatCell(
               value: noShow,
               label: 'NO ASISTIÓ',
-              accent: noShow > 0,
+              valueColor: noShow > 0
+                  ? const Color(0xFFDC2626)
+                  : KeepiColors.slateLight,
+              onTap: onNoShowTap,
+            ),
+            const _DoctorPatientStatDivider(),
+            _DoctorPatientStatCell(
+              value: pending,
+              label: 'PENDIENTE',
+              valueColor: pending > 0
+                  ? KeepiColors.skyBlue
+                  : KeepiColors.slateLight,
+              onTap: onPendingTap,
             ),
             const _DoctorPatientStatDivider(),
             _DoctorPatientAttendanceCell(
@@ -1144,9 +1172,8 @@ class _DoctorPatientAttendanceCell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               AttendanceKpi.displayPercent(
@@ -1163,14 +1190,15 @@ class _DoctorPatientAttendanceCell extends StatelessWidget {
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               'ASISTENCIA',
-              style: TextStyle(
+              textAlign: TextAlign.center,
+              style: const TextStyle(
                 fontSize: 9.5,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 1.3,
-                color: color.withValues(alpha: 0.85),
+                letterSpacing: 1.1,
+                color: KeepiColors.slateLight,
               ),
             ),
           ],
@@ -1193,43 +1221,57 @@ class _DoctorPatientStatCell extends StatelessWidget {
     required this.value,
     required this.label,
     this.accent = false,
+    this.valueColor,
+    this.onTap,
   });
 
   final int value;
   final String label;
   final bool accent;
+  final Color? valueColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = accent ? KeepiColors.orange : KeepiColors.slate;
+    final color = valueColor ??
+        (accent ? KeepiColors.orange : KeepiColors.slate);
+
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        children: [
+          Text(
+            value.toString().padLeft(2, '0'),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: color,
+              height: 1,
+              letterSpacing: -0.8,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+              color: KeepiColors.slateLight,
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          children: [
-            Text(
-              value.toString().padLeft(2, '0'),
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: color,
-                height: 1,
-                letterSpacing: -0.8,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.1,
-                color: KeepiColors.slateLight,
-              ),
-            ),
-          ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: content,
         ),
       ),
     );

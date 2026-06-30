@@ -177,6 +177,12 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     return e.toString();
   }
 
+  Future<void> _reloadAfterSave() async {
+    if (!mounted) return;
+    context.read<ExpedientesCacheProvider>().invalidateRoot();
+    await _load(force: true);
+  }
+
   Future<void> _promptDriveReconnect() async {
     if (!mounted || !_requiresDriveAuth) return;
     final should = await showDialog<bool>(
@@ -242,7 +248,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     await runDocumentReplaceFlow(
       context,
       replacesDocumentId: docId,
-      onSaved: _load,
+      onSaved: _reloadAfterSave,
       saveButtonLabel: cfg != null && cfg.isKeepiCloud
           ? 'Guardar en Keepi Cloud'
           : 'Guardar en Drive',
@@ -374,7 +380,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
             child: IosFab(
               onPressed: () => runDocumentAnalyzeFlow(
                 context,
-                onSaved: _load,
+                onSaved: _reloadAfterSave,
                 saveButtonLabel: isKeepi
                     ? 'Guardar en Keepi Cloud'
                     : 'Guardar en Drive',

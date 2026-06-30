@@ -4,6 +4,11 @@ abstract final class AppPaths {
   static const register = '/registro';
   static const forcePassword = '/cambiar-password';
 
+  static const doctorAttendanceDetail = '/doctor/asistencia-detalle';
+
+  static String doctorAttendanceDetailPath(String status) =>
+      '$doctorAttendanceDetail?status=${Uri.encodeComponent(status)}';
+
   // Usuario (documentos)
   static const userHome = '/app';
   static const userSettings = '/app/configuracion';
@@ -157,7 +162,8 @@ abstract final class AppPaths {
         path == doctorSettings ||
         path == doctorNotifications ||
         path == doctorCreatePatient ||
-        path == doctorSearch;
+        path == doctorSearch ||
+        path == doctorAttendanceDetail;
   }
 
   static String doctorHomeForTab(int index) {
@@ -184,3 +190,4 @@ abstract final class AppPaths {
     }
   }
 }
+

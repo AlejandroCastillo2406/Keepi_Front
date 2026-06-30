@@ -4,6 +4,7 @@ import '../core/app_theme.dart';
 import '../core/care_event_style.dart';
 import '../models/timeline_event.dart';
 import '../utils/consultation_note_codec.dart';
+import '../utils/timeline_datetime.dart';
 
 class PatientCareTimeline extends StatelessWidget {
   const PatientCareTimeline({
@@ -70,11 +71,13 @@ class PatientCareTimeline extends StatelessWidget {
     final widgets = <Widget>[];
     for (var i = 0; i < ordered.length; i++) {
       final e = ordered[i];
-      final dt = DateTime.tryParse(e.occurredAt) ?? DateTime.now();
+      final dt = TimelineDateTime.displayDateTime(e);
 
-      final prev = i > 0 ? (DateTime.tryParse(ordered[i - 1].occurredAt) ?? dt) : null;
+      final prev = i > 0
+          ? TimelineDateTime.displayDateTime(ordered[i - 1])
+          : null;
       final next = i < ordered.length - 1
-          ? (DateTime.tryParse(ordered[i + 1].occurredAt) ?? dt)
+          ? TimelineDateTime.displayDateTime(ordered[i + 1])
           : null;
 
       final isFirstInMonth = prev == null || prev.month != dt.month || prev.year != dt.year;

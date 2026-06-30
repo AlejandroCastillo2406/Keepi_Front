@@ -14,6 +14,7 @@ import '../screens/doctor/doctor_request_analysis_screen.dart';
 import '../screens/doctor/doctor_upload_analysis_for_patient_screen.dart';
 import '../screens/doctor/questionnaire/send_questionnaire_screen.dart';
 import '../screens/user/settings_screen.dart';
+import '../screens/doctor/doctor_attendance_detail_screen.dart';
 import '../providers/patients_cache_provider.dart';
 import '../services/api_client.dart';
 import '../services/appointment_service.dart';
@@ -49,7 +50,15 @@ Widget buildDoctorOverlayPage(BuildContext context, GoRouterState state) {
         await bridge.onRefreshAll();
       },
     );
+    
   }
+  if (path.endsWith('/asistencia-detalle')) {
+      return DoctorAttendanceDetailScreen(
+        embedded: true,
+        status: state.uri.queryParameters['status'] ?? 'pending',
+        onBack: bridge.onPop,
+      );
+    }
 
   final consultaMatch = RegExp(r'/consulta/([^/]+)$').firstMatch(path);
   if (consultaMatch != null) {

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../core/keepi_timezone.dart';
 import '../core/api_endpoints.dart';
 import '../models/consultation_context.dart';
 import '../models/prior_document_item.dart';
@@ -153,6 +154,34 @@ class DoctorService {
     );
     return AttendanceStatsData.fromJson(res.data ?? const {});
   }
+
+  Future<AttendanceDetailResponse> fetchDoctorAttendanceDetail({
+  required String status,
+  String? patientId,
+  DateTime? dateFrom,
+  DateTime? dateTo,
+}) async {
+  final query = <String, dynamic>{
+    'status': status,
+  };
+
+  if (patientId != null && patientId.isNotEmpty) {
+    query['patient_id'] = patientId;
+  }
+  if (dateFrom != null) {
+    query['date_from'] = dateFrom.toIso8601String();
+  }
+  if (dateTo != null) {
+    query['date_to'] = dateTo.toIso8601String();
+  }
+
+  final res = await _api.dio.get<Map<String, dynamic>>(
+    '/api/v1/doctors/attendance-detail',
+    queryParameters: query,
+  );
+
+  return AttendanceDetailResponse.fromJson(res.data ?? const {});
+}
 
   Future<PatientProfileBootstrapData> fetchPatientProfileBootstrap(
     String patientId,
@@ -347,23 +376,97 @@ class ScheduleAppointmentResult {
 }
 
 class PatientListItem {
-  final String id, email, name;
+  final String id;
+  final String email;
+  final String name;
   final bool mustChangePassword;
   final String? createdAt;
-  PatientListItem(
-      {required this.id,
-      required this.email,
-      required this.name,
-      required this.mustChangePassword,
-      this.createdAt});
+
+  final bool isActive;
+  final String? phone;
+  final String? sex;
+  final int? ageYears;
+  final String? bloodType;
+  final double? weightKg;
+  final String? allergies;
+
+  final int appointmentsTotal;
+  final int appointmentsAttended;
+  final int appointmentsNoShow;
+  final int appointmentsPendingAttendance;
+
+  final DateTime? lastAppointmentDate;
+  final DateTime? nextAppointmentDate;
+
+  final int documentsTotal;
+  final bool hasClinicalProfile;
+
+  PatientListItem({
+    required this.id,
+    required this.email,
+    required this.name,
+    required this.mustChangePassword,
+    this.createdAt,
+    this.isActive = true,
+    this.phone,
+    this.sex,
+    this.ageYears,
+    this.bloodType,
+    this.weightKg,
+    this.allergies,
+    this.appointmentsTotal = 0,
+    this.appointmentsAttended = 0,
+    this.appointmentsNoShow = 0,
+    this.appointmentsPendingAttendance = 0,
+    this.lastAppointmentDate,
+    this.nextAppointmentDate,
+    this.documentsTotal = 0,
+    this.hasClinicalProfile = false,
+  });
+
+  static int _readInt(Map<String, dynamic> json, String key) {
+    final value = json[key];
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static double? _readDouble(Map<String, dynamic> json, String key) {
+    final value = json[key];
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  static DateTime? _readScheduleDate(Map<String, dynamic> json, String key) {
+    final value = json[key]?.toString();
+    if (value == null || value.isEmpty) return null;
+    return KeepiTimezone.parseSchedule(value);
+  }
 
   factory PatientListItem.fromJson(Map<String, dynamic> json) {
     return PatientListItem(
-      id: json['id'] as String,
-      email: json['email'] as String,
-      name: json['name'] as String,
+      id: json['id']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Paciente',
       mustChangePassword: json['must_change_password'] as bool? ?? false,
-      createdAt: json['created_at'] as String?,
+      createdAt: json['created_at']?.toString(),
+      isActive: json['is_active'] as bool? ?? true,
+      phone: json['phone']?.toString(),
+      sex: json['sex']?.toString(),
+      ageYears: _readInt(json, 'age_years') == 0
+          ? null
+          : _readInt(json, 'age_years'),
+      bloodType: json['blood_type']?.toString(),
+      weightKg: _readDouble(json, 'weight_kg'),
+      allergies: json['allergies']?.toString(),
+      appointmentsTotal: _readInt(json, 'appointments_total'),
+      appointmentsAttended: _readInt(json, 'appointments_attended'),
+      appointmentsNoShow: _readInt(json, 'appointments_no_show'),
+      appointmentsPendingAttendance:
+          _readInt(json, 'appointments_pending_attendance'),
+      lastAppointmentDate: _readScheduleDate(json, 'last_appointment_date'),
+      nextAppointmentDate: _readScheduleDate(json, 'next_appointment_date'),
+      documentsTotal: _readInt(json, 'documents_total'),
+      hasClinicalProfile: json['has_clinical_profile'] as bool? ?? false,
     );
   }
 }
@@ -460,6 +563,67 @@ class AnalysisRequestDto {
       documentId: (json['document_id'] ?? json['documentId'])?.toString(),
       completedAt: (json['completed_at'] ?? json['completedAt'])?.toString(),
       expiresAt: (json['expires_at'] ?? json['expiresAt'])?.toString(),
+    );
+  }
+}
+
+class AttendanceDetailResponse {
+  const AttendanceDetailResponse({
+    required this.status,
+    required this.total,
+    required this.items,
+  });
+
+  final String status;
+  final int total;
+  final List<AttendanceDetailItem> items;
+
+  factory AttendanceDetailResponse.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'] as List<dynamic>? ?? [];
+    return AttendanceDetailResponse(
+      status: json['status']?.toString() ?? '',
+      total: (json['total'] as num?)?.toInt() ?? rawItems.length,
+      items: rawItems
+          .whereType<Map>()
+          .map((e) => AttendanceDetailItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
+}
+
+class AttendanceDetailItem {
+  const AttendanceDetailItem({
+    required this.appointmentId,
+    required this.patientId,
+    required this.patientName,
+    required this.patientEmail,
+    required this.appointmentDate,
+    required this.endDate,
+    required this.reason,
+    required this.attendanceStatus,
+  });
+
+  final String appointmentId;
+  final String patientId;
+  final String patientName;
+  final String patientEmail;
+  final DateTime? appointmentDate;
+  final DateTime? endDate;
+  final String reason;
+  final String attendanceStatus;
+
+  factory AttendanceDetailItem.fromJson(Map<String, dynamic> json) {
+    return AttendanceDetailItem(
+      appointmentId: json['appointment_id']?.toString() ?? '',
+      patientId: json['patient_id']?.toString() ?? '',
+      patientName: json['patient_name']?.toString() ?? 'Paciente',
+      patientEmail: json['patient_email']?.toString() ?? '',
+      appointmentDate: KeepiTimezone.parseSchedule(
+        json['appointment_date']?.toString(),
+      ),
+      endDate: KeepiTimezone.parseSchedule(json['end_date']?.toString()),
+      reason: json['reason']?.toString() ?? '',
+      attendanceStatus: json['attendance_status']?.toString() ?? '',
     );
   }
 }

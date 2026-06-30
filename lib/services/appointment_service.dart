@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'dart:typed_data';
 import '../core/api_endpoints.dart';
 import 'api_client.dart';
 
@@ -181,6 +182,28 @@ class AppointmentService {
       },
     );
     return DoctorCalendarDto.fromJson(res.data ?? const {});
+  }
+
+  Future<Uint8List> downloadDoctorCalendarIcs({
+    required DateTime from,
+    required DateTime to,
+    required bool includeScheduled,
+    required bool includePending,
+    required bool includeProcedures,
+  }) async {
+    final res = await _api.dio.get<List<int>>(
+      ApiEndpoints.appointmentsDoctorExportIcs,
+      queryParameters: {
+        'start_at': from.toUtc().toIso8601String(),
+        'end_at': to.toUtc().toIso8601String(),
+        'include_scheduled': includeScheduled,
+        'include_pending': includePending,
+        'include_procedures': includeProcedures,
+      },
+      options: Options(responseType: ResponseType.bytes),
+    );
+    final data = res.data ?? const [];
+    return Uint8List.fromList(data);
   }
 
   Future<ProcedureBlockDto> createDoctorProcedure({

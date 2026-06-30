@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/keepi_timezone.dart';
 import '../../core/web_layout.dart';
 import '../../core/decorative_background.dart';
 import '../../services/api_client.dart';
@@ -172,7 +173,7 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
   }
 
   String _formatDate(DateTime d) {
-    final local = d.toLocal();
+    final local = d.isUtc ? d.asUserLocal : d;
     return '${local.day.toString().padLeft(2, '0')}/'
         '${local.month.toString().padLeft(2, '0')}/'
         '${local.year}';

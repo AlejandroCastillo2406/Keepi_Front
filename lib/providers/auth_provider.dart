@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/roles.dart';
+import '../core/keepi_timezone.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
@@ -140,6 +141,7 @@ class AuthProvider with ChangeNotifier {
       roleName: role,
       mustChangePassword: must,
     );
+    await KeepiTimezone.captureAndSave(_prefs);
   }
 
   Future<bool> login(String email, String password) async {
